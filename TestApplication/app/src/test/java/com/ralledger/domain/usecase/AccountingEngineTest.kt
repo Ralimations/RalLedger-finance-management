@@ -74,6 +74,20 @@ class AccountingEngineTest {
     }
 
     @Test
+    fun receivableRecognition_createsBalancedEntry() {
+        val amount = Money(1500000L) // 15,000.00 PHP
+        val entry = AccountingEngine.createReceivableRecognitionEntry(
+            receivableAccountId = "rec_1",
+            incomeCategoryId = "cat_freelance",
+            amount = amount,
+            description = "Invoice Recognized"
+        )
+        assertTrue(entry.isBalanced())
+        assertEquals(2, entry.lines.size)
+        assertEquals(amount, entry.lines.find { it.lineType == LineType.DEBIT }?.amount)
+    }
+
+    @Test
     fun receivableCollection_transfersFromReceivableAssetToBankAssetWithoutDoubleIncome() {
         val collectionAmount = Money(300000L) // 3,000.00 PHP
 
@@ -93,6 +107,26 @@ class AccountingEngineTest {
         assertEquals("rec_123", recCredit.accountId)
         assertEquals(collectionAmount, bankDebit.amount)
         assertEquals(collectionAmount, recCredit.amount)
+    }
+
+    @Test
+    fun loanDisbursementAndRepayment_createBalancedEntries() {
+        val loanAmount = Money(500000L)
+        val disburseEntry = AccountingEngine.createLoanDisbursementEntry(
+            destinationAccountId = "bank_1",
+            liabilityAccountId = "loan_1",
+            amount = loanAmount,
+            description = "Loan taken"
+        )
+        assertTrue(disburseEntry.isBalanced())
+
+        val repayEntry = AccountingEngine.createLoanRepaymentEntry(
+            sourceAccountId = "bank_1",
+            liabilityAccountId = "loan_1",
+            amount = loanAmount,
+            description = "Loan repaid"
+        )
+        assertTrue(repayEntry.isBalanced())
     }
 
     @Test

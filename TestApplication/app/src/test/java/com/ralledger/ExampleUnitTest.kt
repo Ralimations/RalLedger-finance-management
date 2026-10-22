@@ -1,4 +1,4 @@
-package com.example.testapplication
+package com.ralledger
 
 import org.junit.Test
 

@@ -27,6 +27,8 @@ class TransactionsViewModel(
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
+    private val _operationMessage = MutableStateFlow<String?>(null)
+    val operationMessage: StateFlow<String?> = _operationMessage
 
     val filteredTransactions: StateFlow<List<Transaction>> = combine(
         repository.transactionsFlow,
@@ -56,7 +58,7 @@ class TransactionsViewModel(
         counterparty: String = "",
         notes: String = ""
     ) {
-        viewModelScope.launch {
+        runOperation {
             repository.recordIncome(accountId, categoryId, amount, description, counterparty, notes)
         }
     }
@@ -69,7 +71,7 @@ class TransactionsViewModel(
         counterparty: String = "",
         notes: String = ""
     ) {
-        viewModelScope.launch {
+        runOperation {
             repository.recordExpense(accountId, categoryId, amount, description, counterparty, notes)
         }
     }
@@ -83,14 +85,27 @@ class TransactionsViewModel(
         description: String,
         notes: String = ""
     ) {
-        viewModelScope.launch {
+        runOperation {
             repository.recordTransfer(sourceAccountId, destinationAccountId, amount, fee, feeCategoryId, description, notes)
         }
     }
 
-    fun deleteTransaction(journalEntryId: String) {
+    fun reverseTransaction(journalEntryId: String) {
+        runOperation { repository.reverseTransaction(journalEntryId) }
+    }
+
+    fun clearOperationMessage() {
+        _operationMessage.value = null
+    }
+
+    private fun runOperation(action: suspend () -> Unit) {
         viewModelScope.launch {
-            repository.deleteTransaction(journalEntryId)
+            try {
+                action()
+                _operationMessage.value = null
+            } catch (error: Exception) {
+                _operationMessage.value = error.localizedMessage ?: "The transaction could not be saved."
+            }
         }
     }
 

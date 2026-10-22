@@ -48,7 +48,8 @@ data class ReceivableEntity(
         )
     ],
     indices = [
-        Index(value = ["receivableId"])
+        Index(value = ["receivableId"]),
+        Index(value = ["journalEntryId"])
     ]
 )
 data class ReceivablePaymentEntity(
@@ -58,7 +59,8 @@ data class ReceivablePaymentEntity(
     val amountCentavos: Long,
     val destinationAccountId: String,
     val paymentDate: Long,
-    val notes: String
+    val notes: String,
+    val reversedAt: Long? = null
 ) {
     fun toDomainModel(): ReceivablePayment {
         return ReceivablePayment(
@@ -68,7 +70,8 @@ data class ReceivablePaymentEntity(
             amount = Money(amountCentavos),
             destinationAccountId = destinationAccountId,
             paymentDate = paymentDate,
-            notes = notes
+            notes = notes,
+            reversedAt = reversedAt
         )
     }
 }

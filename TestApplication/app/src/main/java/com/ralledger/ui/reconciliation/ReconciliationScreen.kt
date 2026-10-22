@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -20,7 +21,9 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,17 +42,27 @@ fun ReconciliationScreen(
     viewModel: ReconciliationViewModel
 ) {
     val accounts by viewModel.accounts.collectAsState()
+    val operationMessage by viewModel.operationMessage.collectAsState()
+    val reconcilableAccounts = accounts.filter {
+        !it.isArchived && (it.accountType.isAsset || it.accountType.isLiability)
+    }
 
-    var selectedAccountId by remember { mutableStateOf(accounts.firstOrNull()?.id ?: "") }
+    var selectedAccountId by remember { mutableStateOf("") }
     var actualBalanceText by remember { mutableStateOf("") }
     var adjustmentReason by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
-    var statusMessage by remember { mutableStateOf<String?>(null) }
+    var inputError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(reconcilableAccounts, selectedAccountId) {
+        if (selectedAccountId.isBlank() && reconcilableAccounts.isNotEmpty()) {
+            selectedAccountId = reconcilableAccounts.first().id
+        }
+    }
 
     val selectedAccount = accounts.find { it.id == selectedAccountId }
     val recordedBalance = selectedAccount?.currentLedgerBalance ?: Money.ZERO
-    val actualBalance = Money.parseCentavosOrZero(actualBalanceText)
-    val difference = actualBalance - recordedBalance
+    val actualBalance = Money.parse(actualBalanceText)
+    val difference = actualBalance?.minus(recordedBalance)
 
     LazyColumn(
         modifier = Modifier
@@ -94,7 +107,7 @@ fun ReconciliationScreen(
                             expanded = expanded,
                             onDismissRequest = { expanded = false }
                         ) {
-                            accounts.forEach { acc ->
+                            reconcilableAccounts.forEach { acc ->
                                 DropdownMenuItem(
                                     text = { Text("${acc.name} (${acc.currentLedgerBalance.format()})") },
                                     onClick = {
@@ -117,16 +130,16 @@ fun ReconciliationScreen(
                         Column {
                             Text("Discrepancy / Difference", style = MaterialTheme.typography.labelSmall)
                             Text(
-                                difference.format(),
+                                difference?.format() ?: "—",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = if (difference.isZero) Color(0xFF2E7D32) else Color(0xFFC62828)
+                                color = if (difference?.isZero == true) Color(0xFF2E7D32) else Color(0xFFC62828)
                             )
                         }
                     }
 
                     OutlinedTextField(
                         value = actualBalanceText,
-                        onValueChange = { actualBalanceText = it },
+                        onValueChange = { actualBalanceText = it; inputError = null },
                         label = { Text("Actual Statement / Wallet Balance") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
@@ -139,28 +152,38 @@ fun ReconciliationScreen(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
                     Button(
                         modifier = Modifier.fillMaxWidth(),
                         onClick = {
-                            if (selectedAccountId.isNotBlank()) {
-                                viewModel.reconcileAccount(selectedAccountId, actualBalance, adjustmentReason)
-                                statusMessage = "Reconciliation audit recorded!"
-                                actualBalanceText = ""
-                                adjustmentReason = ""
+                            when {
+                                selectedAccountId.isBlank() -> inputError = "Select an account to reconcile."
+                                actualBalance == null -> inputError = "Enter a valid actual balance."
+                                else -> {
+                                    viewModel.reconcileAccount(selectedAccountId, actualBalance, adjustmentReason)
+                                    actualBalanceText = ""
+                                    adjustmentReason = ""
+                                }
                             }
                         }
                     ) {
                         Text("Audit & Post Reconciliation")
                     }
 
-                    statusMessage?.let {
-                        Text(text = it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                    }
                 }
             }
         }
+    }
+
+    operationMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearOperationMessage,
+            title = { Text("Reconciliation") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = viewModel::clearOperationMessage) { Text("OK") } }
+        )
     }
 }

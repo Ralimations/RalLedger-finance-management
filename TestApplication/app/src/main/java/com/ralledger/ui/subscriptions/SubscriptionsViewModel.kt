@@ -9,7 +9,9 @@ import com.ralledger.domain.model.BillingFrequency
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Subscription
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -17,6 +19,9 @@ import java.util.UUID
 class SubscriptionsViewModel(
     private val repository: RalLedgerRepository
 ) : ViewModel() {
+
+    private val _operationMessage = MutableStateFlow<String?>(null)
+    val operationMessage: StateFlow<String?> = _operationMessage.asStateFlow()
 
     val subscriptions: StateFlow<List<Subscription>> = repository.subscriptionsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -34,24 +39,40 @@ class SubscriptionsViewModel(
         notes: String
     ) {
         viewModelScope.launch {
-            val sub = Subscription(
-                id = UUID.randomUUID().toString(),
-                name = name,
-                merchant = merchant,
-                billingAmount = amount,
-                billingFrequency = frequency,
-                assignedAccountId = assignedAccountId,
-                nextBillingDate = nextBillingDate,
-                notes = notes
-            )
-            repository.createSubscription(sub)
+            try {
+                require(name.isNotBlank()) { "Enter a subscription name" }
+                require(amount.isPositive) { "Subscription amount must be greater than zero" }
+                val sub = Subscription(
+                    id = UUID.randomUUID().toString(),
+                    name = name,
+                    merchant = merchant,
+                    billingAmount = amount,
+                    billingFrequency = frequency,
+                    assignedAccountId = assignedAccountId,
+                    nextBillingDate = nextBillingDate,
+                    notes = notes
+                )
+                repository.createSubscription(sub)
+                _operationMessage.value = "Subscription saved."
+            } catch (error: Exception) {
+                _operationMessage.value = error.localizedMessage ?: "Subscription could not be saved."
+            }
         }
     }
 
     fun deleteSubscription(subscription: Subscription) {
         viewModelScope.launch {
-            repository.deleteSubscription(subscription)
+            try {
+                repository.deleteSubscription(subscription)
+                _operationMessage.value = "Subscription removed."
+            } catch (error: Exception) {
+                _operationMessage.value = error.localizedMessage ?: "Subscription could not be removed."
+            }
         }
+    }
+
+    fun clearOperationMessage() {
+        _operationMessage.value = null
     }
 
     class Factory(private val repository: RalLedgerRepository) : ViewModelProvider.Factory {

@@ -12,6 +12,15 @@ interface ReconciliationDao {
     @Query("SELECT * FROM reconciliations WHERE accountId = :accountId ORDER BY timestamp DESC")
     fun getReconciliationsForAccountFlow(accountId: String): Flow<List<ReconciliationEntity>>
 
+    @Query("SELECT * FROM reconciliations ORDER BY id ASC")
+    suspend fun getAllReconciliations(): List<ReconciliationEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertReconciliation(reconciliation: ReconciliationEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertReconciliations(reconciliations: List<ReconciliationEntity>)
+
+    @Query("DELETE FROM reconciliations")
+    suspend fun clearReconciliations()
 }

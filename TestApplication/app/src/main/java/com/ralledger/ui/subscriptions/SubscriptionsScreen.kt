@@ -52,6 +52,7 @@ fun SubscriptionsScreen(
 ) {
     val subscriptions by viewModel.subscriptions.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
+    val operationMessage by viewModel.operationMessage.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -95,12 +96,21 @@ fun SubscriptionsScreen(
 
     if (showAddDialog) {
         AddSubscriptionDialog(
-            accounts = accounts,
+            accounts = accounts.filter { it.accountType.isLiquid && !it.isArchived },
             onDismiss = { showAddDialog = false },
             onConfirm = { name, merchant, amount, freq, accountId, notes ->
                 viewModel.createSubscription(name, merchant, amount, freq, accountId, System.currentTimeMillis() + 30 * 86400000L, notes)
                 showAddDialog = false
             }
+        )
+    }
+
+    operationMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearOperationMessage,
+            title = { Text("Subscription update") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = viewModel::clearOperationMessage) { Text("OK") } }
         )
     }
 }
@@ -171,6 +181,7 @@ private fun AddSubscriptionDialog(
 
     var accountExpanded by remember { mutableStateOf(false) }
     var freqExpanded by remember { mutableStateOf(false) }
+    var inputError by remember { mutableStateOf<String?>(null) }
 
     val selectedAccountName = accounts.find { it.id == selectedAccountId }?.name ?: "Select Assigned Account"
 
@@ -181,7 +192,7 @@ private fun AddSubscriptionDialog(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = { name = it; inputError = null },
                     label = { Text("Subscription Name (e.g. ChatGPT / Spotify)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -252,19 +263,23 @@ private fun AddSubscriptionDialog(
 
                 OutlinedTextField(
                     value = amountText,
-                    onValueChange = { amountText = it },
+                    onValueChange = { amountText = it; inputError = null },
                     label = { Text("Billing Amount") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val amount = Money.parseCentavosOrZero(amountText)
-                    if (name.isNotBlank() && selectedAccountId.isNotBlank() && amount.isPositive) {
-                        onConfirm(name, merchant, amount, selectedFreq, selectedAccountId, notes)
+                    val amount = Money.parse(amountText)
+                    when {
+                        name.isBlank() -> inputError = "Enter a subscription name."
+                        selectedAccountId.isBlank() -> inputError = "Choose an assigned payment account."
+                        amount == null || !amount.isPositive -> inputError = "Enter a valid billing amount greater than zero."
+                        else -> onConfirm(name.trim(), merchant.trim(), amount, selectedFreq, selectedAccountId, notes)
                     }
                 }
             ) {

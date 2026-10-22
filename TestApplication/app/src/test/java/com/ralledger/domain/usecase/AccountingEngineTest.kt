@@ -140,4 +140,60 @@ class AccountingEngineTest {
         assertEquals(6912L, sum.centavos)
         assertEquals("₱69.12", sum.format("PHP"))
     }
+
+    @Test
+    fun moneyParser_preservesCentavosAndRejectsMalformedOrRoundedInput() {
+        assertEquals(Money(123456L), Money.parse("1,234.56"))
+        assertEquals(Money(1L), Money.parse("0.01"))
+        assertEquals(Money(-250L), Money.parse("-2.50"))
+        assertEquals(null, Money.parse("1,23.45"))
+        assertEquals(null, Money.parse("12.345"))
+        assertEquals(null, Money.parse("not money"))
+        assertEquals(null, Money.parse("92233720368547758.08"))
+    }
+
+    @Test
+    fun reconciliationAdjustment_usesNormalSideForAssetAndLiabilityChanges() {
+        val cases = listOf(
+            Triple(AccountType.TRADITIONAL_BANK, Money(100L), LineType.DEBIT),
+            Triple(AccountType.TRADITIONAL_BANK, Money(-100L), LineType.CREDIT),
+            Triple(AccountType.LIABILITY_ACCOUNT, Money(100L), LineType.CREDIT),
+            Triple(AccountType.LIABILITY_ACCOUNT, Money(-100L), LineType.DEBIT)
+        )
+
+        cases.forEach { (type, difference, expectedAccountSide) ->
+            val entry = AccountingEngine.createReconciliationAdjustmentEntry(
+                accountId = "account_1",
+                accountType = type,
+                difference = difference,
+                description = "Test reconciliation"
+            )
+            val accountLine = entry.lines.first { it.accountId == "account_1" }
+            assertEquals(expectedAccountSide, accountLine.lineType)
+            assertEquals(Money(100L), accountLine.amount)
+            assertTrue(entry.isBalanced())
+        }
+    }
+
+    @Test
+    fun reversalEntry_mirrorsEveryOriginalLineAndRemainsBalanced() {
+        val original = AccountingEngine.createTransferEntry(
+            sourceAccountId = "wallet_1",
+            destinationAccountId = "bank_1",
+            amount = Money(10000L),
+            fee = Money(125L),
+            feeCategoryId = "cat_other_expense",
+            description = "Cash in"
+        )
+
+        val reversal = AccountingEngine.createReversalEntry(original, original.id)
+
+        assertTrue(reversal.isBalanced())
+        assertEquals(original.lines.size, reversal.lines.size)
+        original.lines.forEach { line ->
+            val reversed = reversal.lines.single { it.accountId == line.accountId }
+            assertEquals(line.amount, reversed.amount)
+            assertEquals(if (line.lineType == LineType.DEBIT) LineType.CREDIT else LineType.DEBIT, reversed.lineType)
+        }
+    }
 }

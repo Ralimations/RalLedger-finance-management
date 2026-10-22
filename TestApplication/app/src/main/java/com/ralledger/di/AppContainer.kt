@@ -8,5 +8,5 @@ import com.ralledger.data.repository.RalLedgerRepository
 class AppContainer(context: Context) {
     val database: RalLedgerDatabase = RalLedgerDatabase.getInstance(context)
     val repository: RalLedgerRepository = RalLedgerRepository(database)
-    val backupRepository: BackupRepository = BackupRepository(context, database)
+    val backupRepository: BackupRepository = BackupRepository(database)
 }

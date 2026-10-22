@@ -17,7 +17,7 @@ object AccountingEngine {
         openingBalance: Money,
         timestamp: Long = System.currentTimeMillis()
     ): JournalEntry {
-        require(!openingBalance.isZero) { "Opening balance cannot be zero for entry creation" }
+        require(openingBalance.isPositive) { "Opening balance must be positive for entry creation" }
         val entryId = UUID.randomUUID().toString()
 
         val lines = if (accountType.isAsset) {
@@ -102,6 +102,9 @@ object AccountingEngine {
         timestamp: Long = System.currentTimeMillis()
     ): JournalEntry {
         require(amount.isPositive) { "Transfer amount must be positive" }
+        require(sourceAccountId != destinationAccountId) { "Source and destination accounts must differ" }
+        require(!fee.isNegative) { "Transfer fee cannot be negative" }
+        require(fee.isZero || !feeCategoryId.isNullOrBlank()) { "A fee category is required for a positive transfer fee" }
         val entryId = UUID.randomUUID().toString()
 
         val totalCreditFromSource = amount + fee
@@ -230,25 +233,28 @@ object AccountingEngine {
 
     fun createReconciliationAdjustmentEntry(
         accountId: String,
+        accountType: AccountType,
         difference: Money,
         description: String,
         timestamp: Long = System.currentTimeMillis()
     ): JournalEntry {
         require(!difference.isZero) { "Adjustment difference cannot be zero" }
+        require(accountType.isAsset || accountType.isLiability) { "Only asset and liability accounts can be reconciled" }
         val entryId = UUID.randomUUID().toString()
 
-        val lines = if (difference.isPositive) {
-            listOf(
-                JournalLine(UUID.randomUUID().toString(), entryId, accountId, LineType.DEBIT, difference),
-                JournalLine(UUID.randomUUID().toString(), entryId, RalLedgerDatabase.SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID, LineType.CREDIT, difference)
-            )
-        } else {
-            val absDiff = -difference
-            listOf(
-                JournalLine(UUID.randomUUID().toString(), entryId, RalLedgerDatabase.SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID, LineType.DEBIT, absDiff),
-                JournalLine(UUID.randomUUID().toString(), entryId, accountId, LineType.CREDIT, absDiff)
-            )
+        val accountIncreasesOnCredit = accountType.isLiability
+        val accountLineType = when {
+            difference.isPositive && accountIncreasesOnCredit -> LineType.CREDIT
+            difference.isPositive -> LineType.DEBIT
+            accountIncreasesOnCredit -> LineType.DEBIT
+            else -> LineType.CREDIT
         }
+        val equityLineType = if (accountLineType == LineType.DEBIT) LineType.CREDIT else LineType.DEBIT
+        val amount = if (difference.isPositive) difference else -difference
+        val lines = listOf(
+            JournalLine(UUID.randomUUID().toString(), entryId, accountId, accountLineType, amount),
+            JournalLine(UUID.randomUUID().toString(), entryId, RalLedgerDatabase.SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID, equityLineType, amount)
+        )
 
         val entry = JournalEntry(
             id = entryId,
@@ -258,5 +264,30 @@ object AccountingEngine {
         )
         check(entry.isBalanced()) { "Reconciliation adjustment entry must be balanced" }
         return entry
+    }
+
+    fun createReversalEntry(
+        original: JournalEntry,
+        originalEntryId: String,
+        timestamp: Long = System.currentTimeMillis()
+    ): JournalEntry {
+        require(original.id == originalEntryId) { "Original entry ID does not match" }
+        require(original.isBalanced()) { "Only balanced entries can be reversed" }
+        val reversalId = UUID.randomUUID().toString()
+        val reversedLines = original.lines.map { line ->
+            JournalLine(
+                id = UUID.randomUUID().toString(),
+                journalEntryId = reversalId,
+                accountId = line.accountId,
+                lineType = if (line.lineType == LineType.DEBIT) LineType.CREDIT else LineType.DEBIT,
+                amount = line.amount
+            )
+        }
+        return JournalEntry(
+            id = reversalId,
+            timestamp = timestamp,
+            description = "Reversal of ${original.description.ifBlank { originalEntryId }}",
+            lines = reversedLines
+        ).also { check(it.isBalanced()) { "Reversal entry must be balanced" } }
     }
 }

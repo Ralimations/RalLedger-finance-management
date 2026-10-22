@@ -1,5 +1,6 @@
 package com.ralledger.data.repository
 
+import androidx.room.withTransaction
 import com.ralledger.data.local.RalLedgerDatabase
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.CategoryEntity
@@ -13,6 +14,7 @@ import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.AccountCategory
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.Category
+import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.DashboardSummary
 import com.ralledger.domain.model.JournalEntry
 import com.ralledger.domain.model.LineType
@@ -25,6 +27,7 @@ import com.ralledger.domain.model.SubscriptionStatus
 import com.ralledger.domain.model.Transaction
 import com.ralledger.domain.model.TransactionType
 import com.ralledger.domain.usecase.AccountingEngine
+import com.ralledger.domain.usecase.DashboardSummaryCalculator
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -97,17 +100,20 @@ class RalLedgerRepository(
 
     suspend fun createAccount(account: Account) {
         val entity = AccountEntity.fromDomainModel(account)
-        accountDao.insertAccount(entity)
+        require(account.openingBalance.isZero || account.openingBalance.isPositive) { "Opening balance cannot be negative" }
+        require(account.accountType.isAsset || account.accountType.isLiability) { "A financial account must be an asset or liability" }
+        database.withTransaction {
+            accountDao.insertAccount(entity)
 
-        // Post opening balance if positive
-        if (account.openingBalance.isPositive) {
-            val entry = AccountingEngine.createOpeningBalanceEntry(
-                accountId = account.id,
-                accountType = account.accountType,
-                openingBalance = account.openingBalance,
-                timestamp = account.createdAt
-            )
-            postJournalEntry(entry, TransactionType.OPENING_BALANCE, account.openingBalance, Money.ZERO, account.id, null, null, "", "Opening Balance")
+            if (account.openingBalance.isPositive) {
+                val entry = AccountingEngine.createOpeningBalanceEntry(
+                    accountId = account.id,
+                    accountType = account.accountType,
+                    openingBalance = account.openingBalance,
+                    timestamp = account.createdAt
+                )
+                postJournalEntry(entry, TransactionType.OPENING_BALANCE, account.openingBalance, Money.ZERO, account.id, null, null, "", "Opening Balance")
+            }
         }
     }
 
@@ -157,7 +163,8 @@ class RalLedgerRepository(
                 categoryName = catName,
                 counterparty = entry.counterparty,
                 description = entry.description,
-                notes = entry.notes
+                notes = entry.notes,
+                reversesEntryId = entry.reversesEntryId
             )
         }
     }
@@ -171,8 +178,10 @@ class RalLedgerRepository(
         destinationAccountId: String? = null,
         categoryId: String? = null,
         counterparty: String = "",
-        notes: String = ""
+        notes: String = "",
+        reversesEntryId: String? = null
     ) {
+        require(entry.isBalanced()) { "Journal entry is unbalanced and cannot be posted" }
         val entryEntity = JournalEntryEntity(
             id = entry.id,
             timestamp = entry.timestamp,
@@ -184,7 +193,8 @@ class RalLedgerRepository(
             destinationAccountId = destinationAccountId,
             categoryId = categoryId,
             counterparty = counterparty,
-            notes = notes
+            notes = notes,
+            reversesEntryId = reversesEntryId
         )
 
         val lineEntities = entry.lines.map { line ->
@@ -197,8 +207,7 @@ class RalLedgerRepository(
             )
         }
 
-        journalDao.insertJournalEntry(entryEntity)
-        journalDao.insertJournalLines(lineEntities)
+        journalDao.insertJournalEntryWithLines(entryEntity, lineEntities)
     }
 
     suspend fun recordIncome(
@@ -210,8 +219,12 @@ class RalLedgerRepository(
         notes: String = "",
         timestamp: Long = System.currentTimeMillis()
     ) {
-        val entry = AccountingEngine.createIncomeEntry(accountId, categoryId, amount, description, timestamp)
-        postJournalEntry(entry, TransactionType.INCOME, amount, Money.ZERO, accountId, null, categoryId, counterparty, notes)
+        database.withTransaction {
+            validateFinancialAccount(accountId)
+            validateCategory(categoryId, CategoryType.INCOME)
+            val entry = AccountingEngine.createIncomeEntry(accountId, categoryId, amount, description, timestamp)
+            postJournalEntry(entry, TransactionType.INCOME, amount, Money.ZERO, accountId, null, categoryId, counterparty, notes)
+        }
     }
 
     suspend fun recordExpense(
@@ -223,8 +236,12 @@ class RalLedgerRepository(
         notes: String = "",
         timestamp: Long = System.currentTimeMillis()
     ) {
-        val entry = AccountingEngine.createExpenseEntry(accountId, categoryId, amount, description, timestamp)
-        postJournalEntry(entry, TransactionType.EXPENSE, amount, Money.ZERO, accountId, null, categoryId, counterparty, notes)
+        database.withTransaction {
+            validateFinancialAccount(accountId)
+            validateCategory(categoryId, CategoryType.EXPENSE)
+            val entry = AccountingEngine.createExpenseEntry(accountId, categoryId, amount, description, timestamp)
+            postJournalEntry(entry, TransactionType.EXPENSE, amount, Money.ZERO, accountId, null, categoryId, counterparty, notes)
+        }
     }
 
     suspend fun recordTransfer(
@@ -237,12 +254,104 @@ class RalLedgerRepository(
         notes: String = "",
         timestamp: Long = System.currentTimeMillis()
     ) {
-        val entry = AccountingEngine.createTransferEntry(sourceAccountId, destinationAccountId, amount, fee, feeCategoryId, description, timestamp)
-        postJournalEntry(entry, TransactionType.TRANSFER, amount, fee, sourceAccountId, destinationAccountId, feeCategoryId, "", notes)
+        database.withTransaction {
+            validateFinancialAccount(sourceAccountId)
+            validateFinancialAccount(destinationAccountId)
+            if (fee.isPositive) validateCategory(feeCategoryId ?: "", CategoryType.EXPENSE)
+            val entry = AccountingEngine.createTransferEntry(sourceAccountId, destinationAccountId, amount, fee, feeCategoryId, description, timestamp)
+            postJournalEntry(entry, TransactionType.TRANSFER, amount, fee, sourceAccountId, destinationAccountId, feeCategoryId, "", notes)
+        }
     }
 
-    suspend fun deleteTransaction(journalEntryId: String) {
-        journalDao.deleteJournalEntry(journalEntryId)
+    private suspend fun validateFinancialAccount(accountId: String) {
+        val account = accountDao.getAccountById(accountId)
+            ?: throw IllegalArgumentException("Select a valid financial account")
+        val type = AccountType.valueOf(account.accountType)
+        require(type.isAsset && !type.isReceivable && !account.isArchived) {
+            "Choose an active asset account for this transaction"
+        }
+    }
+
+    private suspend fun validateCategory(categoryId: String, expected: CategoryType) {
+        val category = categoryDao.getCategoryById(categoryId)
+            ?: throw IllegalArgumentException("Select a valid ${expected.name.lowercase()} category")
+        require(category.type == expected.name) { "Selected category must be ${expected.name.lowercase()}" }
+    }
+
+    suspend fun reverseTransaction(journalEntryId: String) {
+        database.withTransaction {
+            val originalEntity = journalDao.getJournalEntryById(journalEntryId)
+                ?: throw IllegalArgumentException("Transaction no longer exists")
+            require(originalEntity.transactionType != TransactionType.REVERSAL.name) {
+                "A reversal cannot itself be reversed"
+            }
+            require(journalDao.getReversalForEntry(journalEntryId) == null) {
+                "This transaction has already been reversed"
+            }
+
+            val originalLines = journalDao.getLinesForJournalEntry(journalEntryId).map { it.toDomainModel() }
+            val originalEntry = JournalEntry(
+                id = originalEntity.id,
+                timestamp = originalEntity.timestamp,
+                description = originalEntity.description,
+                lines = originalLines
+            )
+            val reversal = AccountingEngine.createReversalEntry(originalEntry, journalEntryId)
+            val originalType = TransactionType.valueOf(originalEntity.transactionType)
+
+            when (originalType) {
+                TransactionType.RECEIVABLE_COLLECTION -> {
+                    val payment = receivableDao.getPaymentByJournalEntryId(journalEntryId)
+                        ?: throw IllegalStateException("Receivable payment history is missing")
+                    require(payment.reversedAt == null) { "This payment has already been reversed" }
+                    val receivable = receivableDao.getReceivableById(payment.receivableId)
+                        ?: throw IllegalStateException("Linked receivable is missing")
+                    val restoredOutstanding = Math.addExact(receivable.outstandingAmountCentavos, payment.amountCentavos)
+                    require(restoredOutstanding <= receivable.originalAmountCentavos) {
+                        "Reversing this payment would exceed the original receivable balance"
+                    }
+                    val restoredStatus = when {
+                        receivable.dueDate < System.currentTimeMillis() -> ReceivableStatus.OVERDUE.name
+                        restoredOutstanding == receivable.originalAmountCentavos -> ReceivableStatus.CONFIRMED.name
+                        else -> ReceivableStatus.PARTIALLY_PAID.name
+                    }
+                    receivableDao.updatePayment(payment.copy(reversedAt = System.currentTimeMillis()))
+                    receivableDao.updateReceivable(
+                        receivable.copy(
+                            outstandingAmountCentavos = restoredOutstanding,
+                            status = restoredStatus
+                        )
+                    )
+                }
+                TransactionType.RECEIVABLE_RECOGNITION -> {
+                    val receivable = receivableDao.getReceivableById(originalEntity.primaryAccountId)
+                        ?: throw IllegalStateException("Linked receivable is missing")
+                    val activePayments = receivableDao.getPaymentsForReceivable(receivable.id)
+                        .any { it.reversedAt == null }
+                    require(!activePayments) { "Reverse active collections before cancelling this receivable" }
+                    receivableDao.updateReceivable(
+                        receivable.copy(
+                            outstandingAmountCentavos = 0L,
+                            status = ReceivableStatus.CANCELLED.name
+                        )
+                    )
+                }
+                else -> Unit
+            }
+
+            postJournalEntry(
+                entry = reversal,
+                transactionType = TransactionType.REVERSAL,
+                amount = Money(originalEntity.amountCentavos),
+                fee = Money(originalEntity.feeCentavos),
+                primaryAccountId = originalEntity.primaryAccountId,
+                destinationAccountId = originalEntity.destinationAccountId,
+                categoryId = originalEntity.categoryId,
+                counterparty = originalEntity.counterparty,
+                notes = "Reversal of ${originalEntity.id}. ${originalEntity.notes}".trim(),
+                reversesEntryId = originalEntity.id
+            )
+        }
     }
 
     // Receivables
@@ -251,10 +360,18 @@ class RalLedgerRepository(
         receivableDao.getAllPaymentsFlow()
     ) { receivables, allPayments ->
         val paymentGroup = allPayments.groupBy { it.receivableId }
+        val now = System.currentTimeMillis()
 
         receivables.map { recEntity ->
             val payments = paymentGroup[recEntity.id]?.map { it.toDomainModel() } ?: emptyList()
-            recEntity.toDomainModel(payments)
+            val receivable = recEntity.toDomainModel(payments)
+            if (recEntity.dueDate < now &&
+                receivable.status in setOf(ReceivableStatus.CONFIRMED, ReceivableStatus.PARTIALLY_PAID)
+            ) {
+                receivable.copy(status = ReceivableStatus.OVERDUE)
+            } else {
+                receivable
+            }
         }
     }
 
@@ -265,6 +382,14 @@ class RalLedgerRepository(
         incomeCategoryId: String?,
         description: String
     ): Receivable {
+        require(clientName.isNotBlank()) { "Client name is required" }
+        require(amount.isPositive) { "Receivable amount must be positive" }
+        val categoryId = incomeCategoryId ?: "cat_other_income"
+        val category = categoryDao.getCategoryById(categoryId)
+            ?: throw IllegalArgumentException("Select a valid income category")
+        require(category.type == com.ralledger.domain.model.CategoryType.INCOME.name) {
+            "Receivable recognition requires an income category"
+        }
         val id = UUID.randomUUID().toString()
         val recEntity = ReceivableEntity(
             id = id,
@@ -273,11 +398,27 @@ class RalLedgerRepository(
             outstandingAmountCentavos = amount.centavos,
             recognitionDate = System.currentTimeMillis(),
             dueDate = dueDate,
-            linkedCategoryId = incomeCategoryId,
+            linkedCategoryId = categoryId,
             description = description,
             status = ReceivableStatus.CONFIRMED.name
         )
-        receivableDao.insertReceivable(recEntity)
+        val entry = AccountingEngine.createReceivableRecognitionEntry(
+            receivableAccountId = id,
+            incomeCategoryId = categoryId,
+            amount = amount,
+            description = description.ifBlank { "Receivable recognized: $clientName" }
+        )
+        database.withTransaction {
+            receivableDao.insertReceivable(recEntity)
+            postJournalEntry(
+                entry = entry,
+                transactionType = TransactionType.RECEIVABLE_RECOGNITION,
+                amount = amount,
+                primaryAccountId = id,
+                categoryId = categoryId,
+                counterparty = clientName
+            )
+        }
         return recEntity.toDomainModel(emptyList())
     }
 
@@ -287,41 +428,63 @@ class RalLedgerRepository(
         paymentAmount: Money,
         notes: String
     ) {
-        val receivable = receivableDao.getReceivableById(receivableId) ?: return
-        val newOutstanding = (Money(receivable.outstandingAmountCentavos) - paymentAmount).centavos.coerceAtLeast(0L)
+        require(paymentAmount.isPositive) { "Collection amount must be positive" }
+        database.withTransaction {
+            val receivable = receivableDao.getReceivableById(receivableId)
+                ?: throw IllegalArgumentException("Receivable no longer exists")
+            val outstanding = Money(receivable.outstandingAmountCentavos)
+            require(outstanding.isPositive) { "This receivable is already settled" }
+            require(paymentAmount <= outstanding) { "Collection cannot exceed the outstanding balance" }
+            require(
+                receivable.status == ReceivableStatus.CONFIRMED.name ||
+                    receivable.status == ReceivableStatus.PARTIALLY_PAID.name ||
+                    receivable.status == ReceivableStatus.OVERDUE.name
+            ) { "This receivable is not collectible" }
 
-        val newStatus = when {
-            newOutstanding == 0L -> ReceivableStatus.PAID.name
-            else -> ReceivableStatus.PARTIALLY_PAID.name
-        }
+            val destination = accountDao.getAccountById(destinationAccountId)
+                ?: throw IllegalArgumentException("Select a valid destination account")
+            val destinationType = AccountType.valueOf(destination.accountType)
+            require(destinationType.isLiquid && !destination.isArchived) {
+                "Collections must be deposited into an active cash, bank, or e-wallet account"
+            }
 
-        // Post Collection Journal Entry
-        val entry = AccountingEngine.createReceivableCollectionEntry(
-            destinationAccountId = destinationAccountId,
-            receivableAccountId = receivable.id,
-            amount = paymentAmount,
-            description = "Receivable payment from ${receivable.clientName}"
-        )
+            val newOutstanding = outstanding - paymentAmount
+            val newStatus = when {
+                newOutstanding.isZero -> ReceivableStatus.PAID.name
+                receivable.dueDate < System.currentTimeMillis() -> ReceivableStatus.OVERDUE.name
+                else -> ReceivableStatus.PARTIALLY_PAID.name
+            }
 
-        postJournalEntry(entry, TransactionType.RECEIVABLE_COLLECTION, paymentAmount, Money.ZERO, destinationAccountId, receivable.id, receivable.linkedCategoryId, receivable.clientName, notes)
-
-        val paymentEntity = ReceivablePaymentEntity(
-            id = UUID.randomUUID().toString(),
-            receivableId = receivableId,
-            journalEntryId = entry.id,
-            amountCentavos = paymentAmount.centavos,
-            destinationAccountId = destinationAccountId,
-            paymentDate = System.currentTimeMillis(),
-            notes = notes
-        )
-        receivableDao.insertPayment(paymentEntity)
-
-        receivableDao.updateReceivable(
-            receivable.copy(
-                outstandingAmountCentavos = newOutstanding,
-                status = newStatus
+            val entry = AccountingEngine.createReceivableCollectionEntry(
+                destinationAccountId = destinationAccountId,
+                receivableAccountId = receivable.id,
+                amount = paymentAmount,
+                description = "Receivable payment from ${receivable.clientName}"
             )
-        )
+            postJournalEntry(
+                entry, TransactionType.RECEIVABLE_COLLECTION, paymentAmount, Money.ZERO,
+                destinationAccountId, receivable.id, receivable.linkedCategoryId,
+                receivable.clientName, notes
+            )
+
+            receivableDao.insertPayment(
+                ReceivablePaymentEntity(
+                    id = UUID.randomUUID().toString(),
+                    receivableId = receivableId,
+                    journalEntryId = entry.id,
+                    amountCentavos = paymentAmount.centavos,
+                    destinationAccountId = destinationAccountId,
+                    paymentDate = System.currentTimeMillis(),
+                    notes = notes
+                )
+            )
+            receivableDao.updateReceivable(
+                receivable.copy(
+                    outstandingAmountCentavos = newOutstanding.centavos,
+                    status = newStatus
+                )
+            )
+        }
     }
 
     // Subscriptions
@@ -337,15 +500,35 @@ class RalLedgerRepository(
     }
 
     suspend fun createSubscription(subscription: Subscription) {
-        subscriptionDao.insertSubscription(SubscriptionEntity.fromDomainModel(subscription))
+        require(subscription.name.isNotBlank()) { "Subscription name is required" }
+        require(subscription.billingAmount.isPositive) { "Subscription billing amount must be positive" }
+        database.withTransaction {
+            val account = accountDao.getAccountById(subscription.assignedAccountId)
+                ?: throw IllegalArgumentException("Select a valid payment account")
+            require(AccountType.valueOf(account.accountType).isLiquid && !account.isArchived) {
+                "Choose an active cash, bank, or e-wallet account for this subscription"
+            }
+            subscriptionDao.insertSubscription(SubscriptionEntity.fromDomainModel(subscription))
+        }
     }
 
     suspend fun updateSubscription(subscription: Subscription) {
-        subscriptionDao.updateSubscription(SubscriptionEntity.fromDomainModel(subscription))
+        require(subscription.name.isNotBlank()) { "Subscription name is required" }
+        require(subscription.billingAmount.isPositive) { "Subscription billing amount must be positive" }
+        database.withTransaction {
+            val account = accountDao.getAccountById(subscription.assignedAccountId)
+                ?: throw IllegalArgumentException("Select a valid payment account")
+            require(AccountType.valueOf(account.accountType).isLiquid && !account.isArchived) {
+                "Choose an active cash, bank, or e-wallet account for this subscription"
+            }
+            subscriptionDao.updateSubscription(SubscriptionEntity.fromDomainModel(subscription))
+        }
     }
 
     suspend fun deleteSubscription(subscription: Subscription) {
-        subscriptionDao.deleteSubscription(SubscriptionEntity.fromDomainModel(subscription))
+        database.withTransaction {
+            subscriptionDao.deleteSubscription(SubscriptionEntity.fromDomainModel(subscription))
+        }
     }
 
     // Reconciliation
@@ -354,34 +537,42 @@ class RalLedgerRepository(
         actualBalance: Money,
         reason: String
     ) {
-        val currentAccount = getAccountById(accountId) ?: return
-        val recordedBalance = currentAccount.currentLedgerBalance
-        val difference = actualBalance - recordedBalance
-
-        var journalId: String? = null
-
-        if (!difference.isZero) {
-            val entry = AccountingEngine.createReconciliationAdjustmentEntry(
+        database.withTransaction {
+            val currentAccount = getAccountById(accountId)
+                ?: throw IllegalArgumentException("Select a valid account to reconcile")
+            require(currentAccount.accountType.isAsset || currentAccount.accountType.isLiability) {
+                "Only asset and liability accounts can be reconciled"
+            }
+            val recordedBalance = currentAccount.currentLedgerBalance
+            val difference = actualBalance - recordedBalance
+            val journalId = if (difference.isZero) {
+                null
+            } else {
+                val entry = AccountingEngine.createReconciliationAdjustmentEntry(
+                    accountId = accountId,
+                    accountType = currentAccount.accountType,
+                    difference = difference,
+                    description = "Reconciliation adjustment: $reason"
+                )
+                postJournalEntry(
+                    entry, TransactionType.BALANCE_ADJUSTMENT, difference, Money.ZERO,
+                    accountId, null, null, "Reconciliation", reason
+                )
+                entry.id
+            }
+            val recEntity = ReconciliationEntity(
+                id = UUID.randomUUID().toString(),
                 accountId = accountId,
-                difference = difference,
-                description = "Reconciliation adjustment: $reason"
+                timestamp = System.currentTimeMillis(),
+                recordedBalanceCentavos = recordedBalance.centavos,
+                actualBalanceCentavos = actualBalance.centavos,
+                differenceCentavos = difference.centavos,
+                adjustmentReason = reason,
+                journalEntryId = journalId
             )
-            postJournalEntry(entry, TransactionType.BALANCE_ADJUSTMENT, difference, Money.ZERO, accountId, null, null, "Reconciliation", reason)
-            journalId = entry.id
+            reconciliationDao.insertReconciliation(recEntity)
+            accountDao.updateLastReconciledAt(accountId, System.currentTimeMillis())
         }
-
-        val recEntity = ReconciliationEntity(
-            id = UUID.randomUUID().toString(),
-            accountId = accountId,
-            timestamp = System.currentTimeMillis(),
-            recordedBalanceCentavos = recordedBalance.centavos,
-            actualBalanceCentavos = actualBalance.centavos,
-            differenceCentavos = difference.centavos,
-            adjustmentReason = reason,
-            journalEntryId = journalId
-        )
-        reconciliationDao.insertReconciliation(recEntity)
-        accountDao.updateLastReconciledAt(accountId, System.currentTimeMillis())
     }
 
     fun getReconciliationsFlow(accountId: String): Flow<List<Reconciliation>> {
@@ -397,57 +588,12 @@ class RalLedgerRepository(
         subscriptionsFlow,
         transactionsFlow
     ) { accounts, receivables, subscriptions, transactions ->
-        val dashboardAccounts = accounts.filter { it.includeInDashboardTotals && !it.isArchived }
-
-        val liquidCash = dashboardAccounts
-            .filter { it.accountType.isLiquid }
-            .fold(Money.ZERO) { acc, a -> acc + a.currentLedgerBalance }
-
-        val reservedSavings = dashboardAccounts
-            .filter { it.accountType == AccountType.PHYSICAL_SAVINGS }
-            .fold(Money.ZERO) { acc, a -> acc + a.currentLedgerBalance }
-
-        val availableToSpend = liquidCash
-
-        val totalReceivables = receivables
-            .filter { it.status == ReceivableStatus.CONFIRMED || it.status == ReceivableStatus.PARTIALLY_PAID || it.status == ReceivableStatus.OVERDUE }
-            .fold(Money.ZERO) { acc, r -> acc + r.outstandingAmount }
-
-        val totalLiabilities = dashboardAccounts
-            .filter { it.accountType.isLiability }
-            .fold(Money.ZERO) { acc, a -> acc + a.currentLedgerBalance }
-
-        val totalAssets = liquidCash + reservedSavings + totalReceivables
-
-        val netWorth = totalAssets - totalLiabilities
-
-        val startOfMonth = getStartOfMonthTimestamp()
-
-        val monthlyIncome = transactions
-            .filter { it.timestamp >= startOfMonth && it.transactionType == TransactionType.INCOME }
-            .fold(Money.ZERO) { acc, t -> acc + t.amount }
-
-        val monthlyExpenses = transactions
-            .filter { it.timestamp >= startOfMonth && it.transactionType == TransactionType.EXPENSE }
-            .fold(Money.ZERO) { acc, t -> acc + t.amount }
-
-        val monthlySubs = subscriptions
-            .filter { it.status == SubscriptionStatus.ACTIVE }
-            .fold(Money.ZERO) { acc, s -> acc + s.billingAmount }
-
-        DashboardSummary(
-            liquidCashAndBankBalances = liquidCash,
-            availableToSpendFunds = availableToSpend,
-            reservedSavings = reservedSavings,
-            accountsReceivableTotal = totalReceivables,
-            accountsPayableTotal = totalLiabilities,
-            totalAssets = totalAssets,
-            totalLiabilities = totalLiabilities,
-            netWorth = netWorth,
-            monthlyIncomeReceived = monthlyIncome,
-            monthlyExpensesPaid = monthlyExpenses,
-            netCashFlow = monthlyIncome - monthlyExpenses,
-            activeSubscriptionsMonthlyTotal = monthlySubs
+        DashboardSummaryCalculator.calculate(
+            accounts = accounts,
+            receivables = receivables,
+            subscriptions = subscriptions,
+            transactions = transactions,
+            startOfMonthTimestamp = getStartOfMonthTimestamp()
         )
     }
 

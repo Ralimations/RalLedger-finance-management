@@ -9,7 +9,7 @@ import com.ralledger.domain.model.JournalLine
 import com.ralledger.domain.model.LineType
 import com.ralledger.domain.model.Money
 
-@Entity(tableName = "journal_entries")
+@Entity(tableName = "journal_entries", indices = [Index(value = ["reversesEntryId"])])
 data class JournalEntryEntity(
     @PrimaryKey val id: String,
     val timestamp: Long,
@@ -21,7 +21,8 @@ data class JournalEntryEntity(
     val destinationAccountId: String?,
     val categoryId: String?,
     val counterparty: String,
-    val notes: String
+    val notes: String,
+    val reversesEntryId: String? = null
 )
 
 @Entity(

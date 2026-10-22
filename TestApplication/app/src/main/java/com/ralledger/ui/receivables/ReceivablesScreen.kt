@@ -31,6 +31,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -43,8 +44,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.Category
+import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Receivable
+import com.ralledger.domain.model.ReceivableStatus
 
 @Composable
 fun ReceivablesScreen(
@@ -53,6 +56,7 @@ fun ReceivablesScreen(
     val receivables by viewModel.receivables.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
+    val operationMessage by viewModel.operationMessage.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
     var selectedCollectReceivable by remember { mutableStateOf<Receivable?>(null) }
@@ -98,7 +102,7 @@ fun ReceivablesScreen(
 
     if (showAddDialog) {
         AddReceivableDialog(
-            categories = categories,
+            categories = categories.filter { it.type == CategoryType.INCOME },
             onDismiss = { showAddDialog = false },
             onConfirm = { client, amount, desc, catId ->
                 viewModel.createReceivable(client, amount, System.currentTimeMillis() + 30 * 86400000L, catId, desc)
@@ -110,12 +114,21 @@ fun ReceivablesScreen(
     selectedCollectReceivable?.let { rec ->
         CollectPaymentDialog(
             receivable = rec,
-            accounts = accounts,
+            accounts = accounts.filter { it.accountType.isLiquid && !it.isArchived },
             onDismiss = { selectedCollectReceivable = null },
             onConfirm = { accountId, amount, notes ->
                 viewModel.collectReceivable(rec.id, accountId, amount, notes)
                 selectedCollectReceivable = null
             }
+        )
+    }
+
+    operationMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearOperationMessage,
+            title = { Text("Receivable update") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = viewModel::clearOperationMessage) { Text("OK") } }
         )
     }
 }
@@ -140,7 +153,14 @@ private fun ReceivableCard(
                     Text(text = receivable.clientName, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color(0xFFE65100))
                     Text(text = "Status: ${receivable.status.displayName}", style = MaterialTheme.typography.labelSmall, color = Color(0xFFEF6C00))
                 }
-                IconButton(onClick = onCollect) {
+                IconButton(
+                    onClick = onCollect,
+                    enabled = receivable.outstandingAmount.isPositive && receivable.status in setOf(
+                        ReceivableStatus.CONFIRMED,
+                        ReceivableStatus.PARTIALLY_PAID,
+                        ReceivableStatus.OVERDUE
+                    )
+                ) {
                     Icon(imageVector = Icons.Default.Payments, contentDescription = "Collect", tint = Color(0xFFE65100))
                 }
             }
@@ -173,6 +193,13 @@ private fun AddReceivableDialog(
     var amountText by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var selectedCategoryId by remember { mutableStateOf(categories.firstOrNull()?.id ?: "") }
+    var inputError by remember { mutableStateOf<String?>(null) }
+    var categoryExpanded by remember { mutableStateOf(false) }
+    val selectedCategory = categories.firstOrNull { it.id == selectedCategoryId }
+
+    LaunchedEffect(categories) {
+        if (selectedCategoryId.isBlank() && categories.isNotEmpty()) selectedCategoryId = categories.first().id
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -181,18 +208,42 @@ private fun AddReceivableDialog(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = client,
-                    onValueChange = { client = it },
+                    onValueChange = { client = it; inputError = null },
                     label = { Text("Client / Counterparty Name") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = amountText,
-                    onValueChange = { amountText = it },
+                    onValueChange = { amountText = it; inputError = null },
                     label = { Text("Amount Owed (e.g. 15000.00)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                ExposedDropdownMenuBox(
+                    expanded = categoryExpanded,
+                    onExpandedChange = { categoryExpanded = !categoryExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = selectedCategory?.name ?: "Select income source",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Income Source") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(
+                        expanded = categoryExpanded,
+                        onDismissRequest = { categoryExpanded = false }
+                    ) {
+                        categories.forEach { category ->
+                            DropdownMenuItem(
+                                text = { Text(category.name) },
+                                onClick = { selectedCategoryId = category.id; categoryExpanded = false }
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
@@ -200,14 +251,18 @@ private fun AddReceivableDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val amount = Money.parseCentavosOrZero(amountText)
-                    if (client.isNotBlank() && amount.isPositive) {
-                        onConfirm(client, amount, description, selectedCategoryId.ifBlank { null })
+                    val amount = Money.parse(amountText)
+                    when {
+                        client.isBlank() -> inputError = "Enter a client or counterparty name."
+                        amount == null || !amount.isPositive -> inputError = "Enter a valid amount greater than zero."
+                        selectedCategoryId.isBlank() -> inputError = "Choose an income source."
+                        else -> onConfirm(client.trim(), amount, description, selectedCategoryId.ifBlank { null })
                     }
                 }
             ) {
@@ -234,6 +289,7 @@ private fun CollectPaymentDialog(
     var amountText by remember { mutableStateOf(receivable.outstandingAmount.format().replace("₱", "").replace("$", "").trim()) }
     var notes by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
+    var inputError by remember { mutableStateOf<String?>(null) }
 
     val selectedName = accounts.find { it.id == selectedAccountId }?.name ?: "Select Destination Account"
 
@@ -275,7 +331,7 @@ private fun CollectPaymentDialog(
 
                 OutlinedTextField(
                     value = amountText,
-                    onValueChange = { amountText = it },
+                    onValueChange = { amountText = it; inputError = null },
                     label = { Text("Collection Amount") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -288,14 +344,18 @@ private fun CollectPaymentDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val amount = Money.parseCentavosOrZero(amountText)
-                    if (selectedAccountId.isNotBlank() && amount.isPositive) {
-                        onConfirm(selectedAccountId, amount, notes)
+                    val amount = Money.parse(amountText)
+                    when {
+                        selectedAccountId.isBlank() -> inputError = "Choose a destination account."
+                        amount == null || !amount.isPositive -> inputError = "Enter a valid collection greater than zero."
+                        amount > receivable.outstandingAmount -> inputError = "Collection exceeds the remaining balance."
+                        else -> onConfirm(selectedAccountId, amount, notes)
                     }
                 }
             ) {

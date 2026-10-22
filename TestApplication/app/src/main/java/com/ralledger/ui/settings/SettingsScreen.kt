@@ -1,34 +1,78 @@
 package com.ralledger.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel
 ) {
+    val context = LocalContext.current
     val backupStatus by viewModel.backupStatus.collectAsState()
+    val restorePreview by viewModel.restorePreview.collectAsState()
+    var password by remember { mutableStateOf("") }
+    var validationError by remember { mutableStateOf<String?>(null) }
+
+    val saveBackup = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.createEncryptedBackup(password) { bytes ->
+                val output = context.contentResolver.openOutputStream(uri, "w")
+                    ?: throw IOException("The selected destination could not be opened")
+                output.use { it.write(bytes) }
+            }
+        }
+    }
+
+    val openBackup = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val input = context.contentResolver.openInputStream(uri)
+                    ?: throw IOException("The selected backup could not be opened")
+                val bytes = input.use { it.readBytes() }
+                viewModel.inspectBackup(bytes, password)
+                bytes.fill(0)
+            } catch (error: Exception) {
+                validationError = error.localizedMessage ?: "Could not read the selected backup"
+            }
+        }
+    }
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
+        modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
@@ -41,43 +85,91 @@ fun SettingsScreen(
             color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
         )
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        ) {
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Backup & Export Records", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                Text("Export encrypted or readable RalLedger backup JSON file directly to local storage.", style = MaterialTheme.typography.bodySmall)
+                Text("Encrypted Backup & Restore", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text(
+                    "The backup contains your current accounts, categories, journal, receivables, payment history, subscriptions, and reconciliations. It is encrypted with a password you choose. Keep that password separately; it cannot be recovered.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; validationError = null },
+                    label = { Text("Backup password (12+ characters)") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                validationError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
                 Button(
-                    onClick = { viewModel.createBackup() },
+                    onClick = {
+                        if (password.length < 12) {
+                            validationError = "Use at least 12 characters before creating or opening a backup."
+                        } else {
+                            saveBackup.launch("RalLedger_Backup_${System.currentTimeMillis()}.rlbackup")
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Export Local JSON Backup")
-                }
+                ) { Text("Save Encrypted Backup") }
 
-                backupStatus?.let { status ->
-                    Text(text = status, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
-                }
+                TextButton(
+                    onClick = {
+                        if (password.length < 12) {
+                            validationError = "Enter the backup password first."
+                        } else {
+                            openBackup.launch(arrayOf("application/octet-stream", "application/*", "*/*"))
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Restore from Backup") }
+
+                backupStatus?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             }
         }
 
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("App Details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                Text("Version: 1.1", style = MaterialTheme.typography.bodySmall)
+                Text("Version: 2.0 development", style = MaterialTheme.typography.bodySmall)
                 Text("Architecture: Native Android + Room + Double-Entry Accounting Engine", style = MaterialTheme.typography.bodySmall)
-                Text("Mode: 100% Offline-First", style = MaterialTheme.typography.bodySmall)
+                Text("Mode: Offline-first", style = MaterialTheme.typography.bodySmall)
             }
         }
+    }
+
+    restorePreview?.let { preview ->
+        AlertDialog(
+            onDismissRequest = { viewModel.cancelRestore() },
+            title = { Text("Review Backup") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("Created ${SimpleDateFormat("MMM d, yyyy HH:mm", Locale.getDefault()).format(Date(preview.createdAt))}")
+                    Text("${preview.accounts} accounts · ${preview.categories} categories")
+                    Text("${preview.journalEntries} journal entries · ${preview.journalLines} journal lines")
+                    Text("${preview.receivables} receivables · ${preview.payments} payments")
+                    Text("${preview.subscriptions} subscriptions · ${preview.reconciliations} reconciliations")
+                    Text(
+                        "Restoring replaces all current RalLedger records on this device.",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    preview.validationErrors.forEach { error ->
+                        Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { viewModel.confirmRestore() }, enabled = preview.canRestore) {
+                    Text("Replace Data and Restore")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.cancelRestore() }) { Text("Cancel") }
+            }
+        )
     }
 }

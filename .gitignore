@@ -1,0 +1,36 @@
+# Local Android/Gradle configuration and generated output
+**/local.properties
+.ralledger-local/
+**/.gradle/
+**/build/
+**/.idea/caches/
+**/.idea/libraries/
+**/.idea/modules.xml
+**/.idea/workspace.xml
+**/.idea/navEditor.xml
+**/.idea/assetWizardSettings.xml
+**/.externalNativeBuild/
+**/.cxx/
+**/captures/
+*.iml
+
+# Local credentials and signing material
+.env
+.env.*
+!.env.example
+*.jks
+*.keystore
+*.p12
+*.pem
+*.key
+
+# Private financial data and generated exports
+*.db
+*.sqlite
+*.sqlite3
+*backup*.json
+*export*.json
+
+# OS files
+.DS_Store
+Thumbs.db

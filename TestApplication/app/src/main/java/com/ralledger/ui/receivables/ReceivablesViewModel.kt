@@ -9,13 +9,18 @@ import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Receivable
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class ReceivablesViewModel(
     private val repository: RalLedgerRepository
 ) : ViewModel() {
+
+    private val _operationMessage = MutableStateFlow<String?>(null)
+    val operationMessage: StateFlow<String?> = _operationMessage.asStateFlow()
 
     val receivables: StateFlow<List<Receivable>> = repository.receivablesFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -33,9 +38,7 @@ class ReceivablesViewModel(
         incomeCategoryId: String?,
         description: String
     ) {
-        viewModelScope.launch {
-            repository.createReceivable(clientName, amount, dueDate, incomeCategoryId, description)
-        }
+        runOperation { repository.createReceivable(clientName, amount, dueDate, incomeCategoryId, description) }
     }
 
     fun collectReceivable(
@@ -44,8 +47,21 @@ class ReceivablesViewModel(
         amount: Money,
         notes: String
     ) {
+        runOperation { repository.collectReceivable(receivableId, destinationAccountId, amount, notes) }
+    }
+
+    fun clearOperationMessage() {
+        _operationMessage.value = null
+    }
+
+    private fun runOperation(action: suspend () -> Unit) {
         viewModelScope.launch {
-            repository.collectReceivable(receivableId, destinationAccountId, amount, notes)
+            try {
+                action()
+                _operationMessage.value = null
+            } catch (error: Exception) {
+                _operationMessage.value = error.localizedMessage ?: "The receivable could not be saved."
+            }
         }
     }
 

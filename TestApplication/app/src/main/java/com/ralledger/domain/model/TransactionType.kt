@@ -9,5 +9,6 @@ enum class TransactionType(val displayName: String) {
     LOAN_DISBURSEMENT("Loan Disbursement"),
     LOAN_REPAYMENT("Loan Repayment"),
     OPENING_BALANCE("Opening Balance"),
-    BALANCE_ADJUSTMENT("Reconciliation Adjustment")
+    BALANCE_ADJUSTMENT("Reconciliation Adjustment"),
+    REVERSAL("Reversal")
 }

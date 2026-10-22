@@ -15,5 +15,6 @@ data class Transaction(
     val categoryName: String? = null,
     val counterparty: String = "",
     val description: String = "",
-    val notes: String = ""
+    val notes: String = "",
+    val reversesEntryId: String? = null
 )

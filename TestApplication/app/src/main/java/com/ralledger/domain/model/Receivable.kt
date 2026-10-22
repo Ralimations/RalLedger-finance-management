@@ -17,7 +17,8 @@ data class ReceivablePayment(
     val amount: Money,
     val destinationAccountId: String,
     val paymentDate: Long = System.currentTimeMillis(),
-    val notes: String = ""
+    val notes: String = "",
+    val reversedAt: Long? = null
 )
 
 data class Receivable(

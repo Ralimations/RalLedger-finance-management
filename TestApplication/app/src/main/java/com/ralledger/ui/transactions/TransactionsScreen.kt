@@ -13,7 +13,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -61,8 +60,10 @@ fun TransactionsScreen(
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
+    val operationMessage by viewModel.operationMessage.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
+    var reverseCandidate by remember { mutableStateOf<Transaction?>(null) }
 
     Scaffold(
         floatingActionButton = {
@@ -101,7 +102,7 @@ fun TransactionsScreen(
                     items(transactions) { tx ->
                         TransactionRow(
                             transaction = tx,
-                            onDelete = { viewModel.deleteTransaction(tx.journalEntryId) }
+                            onReverse = { reverseCandidate = tx }
                         )
                     }
                 }
@@ -128,18 +129,45 @@ fun TransactionsScreen(
             }
         )
     }
+
+    reverseCandidate?.let { transaction ->
+        AlertDialog(
+            onDismissRequest = { reverseCandidate = null },
+            title = { Text("Reverse transaction?") },
+            text = { Text("A reversal entry will preserve the audit history and offset the original posting. This cannot be undone.") },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.reverseTransaction(transaction.journalEntryId)
+                    reverseCandidate = null
+                }) { Text("Reverse") }
+            },
+            dismissButton = { TextButton(onClick = { reverseCandidate = null }) { Text("Cancel") } }
+        )
+    }
+
+    operationMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearOperationMessage,
+            title = { Text("Transaction update") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = viewModel::clearOperationMessage) { Text("OK") } }
+        )
+    }
 }
 
 @Composable
 private fun TransactionRow(
     transaction: Transaction,
-    onDelete: () -> Unit
+    onReverse: () -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()) }
-    val isPositive = transaction.transactionType == TransactionType.INCOME || transaction.transactionType == TransactionType.RECEIVABLE_COLLECTION
+    val isPositive = transaction.transactionType == TransactionType.INCOME ||
+        transaction.transactionType == TransactionType.RECEIVABLE_COLLECTION ||
+        transaction.transactionType == TransactionType.OPENING_BALANCE
     val amountColor = when {
         isPositive -> Color(0xFF2E7D32)
-        transaction.transactionType == TransactionType.TRANSFER -> Color(0xFF1565C0)
+        transaction.transactionType == TransactionType.TRANSFER || transaction.transactionType == TransactionType.REVERSAL -> Color(0xFF1565C0)
+        transaction.transactionType == TransactionType.BALANCE_ADJUSTMENT -> Color(0xFF6A1B9A)
         else -> Color(0xFFC62828)
     }
 
@@ -173,12 +201,18 @@ private fun TransactionRow(
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "${if (isPositive) "+" else "-"}${transaction.amount.format()}",
+                    text = "${when (transaction.transactionType) {
+                        TransactionType.INCOME, TransactionType.RECEIVABLE_COLLECTION -> "+"
+                        TransactionType.EXPENSE, TransactionType.LOAN_REPAYMENT -> "−"
+                        TransactionType.OPENING_BALANCE, TransactionType.REVERSAL, TransactionType.TRANSFER,
+                        TransactionType.BALANCE_ADJUSTMENT, TransactionType.RECEIVABLE_RECOGNITION,
+                        TransactionType.LOAN_DISBURSEMENT -> ""
+                    }}${transaction.amount.format()}",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = amountColor
                 )
-                IconButton(onClick = onDelete) {
-                    Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                if (transaction.transactionType != TransactionType.REVERSAL) {
+                    TextButton(onClick = onReverse) { Text("Reverse", color = MaterialTheme.colorScheme.error) }
                 }
             }
         }
@@ -199,11 +233,14 @@ private fun RecordTransactionDialog(
 
     var selectedAccountId by remember { mutableStateOf(accounts.firstOrNull()?.id ?: "") }
     var selectedDestAccountId by remember { mutableStateOf(accounts.getOrNull(1)?.id ?: accounts.firstOrNull()?.id ?: "") }
-    var selectedCategoryId by remember { mutableStateOf(categories.firstOrNull()?.id ?: "") }
+    var selectedCategoryId by remember { mutableStateOf(categories.firstOrNull { it.type.name == "EXPENSE" }?.id ?: "") }
+    var selectedFeeCategoryId by remember { mutableStateOf(categories.firstOrNull { it.type.name == "EXPENSE" }?.id ?: "") }
 
     var amountText by remember { mutableStateOf("") }
     var feeText by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var inputError by remember { mutableStateOf<String?>(null) }
+    val visibleCategories = categories.filter { it.type.name == if (selectedTab == 1) "INCOME" else "EXPENSE" }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -211,8 +248,14 @@ private fun RecordTransactionDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 TabRow(selectedTabIndex = selectedTab) {
-                    Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("Expense") })
-                    Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("Income") })
+                    Tab(selected = selectedTab == 0, onClick = {
+                        selectedTab = 0
+                        selectedCategoryId = categories.firstOrNull { it.type.name == "EXPENSE" }?.id ?: ""
+                    }, text = { Text("Expense") })
+                    Tab(selected = selectedTab == 1, onClick = {
+                        selectedTab = 1
+                        selectedCategoryId = categories.firstOrNull { it.type.name == "INCOME" }?.id ?: ""
+                    }, text = { Text("Income") })
                     Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Transfer") })
                 }
 
@@ -233,15 +276,24 @@ private fun RecordTransactionDialog(
                     )
                 } else {
                     CategoryDropdown(
-                        categories = categories,
+                        categories = visibleCategories,
                         selectedId = selectedCategoryId,
                         onSelect = { selectedCategoryId = it }
                     )
                 }
 
+                if (selectedTab == 2) {
+                    CategoryDropdown(
+                        categories = categories.filter { it.type.name == "EXPENSE" },
+                        selectedId = selectedFeeCategoryId,
+                        onSelect = { selectedFeeCategoryId = it },
+                        label = "Fee Category"
+                    )
+                }
+
                 OutlinedTextField(
                     value = amountText,
-                    onValueChange = { amountText = it },
+                    onValueChange = { amountText = it; inputError = null },
                     label = { Text("Amount (e.g. 250.00)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -250,7 +302,7 @@ private fun RecordTransactionDialog(
                 if (selectedTab == 2) {
                     OutlinedTextField(
                         value = feeText,
-                        onValueChange = { feeText = it },
+                        onValueChange = { feeText = it; inputError = null },
                         label = { Text("Transfer Fee (optional, e.g. 15.00)") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
@@ -264,19 +316,27 @@ private fun RecordTransactionDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    val amount = Money.parseCentavosOrZero(amountText)
-                    if (amount.isPositive && selectedAccountId.isNotBlank()) {
-                        when (selectedTab) {
-                            0 -> onExpense(selectedAccountId, selectedCategoryId, amount, description)
-                            1 -> onIncome(selectedAccountId, selectedCategoryId, amount, description)
-                            2 -> {
-                                val fee = Money.parseCentavosOrZero(feeText)
-                                onTransfer(selectedAccountId, selectedDestAccountId, amount, fee, selectedCategoryId.ifBlank { null }, description)
+                    val amount = Money.parse(amountText)
+                    when {
+                        amount == null || !amount.isPositive -> inputError = "Enter a valid amount greater than zero."
+                        selectedAccountId.isBlank() -> inputError = "Choose an account."
+                        selectedTab == 0 && selectedCategoryId.isBlank() -> inputError = "Choose an expense category."
+                        selectedTab == 1 && selectedCategoryId.isBlank() -> inputError = "Choose an income source."
+                        selectedTab == 0 -> onExpense(selectedAccountId, selectedCategoryId, amount, description)
+                        selectedTab == 1 -> onIncome(selectedAccountId, selectedCategoryId, amount, description)
+                        else -> {
+                            val fee = if (feeText.isBlank()) Money.ZERO else Money.parse(feeText)
+                            when {
+                                fee == null || fee.isNegative -> inputError = "Enter a valid non-negative transfer fee."
+                                selectedDestAccountId.isBlank() || selectedDestAccountId == selectedAccountId -> inputError = "Choose a different destination account."
+                                fee.isPositive && selectedFeeCategoryId.isBlank() -> inputError = "Choose an expense category for the fee."
+                                else -> onTransfer(selectedAccountId, selectedDestAccountId, amount, fee, selectedFeeCategoryId.ifBlank { null }, description)
                             }
                         }
                     }
@@ -338,7 +398,8 @@ private fun AccountDropdown(
 private fun CategoryDropdown(
     categories: List<Category>,
     selectedId: String,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    label: String = "Category"
 ) {
     var expanded by remember { mutableStateOf(false) }
     val selectedName = categories.find { it.id == selectedId }?.name ?: "Select Category"
@@ -351,7 +412,7 @@ private fun CategoryDropdown(
             value = selectedName,
             onValueChange = {},
             readOnly = true,
-            label = { Text("Category") },
+            label = { Text(label) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             modifier = Modifier.menuAnchor().fillMaxWidth()
         )

@@ -15,9 +15,21 @@ interface CategoryDao {
     @Query("SELECT * FROM categories WHERE id = :id")
     suspend fun getCategoryById(id: String): CategoryEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Query("SELECT * FROM categories ORDER BY id ASC")
+    suspend fun getAllCategories(): List<CategoryEntity>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertCategory(category: CategoryEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCategories(categories: List<CategoryEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertSeedCategoriesIfMissing(categories: List<CategoryEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertCategoriesForRestore(categories: List<CategoryEntity>)
+
+    @Query("DELETE FROM categories")
+    suspend fun clearCategories()
 }

@@ -17,18 +17,42 @@ interface ReceivableDao {
     @Query("SELECT * FROM receivables WHERE id = :id")
     suspend fun getReceivableById(id: String): ReceivableEntity?
 
+    @Query("SELECT * FROM receivables ORDER BY id ASC")
+    suspend fun getAllReceivables(): List<ReceivableEntity>
+
+    @Query("SELECT * FROM receivable_payments ORDER BY id ASC")
+    suspend fun getAllPayments(): List<ReceivablePaymentEntity>
+
     @Query("SELECT * FROM receivable_payments WHERE receivableId = :receivableId ORDER BY paymentDate DESC")
     suspend fun getPaymentsForReceivable(receivableId: String): List<ReceivablePaymentEntity>
+
+    @Query("SELECT * FROM receivable_payments WHERE journalEntryId = :journalEntryId LIMIT 1")
+    suspend fun getPaymentByJournalEntryId(journalEntryId: String): ReceivablePaymentEntity?
 
     @Query("SELECT * FROM receivable_payments ORDER BY paymentDate DESC")
     fun getAllPaymentsFlow(): Flow<List<ReceivablePaymentEntity>>
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertReceivable(receivable: ReceivableEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertReceivables(receivables: List<ReceivableEntity>)
 
     @Update
     suspend fun updateReceivable(receivable: ReceivableEntity)
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertPayment(payment: ReceivablePaymentEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertPayments(payments: List<ReceivablePaymentEntity>)
+
+    @Update
+    suspend fun updatePayment(payment: ReceivablePaymentEntity)
+
+    @Query("DELETE FROM receivable_payments")
+    suspend fun clearPayments()
+
+    @Query("DELETE FROM receivables")
+    suspend fun clearReceivables()
 }

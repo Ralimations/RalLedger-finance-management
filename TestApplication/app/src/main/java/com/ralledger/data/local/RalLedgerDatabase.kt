@@ -4,6 +4,8 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.withTransaction
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ralledger.data.local.dao.AccountDao
 import com.ralledger.data.local.dao.CategoryDao
@@ -37,7 +39,7 @@ import kotlinx.coroutines.launch
         SubscriptionEntity::class,
         ReconciliationEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -50,8 +52,18 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun reconciliationDao(): ReconciliationDao
 
     companion object {
+        const val CURRENT_SCHEMA_VERSION = 2
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
+
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE journal_entries ADD COLUMN reversesEntryId TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_journal_entries_reversesEntryId ON journal_entries(reversesEntryId)")
+                db.execSQL("ALTER TABLE receivable_payments ADD COLUMN reversedAt INTEGER")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_receivable_payments_journalEntryId ON receivable_payments(journalEntryId)")
+            }
+        }
 
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
@@ -63,6 +75,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
+                .addMigrations(MIGRATION_1_2)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance
@@ -81,7 +94,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
-        private suspend fun seedDatabase(db: RalLedgerDatabase) {
+        private suspend fun seedDatabase(db: RalLedgerDatabase) = db.withTransaction {
             // Seed System Equity Accounts for Double-Entry
             val systemEquityAccount = AccountEntity(
                 id = SYSTEM_OPENING_EQUITY_ACCOUNT_ID,
@@ -113,8 +126,8 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                 lastReconciledAt = null
             )
 
-            db.accountDao().insertAccount(systemEquityAccount)
-            db.accountDao().insertAccount(systemReconcileAccount)
+            db.accountDao().insertSystemAccountIfMissing(systemEquityAccount)
+            db.accountDao().insertSystemAccountIfMissing(systemReconcileAccount)
 
             // Seed Default Categories
             val defaultCategories = listOf(
@@ -136,7 +149,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                 CategoryEntity("cat_system", "System Posting", CategoryType.SYSTEM.name, "settings", "#9E9E9E", true)
             )
 
-            db.categoryDao().insertCategories(defaultCategories)
+            db.categoryDao().insertSeedCategoriesIfMissing(defaultCategories)
         }
     }
 }

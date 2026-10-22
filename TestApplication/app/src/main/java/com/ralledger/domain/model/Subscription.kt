@@ -1,5 +1,8 @@
 package com.ralledger.domain.model
 
+import java.math.BigDecimal
+import java.math.RoundingMode
+
 enum class BillingFrequency(val displayName: String) {
     WEEKLY("Weekly"),
     MONTHLY("Monthly"),
@@ -26,4 +29,18 @@ data class Subscription(
     val status: SubscriptionStatus = SubscriptionStatus.ACTIVE,
     val cancellationDate: Long? = null,
     val notes: String = ""
-)
+) {
+    /** Average monthly commitment using a 52-week year and exact centavo rounding. */
+    fun normalizedMonthlyCost(): Money {
+        val multiplier = if (billingFrequency == BillingFrequency.WEEKLY) 52L else 1L
+        val divisor = when (billingFrequency) {
+            BillingFrequency.WEEKLY, BillingFrequency.ANNUALLY -> 12L
+            BillingFrequency.QUARTERLY -> 3L
+            BillingFrequency.MONTHLY -> 1L
+        }
+        val monthly = BigDecimal.valueOf(billingAmount.centavos)
+            .multiply(BigDecimal.valueOf(multiplier))
+            .divide(BigDecimal.valueOf(divisor), 0, RoundingMode.HALF_UP)
+        return Money(monthly.longValueExact())
+    }
+}

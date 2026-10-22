@@ -1,6 +1,7 @@
 package com.ralledger.ui.navigation
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +21,8 @@ import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -29,8 +32,10 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -180,12 +185,27 @@ fun QuickAddTransactionDialog(
     var txType by remember { mutableStateOf("EXPENSE") } // EXPENSE, INCOME, TRANSFER
     var amountStr by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    val accountId by remember { mutableStateOf("bank_1") }
-    val destAccountId by remember { mutableStateOf("bank_2") }
-    val categoryId by remember { mutableStateOf("cat_food") }
+    var accountId by remember { mutableStateOf("") }
+    var destAccountId by remember { mutableStateOf("") }
+    var categoryId by remember { mutableStateOf("") }
+    var inputError by remember { mutableStateOf<String?>(null) }
+    var accountMenuExpanded by remember { mutableStateOf(false) }
+    var destinationMenuExpanded by remember { mutableStateOf(false) }
+    var categoryMenuExpanded by remember { mutableStateOf(false) }
 
     val accounts by appContainer.repository.accountsFlow.collectAsState(initial = emptyList())
     val categories by appContainer.repository.categoriesFlow.collectAsState(initial = emptyList())
+    val eligibleAccounts = accounts.filter { it.accountType.isAsset && !it.isArchived }
+    val eligibleCategories = categories.filter {
+        it.type.name == if (txType == "INCOME") "INCOME" else "EXPENSE"
+    }
+    LaunchedEffect(eligibleAccounts) {
+        if (accountId.isBlank() && eligibleAccounts.isNotEmpty()) accountId = eligibleAccounts.first().id
+        if (destAccountId.isBlank() && eligibleAccounts.size > 1) destAccountId = eligibleAccounts[1].id
+    }
+    LaunchedEffect(eligibleCategories, txType) {
+        if (categoryId !in eligibleCategories.map { it.id }) categoryId = eligibleCategories.firstOrNull()?.id ?: ""
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -199,24 +219,24 @@ fun QuickAddTransactionDialog(
             ) {
                 Row(modifier = Modifier.fillMaxWidth()) {
                     Button(
-                        onClick = { txType = "EXPENSE" },
+                        onClick = { txType = "EXPENSE"; inputError = null },
                         modifier = Modifier.weight(1f)
                     ) { Text("Expense") }
                     Spacer(modifier = Modifier.width(4.dp))
                     Button(
-                        onClick = { txType = "INCOME" },
+                        onClick = { txType = "INCOME"; inputError = null },
                         modifier = Modifier.weight(1f)
                     ) { Text("Income") }
                     Spacer(modifier = Modifier.width(4.dp))
                     Button(
-                        onClick = { txType = "TRANSFER" },
+                        onClick = { txType = "TRANSFER"; inputError = null },
                         modifier = Modifier.weight(1f)
                     ) { Text("Transfer") }
                 }
 
                 OutlinedTextField(
                     value = amountStr,
-                    onValueChange = { amountStr = it },
+                    onValueChange = { amountStr = it; inputError = null },
                     label = { Text("Amount (PHP)") },
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -228,46 +248,78 @@ fun QuickAddTransactionDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                Text("Account ID: $accountId (${accounts.find { it.id == accountId }?.name ?: ""})")
-                if (txType == "TRANSFER") {
-                    Text("Destination ID: $destAccountId")
-                } else {
-                    Text("Category ID: $categoryId")
+                Box {
+                    TextButton(onClick = { accountMenuExpanded = true }) {
+                        Text("Account: ${eligibleAccounts.find { it.id == accountId }?.name ?: "Choose an account"}")
+                    }
+                    DropdownMenu(expanded = accountMenuExpanded, onDismissRequest = { accountMenuExpanded = false }) {
+                        eligibleAccounts.forEach { account ->
+                            DropdownMenuItem(text = { Text(account.name) }, onClick = {
+                                accountId = account.id
+                                accountMenuExpanded = false
+                            })
+                        }
+                    }
                 }
+                if (txType == "TRANSFER") {
+                    Box {
+                        TextButton(onClick = { destinationMenuExpanded = true }) {
+                            Text("To: ${eligibleAccounts.find { it.id == destAccountId }?.name ?: "Choose destination"}")
+                        }
+                        DropdownMenu(expanded = destinationMenuExpanded, onDismissRequest = { destinationMenuExpanded = false }) {
+                            eligibleAccounts.filter { it.id != accountId }.forEach { account ->
+                                DropdownMenuItem(text = { Text(account.name) }, onClick = {
+                                    destAccountId = account.id
+                                    destinationMenuExpanded = false
+                                })
+                            }
+                        }
+                    }
+                } else {
+                    Box {
+                        TextButton(onClick = { categoryMenuExpanded = true }) {
+                            Text("${if (txType == "INCOME") "Income source" else "Category"}: ${eligibleCategories.find { it.id == categoryId }?.name ?: "Choose"}")
+                        }
+                        DropdownMenu(expanded = categoryMenuExpanded, onDismissRequest = { categoryMenuExpanded = false }) {
+                            eligibleCategories.forEach { category ->
+                                DropdownMenuItem(text = { Text(category.name) }, onClick = {
+                                    categoryId = category.id
+                                    categoryMenuExpanded = false
+                                })
+                            }
+                        }
+                    }
+                }
+                inputError?.let { Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     scope.launch {
-                        val amount = Money.fromDouble(amountStr.toDoubleOrNull() ?: 0.0)
-                        if (amount.isPositive) {
-                            when (txType) {
-                                "EXPENSE" -> appContainer.repository.recordExpense(
-                                    accountId = accounts.firstOrNull()?.id ?: "bank_1",
-                                    categoryId = categories.firstOrNull()?.id ?: "cat_food",
-                                    amount = amount,
-                                    description = description
-                                )
-                                "INCOME" -> appContainer.repository.recordIncome(
-                                    accountId = accounts.firstOrNull()?.id ?: "bank_1",
-                                    categoryId = categories.firstOrNull()?.id ?: "cat_salary",
-                                    amount = amount,
-                                    description = description
-                                )
-                                "TRANSFER" -> {
-                                    val src = accounts.getOrNull(0)?.id ?: "bank_1"
-                                    val dst = accounts.getOrNull(1)?.id ?: "bank_2"
-                                    appContainer.repository.recordTransfer(
-                                        sourceAccountId = src,
-                                        destinationAccountId = dst,
-                                        amount = amount,
-                                        description = description
-                                    )
+                        val amount = Money.parse(amountStr)
+                        try {
+                            when {
+                                amount == null || !amount.isPositive -> inputError = "Enter a valid amount greater than zero."
+                                accountId.isBlank() -> inputError = "Add or choose a financial account first."
+                                txType != "TRANSFER" && categoryId.isBlank() -> inputError = "Choose a category or income source."
+                                txType == "TRANSFER" && (destAccountId.isBlank() || destAccountId == accountId) -> inputError = "Choose a different destination account."
+                                txType == "EXPENSE" -> {
+                                    appContainer.repository.recordExpense(accountId, categoryId, amount, description)
+                                    onDismiss()
+                                }
+                                txType == "INCOME" -> {
+                                    appContainer.repository.recordIncome(accountId, categoryId, amount, description)
+                                    onDismiss()
+                                }
+                                else -> {
+                                    appContainer.repository.recordTransfer(accountId, destAccountId, amount, description = description)
+                                    onDismiss()
                                 }
                             }
+                        } catch (error: Exception) {
+                            inputError = error.localizedMessage ?: "The transaction could not be saved."
                         }
-                        onDismiss()
                     }
                 }
             ) {

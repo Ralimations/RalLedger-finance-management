@@ -16,8 +16,20 @@ interface AccountDao {
     @Query("SELECT * FROM accounts WHERE id = :id")
     suspend fun getAccountById(id: String): AccountEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Query("SELECT * FROM accounts ORDER BY id ASC")
+    suspend fun getAllAccounts(): List<AccountEntity>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertAccount(account: AccountEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertSystemAccountIfMissing(account: AccountEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertAccounts(accounts: List<AccountEntity>)
+
+    @Query("DELETE FROM accounts")
+    suspend fun clearAccounts()
 
     @Update
     suspend fun updateAccount(account: AccountEntity)

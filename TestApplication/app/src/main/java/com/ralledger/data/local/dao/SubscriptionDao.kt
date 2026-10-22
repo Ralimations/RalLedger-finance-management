@@ -17,12 +17,21 @@ interface SubscriptionDao {
     @Query("SELECT * FROM subscriptions WHERE id = :id")
     suspend fun getSubscriptionById(id: String): SubscriptionEntity?
 
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    @Query("SELECT * FROM subscriptions ORDER BY id ASC")
+    suspend fun getAllSubscriptions(): List<SubscriptionEntity>
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertSubscription(subscription: SubscriptionEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertSubscriptions(subscriptions: List<SubscriptionEntity>)
 
     @Update
     suspend fun updateSubscription(subscription: SubscriptionEntity)
 
     @Delete
     suspend fun deleteSubscription(subscription: SubscriptionEntity)
+
+    @Query("DELETE FROM subscriptions")
+    suspend fun clearSubscriptions()
 }

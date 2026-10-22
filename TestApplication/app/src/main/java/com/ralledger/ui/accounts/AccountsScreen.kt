@@ -49,6 +49,7 @@ fun AccountsScreen(
     viewModel: AccountsViewModel
 ) {
     val accounts by viewModel.accounts.collectAsState()
+    val operationMessage by viewModel.operationMessage.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -99,6 +100,15 @@ fun AccountsScreen(
                 viewModel.createAccount(name, inst, type, balance, "account_balance", "#1E88E5")
                 showAddDialog = false
             }
+        )
+    }
+
+    operationMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearOperationMessage,
+            title = { Text("Account update") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = viewModel::clearOperationMessage) { Text("OK") } }
         )
     }
 }
@@ -170,6 +180,7 @@ private fun AddAccountDialog(
     var name by remember { mutableStateOf("") }
     var institution by remember { mutableStateOf("") }
     var balanceText by remember { mutableStateOf("") }
+    var inputError by remember { mutableStateOf<String?>(null) }
     var selectedType by remember { mutableStateOf(AccountType.TRADITIONAL_BANK) }
     var expanded by remember { mutableStateOf(false) }
 
@@ -184,7 +195,7 @@ private fun AddAccountDialog(
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = name,
-                    onValueChange = { name = it },
+                    onValueChange = { name = it; inputError = null },
                     label = { Text("Account Name") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
@@ -227,19 +238,23 @@ private fun AddAccountDialog(
 
                 OutlinedTextField(
                     value = balanceText,
-                    onValueChange = { balanceText = it },
+                    onValueChange = { balanceText = it; inputError = null },
                     label = { Text("Verified Opening Balance (e.g. 1000.00)") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (name.isNotBlank()) {
-                        val balance = Money.parseCentavosOrZero(balanceText)
-                        onConfirm(name, institution, selectedType, balance)
+                    val balance = if (balanceText.isBlank()) Money.ZERO else Money.parse(balanceText)
+                    when {
+                        name.isBlank() -> inputError = "Enter an account name."
+                        balance == null -> inputError = "Enter a valid amount with up to two decimal places."
+                        balance.isNegative -> inputError = "Opening balance cannot be negative."
+                        else -> onConfirm(name.trim(), institution.trim(), selectedType, balance)
                     }
                 }
             ) {

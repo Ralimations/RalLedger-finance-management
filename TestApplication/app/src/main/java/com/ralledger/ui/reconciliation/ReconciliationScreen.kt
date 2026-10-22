@@ -1,0 +1,166 @@
+package com.ralledger.ui.reconciliation
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.ralledger.domain.model.Account
+import com.ralledger.domain.model.Money
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ReconciliationScreen(
+    viewModel: ReconciliationViewModel
+) {
+    val accounts by viewModel.accounts.collectAsState()
+
+    var selectedAccountId by remember { mutableStateOf(accounts.firstOrNull()?.id ?: "") }
+    var actualBalanceText by remember { mutableStateOf("") }
+    var adjustmentReason by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+    var statusMessage by remember { mutableStateOf<String?>(null) }
+
+    val selectedAccount = accounts.find { it.id == selectedAccountId }
+    val recordedBalance = selectedAccount?.currentLedgerBalance ?: Money.ZERO
+    val actualBalance = Money.parseCentavosOrZero(actualBalanceText)
+    val difference = actualBalance - recordedBalance
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text(
+                text = "Account Reconciliation",
+                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
+            )
+            Text(
+                text = "Audit recorded ledger balances against bank statement balances",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+            )
+        }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    ExposedDropdownMenuBox(
+                        expanded = expanded,
+                        onExpandedChange = { expanded = !expanded }
+                    ) {
+                        OutlinedTextField(
+                            value = selectedAccount?.name ?: "Select Account",
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Select Account to Reconcile") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false }
+                        ) {
+                            accounts.forEach { acc ->
+                                DropdownMenuItem(
+                                    text = { Text("${acc.name} (${acc.currentLedgerBalance.format()})") },
+                                    onClick = {
+                                        selectedAccountId = acc.id
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Recorded Balance", style = MaterialTheme.typography.labelSmall)
+                            Text(recordedBalance.format(), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        }
+                        Column {
+                            Text("Discrepancy / Difference", style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                difference.format(),
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                color = if (difference.isZero) Color(0xFF2E7D32) else Color(0xFFC62828)
+                            )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = actualBalanceText,
+                        onValueChange = { actualBalanceText = it },
+                        label = { Text("Actual Statement / Wallet Balance") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = adjustmentReason,
+                        onValueChange = { adjustmentReason = it },
+                        label = { Text("Reason for Adjustment (if different)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Button(
+                        modifier = Modifier.fillMaxWidth(),
+                        onClick = {
+                            if (selectedAccountId.isNotBlank()) {
+                                viewModel.reconcileAccount(selectedAccountId, actualBalance, adjustmentReason)
+                                statusMessage = "Reconciliation audit recorded!"
+                                actualBalanceText = ""
+                                adjustmentReason = ""
+                            }
+                        }
+                    ) {
+                        Text("Audit & Post Reconciliation")
+                    }
+
+                    statusMessage?.let {
+                        Text(text = it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
+    }
+}

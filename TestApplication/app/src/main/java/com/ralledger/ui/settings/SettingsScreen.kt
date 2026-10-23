@@ -1,5 +1,10 @@
 package com.ralledger.ui.settings
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +40,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,6 +50,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationManagerCompat
 import com.ralledger.ui.theme.ThemeMode
 import com.ralledger.ui.theme.ThemePalette
 import com.ralledger.ui.theme.ThemeSettings
@@ -76,6 +84,8 @@ fun SettingsScreen(
     onDateDisplayFormatChange: (DateDisplayFormat) -> Unit,
     onCurrencyDisplayFormatChange: (CurrencyDisplayFormat) -> Unit,
     onTransactionListDensityChange: (TransactionListDensity) -> Unit,
+    onSubscriptionRemindersChange: (Boolean) -> Unit,
+    onSubscriptionReminderDaysBeforeChange: (Int) -> Unit,
     onEnableAppLock: () -> Unit,
     onDisableAppLock: () -> Unit,
     onOpenSecuritySettings: () -> Unit,
@@ -89,10 +99,29 @@ fun SettingsScreen(
     var password by remember { mutableStateOf("") }
     var validationError by remember { mutableStateOf<String?>(null) }
     var defaultAccountMenuExpanded by remember { mutableStateOf(false) }
+    var notificationPermissionDenied by remember { mutableStateOf(false) }
     val selectableAccounts = remember(accounts) {
         accounts.filter { it.accountType.isAsset && !it.isArchived }.sortedBy { it.name.lowercase(Locale.getDefault()) }
     }
     val selectedDefaultAccount = selectableAccounts.firstOrNull { it.id == financialSettings.defaultTransactionAccountId }
+    val requestNotificationPermission = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationPermissionDenied = !granted
+        if (granted) onSubscriptionRemindersChange(true)
+    }
+    val openNotificationSettings = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        notificationPermissionDenied = !NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+    LaunchedEffect(financialSettings.subscriptionRemindersEnabled) {
+        if (financialSettings.subscriptionRemindersEnabled &&
+            !NotificationManagerCompat.from(context).areNotificationsEnabled()
+        ) {
+            notificationPermissionDenied = true
+        }
+    }
 
     val saveBackup = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/octet-stream")
@@ -185,6 +214,75 @@ fun SettingsScreen(
                             label = { Text(palette.label) }
                         )
                     }
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Subscription reminders", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                        Text(
+                            "A reminder around 9:00 AM for each active subscription’s next billing date.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = financialSettings.subscriptionRemindersEnabled,
+                        onCheckedChange = { enabled ->
+                            notificationPermissionDenied = false
+                            if (!enabled) {
+                                onSubscriptionRemindersChange(false)
+                            } else if (
+                                Build.VERSION.SDK_INT < 33 ||
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                                PackageManager.PERMISSION_GRANTED
+                            ) {
+                                if (NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+                                    onSubscriptionRemindersChange(true)
+                                } else {
+                                    notificationPermissionDenied = true
+                                }
+                            } else {
+                                requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        }
+                    )
+                }
+                if (financialSettings.subscriptionRemindersEnabled) {
+                    Text("Remind me", style = MaterialTheme.typography.labelLarge)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf(0 to "On the day", 1 to "1 day before", 3 to "3 days before").forEach { (days, label) ->
+                            FilterChip(
+                                selected = financialSettings.subscriptionReminderDaysBefore == days,
+                                onClick = { onSubscriptionReminderDaysBeforeChange(days) },
+                                label = { Text(label) }
+                            )
+                        }
+                    }
+                }
+                if (notificationPermissionDenied) {
+                    Text(
+                        "Notifications are off. Allow them in Android app settings to turn on reminders.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                    TextButton(
+                        onClick = {
+                            openNotificationSettings.launch(
+                                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            )
+                        }
+                    ) { Text("Open notification settings") }
                 }
             }
         }

@@ -30,6 +30,16 @@ class FinancialPreferencesTest {
         assertEquals(TransactionListDensity.COMFORTABLE, decodeTransactionListDensity("UNKNOWN"))
         assertEquals(CurrencyDisplayFormat.SYMBOL, decodeCurrencyDisplayFormat(null))
         assertEquals(CurrencyDisplayFormat.SYMBOL, decodeCurrencyDisplayFormat("UNKNOWN"))
+        assertEquals(1, decodeSubscriptionReminderDaysBefore(null))
+        assertEquals(1, decodeSubscriptionReminderDaysBefore(2))
+        assertEquals(0, decodeSubscriptionReminderDaysBefore(0))
+        assertEquals(1, decodeSubscriptionReminderDaysBefore(1))
+        assertEquals(3, decodeSubscriptionReminderDaysBefore(3))
+        assertEquals(1, decodeSubscriptionReminderDaysBefore(null))
+        assertEquals(1, decodeSubscriptionReminderDaysBefore(2))
+        assertEquals(0, decodeSubscriptionReminderDaysBefore(0))
+        assertEquals(1, decodeSubscriptionReminderDaysBefore(1))
+        assertEquals(3, decodeSubscriptionReminderDaysBefore(3))
         DateDisplayFormat.entries.forEach { assertEquals(it, decodeDateDisplayFormat(it.name)) }
         TransactionListDensity.entries.forEach { assertEquals(it, decodeTransactionListDensity(it.name)) }
         CurrencyDisplayFormat.entries.forEach { assertEquals(it, decodeCurrencyDisplayFormat(it.name)) }

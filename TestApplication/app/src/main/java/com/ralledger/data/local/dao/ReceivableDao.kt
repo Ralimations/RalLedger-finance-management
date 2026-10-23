@@ -18,6 +18,9 @@ interface ReceivableDao {
     @Query("SELECT * FROM receivables WHERE id = :id")
     suspend fun getReceivableById(id: String): ReceivableEntity?
 
+    @Query("SELECT COUNT(*) FROM receivables WHERE linkedCategoryId = :categoryId")
+    suspend fun countReceivablesForIncomeCategory(categoryId: String): Long
+
     @Query("SELECT * FROM receivables ORDER BY id ASC")
     suspend fun getAllReceivables(): List<ReceivableEntity>
 

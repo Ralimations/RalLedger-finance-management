@@ -314,12 +314,13 @@ class RalLedgerRepository(
             requireEditableCategory(category)
             require(journalDao.countCategoryReferences(id) == 0L &&
                 budgetDao.countCategoryReferences(id) == 0L && expectedIncomeDao.countCategoryReferences(id) == 0L &&
+                receivableDao.countReceivablesForIncomeCategory(id) == 0L &&
                 debtDao.countDebtsForCategory(id) == 0L && debtDao.countPaymentsForCategory(id) == 0L &&
                 interestDao.countCreditsForTaxCategory(id) == 0L &&
                 subscriptionPaymentDao.countPaymentsForCategory(id) == 0L &&
                 categoryDao.countChildren(id) == 0L
             ) {
-                "This category has transaction history, budgets, expected income, or subcategories. Archive it to preserve its history."
+                "This category is used by financial history, budgets, receivables, or other records. Archive it to preserve its history."
             }
             categoryDao.deleteCategory(id)
         }

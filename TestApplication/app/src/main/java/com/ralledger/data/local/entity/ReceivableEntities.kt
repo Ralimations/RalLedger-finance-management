@@ -11,7 +11,18 @@ import com.ralledger.domain.model.ReceivablePayment
 import com.ralledger.domain.model.ReceivableStatus
 import com.ralledger.domain.model.ReceivableWriteOff
 
-@Entity(tableName = "receivables")
+@Entity(
+    tableName = "receivables",
+    foreignKeys = [
+        ForeignKey(
+            entity = CategoryEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["linkedCategoryId"],
+            onDelete = ForeignKey.RESTRICT
+        )
+    ],
+    indices = [Index(value = ["linkedCategoryId"])]
+)
 data class ReceivableEntity(
     @PrimaryKey val id: String,
     val clientName: String,

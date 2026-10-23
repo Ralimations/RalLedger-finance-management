@@ -73,7 +73,7 @@ import kotlinx.coroutines.launch
         JournalEntryTagEntity::class,
         SavedTransactionFilterEntity::class
     ],
-    version = 14,
+    version = 15,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -94,7 +94,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun savedTransactionFilterDao(): SavedTransactionFilterDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 14
+        const val CURRENT_SCHEMA_VERSION = 15
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -418,6 +418,40 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS receivables_new (
+                        id TEXT NOT NULL,
+                        clientName TEXT NOT NULL,
+                        originalAmountCentavos INTEGER NOT NULL,
+                        outstandingAmountCentavos INTEGER NOT NULL,
+                        recognitionDate INTEGER NOT NULL,
+                        dueDate INTEGER NOT NULL,
+                        linkedCategoryId TEXT,
+                        description TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        isArchived INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(linkedCategoryId) REFERENCES categories(id)
+                            ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL(
+                    """INSERT INTO receivables_new (
+                        id, clientName, originalAmountCentavos, outstandingAmountCentavos,
+                        recognitionDate, dueDate, linkedCategoryId, description, status, isArchived
+                    ) SELECT
+                        id, clientName, originalAmountCentavos, outstandingAmountCentavos,
+                        recognitionDate, dueDate, linkedCategoryId, description, status, isArchived
+                    FROM receivables"""
+                )
+                db.execSQL("DROP TABLE receivables")
+                db.execSQL("ALTER TABLE receivables_new RENAME TO receivables")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_receivables_linkedCategoryId ON receivables(linkedCategoryId)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
 
@@ -428,7 +462,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

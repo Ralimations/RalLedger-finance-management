@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ralledger.data.local.RalLedgerDatabase
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.CategoryEntity
+import com.ralledger.data.local.entity.ReceivableEntity
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
@@ -21,6 +22,47 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class ReceivableManagementInstrumentedTest {
+    @Test
+    fun linkedIncomeCategoryCannotBeDeletedWhileReceivableUsesIt() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, RalLedgerDatabase::class.java).build()
+        try {
+            database.categoryDao().insertCategory(
+                CategoryEntity("protected_income", "Freelance", CategoryType.INCOME.name, "work", "#2E7D32", false)
+            )
+            database.categoryDao().insertCategory(
+                CategoryEntity("target_income", "Other income", CategoryType.INCOME.name, "payments", "#1565C0", false)
+            )
+            database.receivableDao().insertReceivable(
+                ReceivableEntity(
+                    id = "protected_receivable",
+                    clientName = "Synthetic client",
+                    originalAmountCentavos = 10_000L,
+                    outstandingAmountCentavos = 10_000L,
+                    recognitionDate = 1L,
+                    dueDate = 2L,
+                    linkedCategoryId = "protected_income",
+                    description = "Synthetic invoice",
+                    status = ReceivableStatus.CONFIRMED.name
+                )
+            )
+
+            val repository = RalLedgerRepository(database)
+            assertEquals(1L, database.receivableDao().countReceivablesForIncomeCategory("protected_income"))
+            assertTrue(runCatching { repository.deleteUnusedCategory("protected_income") }.isFailure)
+            assertTrue(runCatching { database.categoryDao().deleteCategory("protected_income") }.isFailure)
+            assertNotNull(database.categoryDao().getCategoryById("protected_income"))
+            assertNotNull(database.receivableDao().getReceivableById("protected_receivable"))
+
+            repository.mergeCategory("protected_income", "target_income")
+            assertTrue(database.categoryDao().getCategoryById("protected_income") == null)
+            assertEquals("target_income", database.receivableDao().getReceivableById("protected_receivable")?.linkedCategoryId)
+            assertEquals(1L, database.receivableDao().countReceivablesForIncomeCategory("target_income"))
+        } finally {
+            database.close()
+        }
+    }
+
     @Test
     fun receivableEditCollectionWriteOffCancellationAndArchive_preserveJournalHistory() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

@@ -84,7 +84,7 @@ class AccountManagementInstrumentedTest {
         }
 
         val migrated = Room.databaseBuilder(context, RalLedgerDatabase::class.java, databaseName)
-            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9, RalLedgerDatabase.MIGRATION_9_10, RalLedgerDatabase.MIGRATION_10_11, RalLedgerDatabase.MIGRATION_11_12, RalLedgerDatabase.MIGRATION_12_13, RalLedgerDatabase.MIGRATION_13_14)
+            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9, RalLedgerDatabase.MIGRATION_9_10, RalLedgerDatabase.MIGRATION_10_11, RalLedgerDatabase.MIGRATION_11_12, RalLedgerDatabase.MIGRATION_12_13, RalLedgerDatabase.MIGRATION_13_14, RalLedgerDatabase.MIGRATION_14_15)
             .build()
         try {
             runBlocking {
@@ -106,6 +106,8 @@ class AccountManagementInstrumentedTest {
 
                 val receivable = migrated.receivableDao().getReceivableById("legacy_receivable")
                 assertEquals(40_000L, receivable?.outstandingAmountCentavos)
+                assertEquals("legacy_category", receivable?.linkedCategoryId)
+                assertEquals(1L, migrated.receivableDao().countReceivablesForIncomeCategory("legacy_category"))
                 val payment = migrated.receivableDao().getAllPayments().single()
                 assertEquals("legacy_payment", payment.id)
                 assertEquals(10_000L, payment.amountCentavos)
@@ -128,7 +130,7 @@ class AccountManagementInstrumentedTest {
                 assertTrue(migrated.transactionTagDao().getAllAssignments().isEmpty())
                 assertTrue(migrated.savedTransactionFilterDao().getAll().isEmpty())
             }
-            assertEquals(14, migrated.openHelper.readableDatabase.version)
+            assertEquals(15, migrated.openHelper.readableDatabase.version)
         } finally {
             migrated.close()
             context.deleteDatabase(databaseName)
@@ -160,7 +162,7 @@ class AccountManagementInstrumentedTest {
         }
 
         val migrated = Room.databaseBuilder(context, RalLedgerDatabase::class.java, databaseName)
-            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9, RalLedgerDatabase.MIGRATION_9_10, RalLedgerDatabase.MIGRATION_10_11, RalLedgerDatabase.MIGRATION_11_12, RalLedgerDatabase.MIGRATION_12_13, RalLedgerDatabase.MIGRATION_13_14)
+            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9, RalLedgerDatabase.MIGRATION_9_10, RalLedgerDatabase.MIGRATION_10_11, RalLedgerDatabase.MIGRATION_11_12, RalLedgerDatabase.MIGRATION_12_13, RalLedgerDatabase.MIGRATION_13_14, RalLedgerDatabase.MIGRATION_14_15)
             .build()
         try {
             val account = kotlinx.coroutines.runBlocking { migrated.accountDao().getAccountById("legacy_account") }
@@ -170,7 +172,7 @@ class AccountManagementInstrumentedTest {
             val category = kotlinx.coroutines.runBlocking { migrated.categoryDao().getCategoryById("legacy_category") }
             assertEquals(null, category?.parentCategoryId)
             assertFalse(category?.isArchived ?: true)
-            assertEquals(14, migrated.openHelper.readableDatabase.version)
+            assertEquals(15, migrated.openHelper.readableDatabase.version)
         } finally {
             migrated.close()
             context.deleteDatabase(databaseName)

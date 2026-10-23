@@ -40,6 +40,10 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Changed the dashboard’s primary card to Available Money using persisted liquid cash and bank balances, with Net Worth displayed separately and assets/liabilities still visible.
 - Removed the redundant monthly cash-flow caption and moved Add category into the category screen header so the fixed action no longer covers category overflow menus.
 - Fixed a centavo-unit mismatch in the existing concurrency/backup instrumentation assertion; the test had searched for 400,000 centavos after posting 4,000.
+- Added transaction correction for income, expense, and transfer entries. Corrections post a reversing journal entry and a replacement atomically; the original remains unchanged and is labeled Reversed. Linked receivable transactions and already-reversed entries are rejected before mutation.
+- Added transaction duplication with a prefilled entry form, plus type, account, category, and date-range filters. Search now also matches counterparty and either side of a transfer.
+- Added row actions for Correct, Duplicate, and Void with reversal. Reversed originals have no further actions; correction preserves the transaction type and exposes the relevant editable fields.
+- Added unit coverage for transaction search/filter behavior and emulator coverage for atomic correction, preserved original journal lines, rejected invalid targets, and receivable safety.
 
 ## Verification
 
@@ -55,9 +59,12 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Passed: `:app:compileDebugAndroidTestKotlin` including the new account lifecycle coverage.
 - Passed: `:app:connectedDebugAndroidTest` on `Medium_Phone(AVD) - 17` — 5 tests, 0 failures, including schema-2→4 migration, account/category lifecycle, income-category merge, backup round-trip with new metadata, and receivable reversal/concurrency.
 - Passed: final combined debug build, 14 unit tests, lint, Android-test Kotlin compilation, and 5 connected emulator tests after the dashboard and category-action layout updates; lint reports 23 issues, with no task failure.
+- Passed: final combined `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:compileDebugAndroidTestKotlin`, and `:app:connectedDebugAndroidTest` after transaction correction/filter work. Results: 18 unit tests and 7 connected emulator tests, all passing; lint task succeeds with 23 guidance issues and no task failure.
 - Passed: schema-2 fixture migration preserves account/category data, adds a blank account description, and gives legacy categories no parent and active status. Schema-1→2 migration still lacks a fixture test.
 - Passed: debug APK launch smoke check on `emulator-5554`; Overview showed Available Money first with Net Worth separate, the transaction shortcut clear of the monthly summary, the Accounts empty state, and Categories opened from Settings. The category list and Add category dialog were visually checked; full account/category form submission and lifecycle actions remain outstanding. One offline emulator was skipped.
+- Passed: transaction UI smoke on `emulator-5554` using only synthetic data. The journal filter panel rendered; Duplicate opened with account/category/amount/description/date prefilled; Correct opened with editable fields; saving a correction displayed the reversal, a Reversed marker on the original, and the replacement entry. The synthetic correction was posted only to the emulator test install.
 - Debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`.
+- Latest debug APK size: 21,920,301 bytes.
 - Gradle verification used the cached Gradle 9.6.0 distribution copied into ignored `.ralledger-local` plus the local JDK 25. Repository access was needed to resolve Foojay and Android plugins. Project settings/wrapper versions were restored unchanged after diagnosis.
 
 ## Module readiness
@@ -66,7 +73,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 |---|---|---|
 | Money input and accounting engine | Implemented and unit-tested | Android screens still need hands-on validation |
 | Accounts | Create, metadata edit, icon/color, dashboard inclusion, search, history, archive/restore, guarded unused delete and backup; lifecycle/migration tests pass | Currency/type/opening balance intentionally immutable after creation; full screen interactions still need manual QA |
-| Transactions | Income, expense, transfers/fees, search, reversals, and category-management shortcut | Edit/correction, duplicate, date/account/category filters, attachments/tags, refunds, and loan UI are incomplete |
+| Transactions | Income, expense, transfers/fees, search, type/account/category/date filters, duplicate, reversal, and atomic correction by reversal plus replacement; connected correction tests pass | No draft lifecycle, transaction type conversion, attachments/tags, refunds, or loan UI; linked receivable postings cannot use generic correction. Full manual account/category CRUD UI validation remains outstanding |
 | Categories and income sources | Create, rename, recolor, re-icon, one-level subcategory, search, archive/restore, history, merge and unused delete; migration/backup tests pass | Income sources are represented by income categories; no separate source analytics. Full screen interactions still need manual QA |
 | Receivables | Recognition, partial collection, due-date status, history records, reversal logic and emulator instrumentation | Cancellation, write-off, editable due dates, and full payment-history UI are incomplete |
 | Reconciliation | Atomic adjustments for asset/liability accounts implemented and unit-tested | Screen accessibility is limited; unmatched-transaction workflow is incomplete |
@@ -101,8 +108,8 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Next development steps
 
-1. Add transaction date/category/description correction, duplication and filters; preserve finalized journals through reversal-based amount/account corrections.
-2. Verify migration 1→2 against a schema-v1 fixture, then implement budgets, payables/debts, savings goals, expected income and time deposits.
-3. Implement CSV import/export, expanded reports/statistics, and backup coverage as each module is added.
-4. Finish subscription lifecycle/UI safeguards, optional app lock, export privacy controls, and home-screen widgets after underlying data/actions exist.
-5. Manually validate account/category forms, archive/restore, merge, delete warnings, transaction quick-add and small-screen layouts; rerun build/tests/lint after each milestone.
+1. Verify migration 1→2 against a schema-v1 fixture and continue hands-on account/category CRUD checks, including archive/restore and delete guards.
+2. Implement the next financial modules with full CRUD and accounting coverage: budgets, payables/debts, savings goals, expected income, and time deposits.
+3. Add CSV import/export and expanded statistics/reports, extending encrypted backup and restore coverage with each persisted module.
+4. Finish subscription lifecycle controls, optional app lock, export privacy controls, and home-screen widgets after their underlying data/actions exist.
+5. Manually validate transaction quick-add, filter/date controls, correction and reversal states, account/category forms, and smaller-screen layouts; rerun build/tests/lint after each milestone.

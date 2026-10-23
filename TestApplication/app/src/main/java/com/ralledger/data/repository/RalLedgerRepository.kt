@@ -25,6 +25,7 @@ import com.ralledger.domain.model.Reconciliation
 import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.SubscriptionStatus
 import com.ralledger.domain.model.Transaction
+import com.ralledger.domain.model.TransactionCorrection
 import com.ralledger.domain.model.TransactionType
 import com.ralledger.domain.usecase.AccountingEngine
 import com.ralledger.domain.usecase.DashboardSummaryCalculator
@@ -316,6 +317,7 @@ class RalLedgerRepository(
     ) { entries, accounts, categories ->
         val accountMap = accounts.associateBy { it.id }
         val categoryMap = categories.associateBy { it.id }
+        val reversedEntryIds = entries.mapNotNull { it.reversesEntryId }.toSet()
 
         entries.map { entry ->
             val accountName = accountMap[entry.primaryAccountId]?.name ?: "Account"
@@ -338,7 +340,8 @@ class RalLedgerRepository(
                 counterparty = entry.counterparty,
                 description = entry.description,
                 notes = entry.notes,
-                reversesEntryId = entry.reversesEntryId
+                reversesEntryId = entry.reversesEntryId,
+                isReversed = entry.id in reversedEntryIds
             )
         }
     }
@@ -454,7 +457,114 @@ class RalLedgerRepository(
     }
 
     suspend fun reverseTransaction(journalEntryId: String) {
+        database.withTransaction { reverseTransactionInCurrentTransaction(journalEntryId) }
+    }
+
+    suspend fun correctTransaction(journalEntryId: String, correction: TransactionCorrection) {
         database.withTransaction {
+            val originalEntity = journalDao.getJournalEntryById(journalEntryId)
+                ?: throw IllegalArgumentException("Transaction no longer exists")
+            val originalType = TransactionType.valueOf(originalEntity.transactionType)
+            require(originalType in setOf(TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.TRANSFER)) {
+                "This linked financial record must be corrected from its own screen"
+            }
+            require(journalDao.getReversalForEntry(journalEntryId) == null) {
+                "This transaction has already been corrected or voided"
+            }
+            require(correction.transactionType == originalType) { "A correction must keep the original transaction type" }
+            require(correction.amount.isPositive) { "Enter an amount greater than zero" }
+            require(!correction.fee.isNegative) { "Transfer fee cannot be negative" }
+
+            validateCorrectionAccount(correction.accountId, originalEntity.primaryAccountId)
+            when (originalType) {
+                TransactionType.INCOME -> {
+                    require(correction.destinationAccountId == null && correction.fee.isZero) {
+                        "Income corrections cannot include a destination account or transfer fee"
+                    }
+                    validateCorrectionCategory(correction.categoryId, originalEntity.categoryId, CategoryType.INCOME)
+                }
+                TransactionType.EXPENSE -> {
+                    require(correction.destinationAccountId == null && correction.fee.isZero) {
+                        "Expense corrections cannot include a destination account or transfer fee"
+                    }
+                    validateCorrectionCategory(correction.categoryId, originalEntity.categoryId, CategoryType.EXPENSE)
+                }
+                TransactionType.TRANSFER -> {
+                    val destinationId = correction.destinationAccountId
+                        ?: throw IllegalArgumentException("Choose a destination account")
+                    require(destinationId != correction.accountId) { "Choose a different destination account" }
+                    validateCorrectionAccount(destinationId, originalEntity.destinationAccountId)
+                    if (correction.fee.isPositive) {
+                        validateCorrectionCategory(correction.categoryId, originalEntity.categoryId, CategoryType.EXPENSE)
+                    } else if (correction.categoryId != null) {
+                        validateCorrectionCategory(correction.categoryId, originalEntity.categoryId, CategoryType.EXPENSE)
+                    }
+                }
+                else -> error("Unreachable transaction type")
+            }
+
+            reverseTransactionInCurrentTransaction(journalEntryId)
+            val replacement = when (originalType) {
+                TransactionType.INCOME -> AccountingEngine.createIncomeEntry(
+                    correction.accountId,
+                    correction.categoryId!!,
+                    correction.amount,
+                    correction.description,
+                    correction.timestamp
+                )
+                TransactionType.EXPENSE -> AccountingEngine.createExpenseEntry(
+                    correction.accountId,
+                    correction.categoryId!!,
+                    correction.amount,
+                    correction.description,
+                    correction.timestamp
+                )
+                TransactionType.TRANSFER -> AccountingEngine.createTransferEntry(
+                    correction.accountId,
+                    correction.destinationAccountId!!,
+                    correction.amount,
+                    correction.fee,
+                    correction.categoryId,
+                    correction.description,
+                    correction.timestamp
+                )
+                else -> error("Unreachable transaction type")
+            }
+            postJournalEntry(
+                entry = replacement,
+                transactionType = originalType,
+                amount = correction.amount,
+                fee = correction.fee,
+                primaryAccountId = correction.accountId,
+                destinationAccountId = correction.destinationAccountId,
+                categoryId = correction.categoryId,
+                counterparty = correction.counterparty.trim(),
+                notes = correction.notes.trim()
+            )
+        }
+    }
+
+    private suspend fun validateCorrectionAccount(accountId: String, originalAccountId: String?) {
+        val account = accountDao.getAccountById(accountId)
+            ?: throw IllegalArgumentException("Select a valid financial account")
+        val type = AccountType.valueOf(account.accountType)
+        require(type.isAsset && !type.isReceivable) { "Choose an asset account for this transaction" }
+        require(!account.isArchived || account.id == originalAccountId) {
+            "Restore an archived account before moving this transaction to it"
+        }
+    }
+
+    private suspend fun validateCorrectionCategory(categoryId: String?, originalCategoryId: String?, expected: CategoryType) {
+        val id = categoryId ?: throw IllegalArgumentException("Choose a ${expected.name.lowercase()} category")
+        val category = categoryDao.getCategoryById(id)
+            ?: throw IllegalArgumentException("Select a valid ${expected.name.lowercase()} category")
+        require(category.type == expected.name) { "Selected category must be ${expected.name.lowercase()}" }
+        require(!category.isArchived || category.id == originalCategoryId) {
+            "Restore an archived category before assigning it to this transaction"
+        }
+    }
+
+    private suspend fun reverseTransactionInCurrentTransaction(journalEntryId: String) {
             val originalEntity = journalDao.getJournalEntryById(journalEntryId)
                 ?: throw IllegalArgumentException("Transaction no longer exists")
             require(originalEntity.transactionType != TransactionType.REVERSAL.name) {
@@ -526,7 +636,6 @@ class RalLedgerRepository(
                 notes = "Reversal of ${originalEntity.id}. ${originalEntity.notes}".trim(),
                 reversesEntryId = originalEntity.id
             )
-        }
     }
 
     // Receivables

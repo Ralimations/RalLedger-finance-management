@@ -16,5 +16,19 @@ data class Transaction(
     val counterparty: String = "",
     val description: String = "",
     val notes: String = "",
-    val reversesEntryId: String? = null
+    val reversesEntryId: String? = null,
+    val isReversed: Boolean = false
+)
+
+data class TransactionCorrection(
+    val transactionType: TransactionType,
+    val timestamp: Long,
+    val amount: Money,
+    val fee: Money = Money.ZERO,
+    val accountId: String,
+    val destinationAccountId: String? = null,
+    val categoryId: String? = null,
+    val counterparty: String = "",
+    val description: String = "",
+    val notes: String = ""
 )

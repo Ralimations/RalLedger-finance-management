@@ -139,6 +139,31 @@ class InsightsCalculatorTest {
         assertEquals(Money(5_000), result.receivablesCollected)
     }
 
+    @Test
+    fun interestReportSeparatesGrossTaxAndNetAndReversesOnItsPostingDate() {
+        val creditDate = LocalDate.of(2026, 9, 12)
+        val reversalDate = creditDate.plusDays(2)
+        val credit = transaction("interest", creditDate, TransactionType.INTEREST_CREDIT, 10_000, fee = 1_500)
+        val reversal = transaction(
+            "interest-reversal", reversalDate, TransactionType.REVERSAL, 10_000, fee = 1_500,
+            reverses = credit.journalEntryId
+        )
+
+        val creditDay = InsightsCalculator.calculate(
+            listOf(credit, reversal), emptyList(), period(InsightsPeriodType.DAY, creditDate), zone
+        )
+        val reversalDay = InsightsCalculator.calculate(
+            listOf(credit, reversal), emptyList(), period(InsightsPeriodType.DAY, reversalDate), zone
+        )
+
+        assertEquals(Money(10_000), creditDay.grossInterest)
+        assertEquals(Money(1_500), creditDay.interestTax)
+        assertEquals(Money(8_500), creditDay.netInterest)
+        assertEquals(Money(-10_000), reversalDay.grossInterest)
+        assertEquals(Money(-1_500), reversalDay.interestTax)
+        assertEquals(Money(-8_500), reversalDay.netInterest)
+    }
+
     private fun period(type: InsightsPeriodType, date: LocalDate) = InsightsPeriod(type, date)
 
     private fun transaction(

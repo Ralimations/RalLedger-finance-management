@@ -211,8 +211,12 @@ fun InsightsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Net interest", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
-                    Text(calculation.netInterest.format(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
+                    Text("Interest earnings", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
+                    Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Gross · ${calculation.grossInterest.format()}", style = MaterialTheme.typography.bodySmall)
+                        Text("Tax withheld · ${calculation.interestTax.format()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        Text("Net · ${calculation.netInterest.format()}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
+                    }
                 }
             }
         }

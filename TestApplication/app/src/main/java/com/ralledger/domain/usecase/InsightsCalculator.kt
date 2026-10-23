@@ -97,6 +97,8 @@ data class InsightsResult(
     val income: Money,
     val expenses: Money,
     val net: Money,
+    val grossInterest: Money,
+    val interestTax: Money,
     val netInterest: Money,
     val subscriptionPayments: Money,
     val receivablesCollected: Money,
@@ -116,7 +118,7 @@ object InsightsCalculator {
     ): InsightsResult {
         val range = period.resolveRange(transactions, zone)
             ?: return InsightsResult(
-                null, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO,
+                null, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO,
                 emptyList(), emptyList(), emptyList()
             )
         val categoryNames = categories.associate { it.id to it.name }
@@ -127,6 +129,8 @@ object InsightsCalculator {
         val incomeSources = linkedMapOf<String, Pair<String, Money>>()
         var income = Money.ZERO
         var expenses = Money.ZERO
+        var grossInterest = Money.ZERO
+        var interestTax = Money.ZERO
         var netInterest = Money.ZERO
         var subscriptionPayments = Money.ZERO
         var receivablesCollected = Money.ZERO
@@ -142,11 +146,15 @@ object InsightsCalculator {
             val event = eventFor(source, categoryNames)
             val signedIncome = event.income.withSign(sign)
             val signedExpenses = event.expenses.withSign(sign)
+            val signedGrossInterest = event.grossInterest.withSign(sign)
+            val signedInterestTax = event.interestTax.withSign(sign)
             val signedInterest = event.netInterest.withSign(sign)
             val signedSubscriptionPayments = event.subscriptionPayments.withSign(sign)
             val signedReceivablesCollected = event.receivablesCollected.withSign(sign)
             income += signedIncome
             expenses += signedExpenses
+            grossInterest += signedGrossInterest
+            interestTax += signedInterestTax
             netInterest += signedInterest
             subscriptionPayments += signedSubscriptionPayments
             receivablesCollected += signedReceivablesCollected
@@ -172,6 +180,8 @@ object InsightsCalculator {
             income = income,
             expenses = expenses,
             net = income - expenses,
+            grossInterest = grossInterest,
+            interestTax = interestTax,
             netInterest = netInterest,
             subscriptionPayments = subscriptionPayments,
             receivablesCollected = receivablesCollected,
@@ -186,6 +196,8 @@ object InsightsCalculator {
     private data class Event(
         val income: Money = Money.ZERO,
         val expenses: Money = Money.ZERO,
+        val grossInterest: Money = Money.ZERO,
+        val interestTax: Money = Money.ZERO,
         val netInterest: Money = Money.ZERO,
         val subscriptionPayments: Money = Money.ZERO,
         val receivablesCollected: Money = Money.ZERO,
@@ -209,6 +221,8 @@ object InsightsCalculator {
                 Event(
                     income = transaction.amount,
                     expenses = transaction.fee,
+                    grossInterest = transaction.amount,
+                    interestTax = transaction.fee,
                     netInterest = transaction.amount - transaction.fee,
                     incomeSource = Triple(incomeCategory.first, incomeCategory.second, transaction.amount),
                     categoryExpenses = if (transaction.fee.isPositive) listOf(Triple(taxCategory.first, taxCategory.second, transaction.fee)) else emptyList()

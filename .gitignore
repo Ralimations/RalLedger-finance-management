@@ -2,6 +2,7 @@
 **/local.properties
 .ralledger-local/
 **/.gradle/
+**/.kotlin/
 **/build/
 **/.idea/caches/
 **/.idea/libraries/

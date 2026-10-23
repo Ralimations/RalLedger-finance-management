@@ -233,3 +233,23 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Installed the debug APK over the existing development emulator app without clearing app data. The transaction journal, label manager, and new-label editor rendered; the dialogs fit the 1080×2400 emulator screen. No label or transaction was created during this visual check, and no user financial data was reset or changed.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (22,866,788 bytes; built 2026-10-23). This is a debug build, not a release-signed artifact. Manual label assignment/search/filter UI walkthrough and smaller-device sizing remain open.
 - `TestApplication/.idea/deploymentTargetSelector.xml` remains the pre-existing local IDE change and is excluded from the implementation commit.
+
+## Spreadsheet transaction export — 2026-10-23
+
+- Added a Settings → Transaction CSV export using Android's document picker. It exports the posted journal with exact decimal amounts, fees, UTC and epoch timestamps, account/currency/category identifiers and names, counterparty, description, notes, reversal state and links, and label IDs/names.
+- CSV text is quoted with embedded commas/quotes/newlines preserved; spreadsheet formula-like text is prefixed safely. The UTF-8 export includes a BOM for desktop spreadsheet compatibility. The UI warns that CSV is plaintext and should be saved privately; encrypted backup remains the full-data recovery format.
+- Added unit tests for exact centavo formatting, deterministic ordering, reversal references, multiline/quoted text, label fields and formula-injection protection. No schema migration was needed.
+- Verified the file-picker flow on `emulator-5554`; exported and inspected an empty journal CSV (header only), then removed the temporary test file from the emulator. No financial transaction was added.
+- Passed the debug build, all 47 unit tests, lint (24 warnings, 0 errors), Android-test source compilation, and all 21 connected tests on `Medium_Phone(AVD) - 17` after the import changes.
+- CSV planning records are not exported as separate tables; encrypted backup remains the complete recovery path.
+- Gradle generated a local `TestApplication/.kotlin/` compiler-session directory; added it to `.gitignore` so it is not included in source commits.
+
+## Mapped CSV transaction import — 2026-10-23
+
+- Added a column-mapping import flow with header suggestions, editable field mappings, explicit month/day order, preview counts, row-level errors and a confirm step. Supports income, expenses and transfers into existing active accounts/categories; transfer fees and existing active transaction labels can be mapped too. Unknown labels are skipped with a warning.
+- Added quoted CSV parsing with embedded commas/newlines and UTF-8 BOM support, bounded to 20 MB and 50,000 rows. Account/category names must resolve uniquely (IDs also work); currencies and transfer account compatibility are checked. Ambiguous slash dates default to month-first but can be switched to day-first.
+- Import preview detects existing and within-file duplicates. Each accepted row is posted via the accounting engine inside its own database transaction, preserving balanced journal entries. A second database duplicate check protects against re-imports and concurrent imports; invalid rows fail independently and are reported.
+- Automated coverage includes parser quoting/BOM, mapping, ambiguous date order, unknown references, duplicate detection, export format, and connected accounting integrity. The connected import test verifies balanced journal posting, the expected net account balance and repeated-import duplicate skipping.
+- Emulator UI smoke opened a synthetic CSV with a deliberately unmatched account. Header suggestions populated, preview showed `Ready 0 · Duplicates 0 · Needs attention 1` and the precise account-resolution error, and the import action remained disabled. The dialog was cancelled; the synthetic file was removed. No financial records were created.
+- Import is intentionally limited to income, expense and transfer rows and requires matching active RalLedger accounts/categories. Receivables, debts, subscriptions, budget/planning records and custom record types are not imported through CSV. The current mapper is generic rather than a dedicated MyMoney preset; users can map MyMoney-like CSV columns manually. CSV import/export does not replace encrypted backup.
+- Latest debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (22,866,847 bytes; debug-signed, not a release APK). Build and automated checks pass; wider manual CRUD workflows, smaller-device sizing, release signing, and remaining requirements in the matrix remain open.

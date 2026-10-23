@@ -22,6 +22,8 @@ import com.ralledger.data.local.entity.InterestCreditEntity
 import com.ralledger.data.local.entity.SubscriptionPaymentEntity
 import com.ralledger.data.local.entity.JournalEntryTagEntity
 import com.ralledger.data.local.entity.TransactionTagEntity
+import com.ralledger.data.importing.CsvImportExecutionResult
+import com.ralledger.data.importing.CsvImportedTransaction
 import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalDomainModel
 import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalEventDomainModel
 import com.ralledger.data.local.entity.toDomainModel as toInterestProductDomainModel
@@ -1206,6 +1208,93 @@ class RalLedgerRepository(
             val entry = AccountingEngine.createTransferEntry(sourceAccountId, destinationAccountId, amount, fee, feeCategoryId, description, timestamp)
             postJournalEntry(entry, TransactionType.TRANSFER, amount, fee, sourceAccountId, destinationAccountId, feeCategoryId, "", notes)
         }
+    }
+
+    suspend fun importCsvTransactions(rows: List<CsvImportedTransaction>): CsvImportExecutionResult {
+        var imported = 0
+        var duplicates = 0
+        val failures = mutableListOf<Pair<Int, String>>()
+        rows.forEach { row ->
+            try {
+                val wasImported = database.withTransaction {
+                    val duplicateCount = journalDao.countMatchingImportDuplicate(
+                        transactionType = row.transactionType.name,
+                        primaryAccountId = row.accountId,
+                        destinationAccountId = row.destinationAccountId,
+                        categoryId = row.categoryId,
+                        amountCentavos = row.amount.centavos,
+                        feeCentavos = row.fee.centavos,
+                        description = row.description,
+                        counterparty = row.counterparty,
+                        dayStartInclusive = row.dayStartInclusive,
+                        nextDayExclusive = row.nextDayExclusive
+                    )
+                    if (duplicateCount > 0L) {
+                        false
+                    } else {
+                        var postedEntryId: String? = null
+                        when (row.transactionType) {
+                            TransactionType.INCOME -> {
+                                validateFinancialAccount(row.accountId)
+                                validateCategory(row.categoryId ?: "", CategoryType.INCOME)
+                                val entry = AccountingEngine.createIncomeEntry(
+                                    row.accountId, row.categoryId ?: "", row.amount, row.description, row.timestamp
+                                )
+                                postedEntryId = entry.id
+                                postJournalEntry(
+                                    entry, TransactionType.INCOME, row.amount, Money.ZERO, row.accountId, null,
+                                    row.categoryId, row.counterparty, row.notes
+                                )
+                            }
+                            TransactionType.EXPENSE -> {
+                                validateFinancialAccount(row.accountId)
+                                validateCategory(row.categoryId ?: "", CategoryType.EXPENSE)
+                                val entry = AccountingEngine.createExpenseEntry(
+                                    row.accountId, row.categoryId ?: "", row.amount, row.description, row.timestamp
+                                )
+                                postedEntryId = entry.id
+                                postJournalEntry(
+                                    entry, TransactionType.EXPENSE, row.amount, Money.ZERO, row.accountId, null,
+                                    row.categoryId, row.counterparty, row.notes
+                                )
+                            }
+                            TransactionType.TRANSFER -> {
+                                validateFinancialAccount(row.accountId)
+                                val destinationId = row.destinationAccountId
+                                    ?: throw IllegalArgumentException("Transfer destination is missing")
+                                validateFinancialAccount(destinationId)
+                                if (row.fee.isPositive) validateCategory(row.feeCategoryId ?: "", CategoryType.EXPENSE)
+                                val entry = AccountingEngine.createTransferEntry(
+                                    row.accountId, destinationId, row.amount, row.fee, row.feeCategoryId,
+                                    row.description, row.timestamp
+                                )
+                                postedEntryId = entry.id
+                                postJournalEntry(
+                                    entry, TransactionType.TRANSFER, row.amount, row.fee, row.accountId,
+                                    destinationId, row.feeCategoryId, row.counterparty, row.notes
+                                )
+                            }
+                            else -> throw IllegalArgumentException("Only income, expense and transfer rows can be imported")
+                        }
+                        if (row.tagIds.isNotEmpty()) {
+                            val assignableTags = row.tagIds.map { id ->
+                                transactionTagDao.getTagById(id)
+                                    ?: throw IllegalArgumentException("An imported transaction label no longer exists")
+                            }
+                            require(assignableTags.none { it.isArchived }) { "Restore an archived label before importing this row" }
+                            transactionTagDao.insertAssignments(assignableTags.map { tag ->
+                                JournalEntryTagEntity(journalEntryId = requireNotNull(postedEntryId), tagId = tag.id)
+                            })
+                        }
+                        true
+                    }
+                }
+                if (wasImported) imported++ else duplicates++
+            } catch (error: Exception) {
+                failures += row.lineNumber to (error.localizedMessage ?: "Row could not be imported")
+            }
+        }
+        return CsvImportExecutionResult(imported, duplicates, failures)
     }
 
     private suspend fun validateFinancialAccount(accountId: String) {

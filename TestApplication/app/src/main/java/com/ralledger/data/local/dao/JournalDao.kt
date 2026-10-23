@@ -47,6 +47,32 @@ interface JournalDao {
     @Query("SELECT * FROM journal_entries WHERE id = :id")
     suspend fun getJournalEntryById(id: String): JournalEntryEntity?
 
+    @Query("""
+        SELECT COUNT(*) FROM journal_entries
+        WHERE transactionType = :transactionType
+          AND primaryAccountId = :primaryAccountId
+          AND destinationAccountId IS :destinationAccountId
+          AND categoryId IS :categoryId
+          AND amountCentavos = :amountCentavos
+          AND feeCentavos = :feeCentavos
+          AND LOWER(TRIM(description)) = LOWER(TRIM(:description))
+          AND LOWER(TRIM(counterparty)) = LOWER(TRIM(:counterparty))
+          AND timestamp >= :dayStartInclusive
+          AND timestamp < :nextDayExclusive
+    """)
+    suspend fun countMatchingImportDuplicate(
+        transactionType: String,
+        primaryAccountId: String,
+        destinationAccountId: String?,
+        categoryId: String?,
+        amountCentavos: Long,
+        feeCentavos: Long,
+        description: String,
+        counterparty: String,
+        dayStartInclusive: Long,
+        nextDayExclusive: Long
+    ): Long
+
     @Query("SELECT * FROM journal_entries WHERE transactionType = :transactionType AND primaryAccountId = :primaryAccountId ORDER BY timestamp ASC LIMIT 1")
     suspend fun getFirstEntryByTypeAndPrimaryAccount(transactionType: String, primaryAccountId: String): JournalEntryEntity?
 

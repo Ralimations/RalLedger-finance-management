@@ -36,6 +36,7 @@ import com.ralledger.ui.theme.ThemeMode
 import com.ralledger.ui.theme.ThemePalette
 import com.ralledger.ui.theme.ThemeSettings
 import java.io.IOException
+import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -50,6 +51,8 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val backupStatus by viewModel.backupStatus.collectAsState()
+    val csvStatus by viewModel.csvStatus.collectAsState()
+    val csvImportState by viewModel.csvImportState.collectAsState()
     val restorePreview by viewModel.restorePreview.collectAsState()
     var password by remember { mutableStateOf("") }
     var validationError by remember { mutableStateOf<String?>(null) }
@@ -62,6 +65,30 @@ fun SettingsScreen(
                 val output = context.contentResolver.openOutputStream(uri, "w")
                     ?: throw IOException("The selected destination could not be opened")
                 output.use { it.write(bytes) }
+            }
+        }
+    }
+
+    val exportTransactions = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportTransactionsCsv { bytes ->
+                val output = context.contentResolver.openOutputStream(uri, "w")
+                    ?: throw IOException("The selected destination could not be opened")
+                output.use { it.write(bytes) }
+            }
+        }
+    }
+
+    val importTransactions = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.inspectTransactionCsv {
+                val input = context.contentResolver.openInputStream(uri)
+                    ?: throw IOException("The selected CSV could not be opened")
+                input.use { readCsvWithLimit(it) }
             }
         }
     }
@@ -135,13 +162,43 @@ fun SettingsScreen(
         }
 
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Transaction CSV export", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text(
+                    "Export posted journal entries for spreadsheet use. CSV files are not encrypted; save them in a private location.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                Text(
+                    "Import income, expenses and transfers from a mapped CSV. Rows must match existing accounts and categories; duplicates are skipped.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                TextButton(
+                    onClick = {
+                        importTransactions.launch(
+                            arrayOf("text/csv", "text/comma-separated-values", "text/plain", "application/vnd.ms-excel", "*/*")
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Import CSV") }
+                Button(
+                    onClick = {
+                        val date = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+                        exportTransactions.launch("RalLedger_Transactions_$date.csv")
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Export Transactions") }
+                csvStatus?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text("Encrypted Backup & Restore", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 Text(
-                    "The backup contains your current accounts, categories, budgets, savings goals and allocation history, journal, receivables, payment history, bills and loans, subscriptions, and reconciliations. It is encrypted with a password you choose. Keep that password separately; it cannot be recovered.",
+                    "The backup contains your accounts, categories, transaction labels, budgets, savings goals, interest records, journal, receivables, bills and loans, subscriptions, and histories. It is encrypted with a password you choose. Keep that password separately; it cannot be recovered.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 OutlinedTextField(
@@ -208,6 +265,7 @@ fun SettingsScreen(
                     Text("${preview.journalEntries} journal entries · ${preview.journalLines} journal lines")
                     Text("${preview.receivables} receivables · ${preview.payments} payments")
                     Text("${preview.writeOffs} receivable write-offs")
+                    Text("${preview.transactionTags} transaction labels · ${preview.taggedJournalEntries} labeled journal entries")
                     Text(
                         "Restoring replaces all current RalLedger records on this device.",
                         color = MaterialTheme.colorScheme.error
@@ -227,4 +285,27 @@ fun SettingsScreen(
             }
         )
     }
+
+    csvImportState?.let { state ->
+        CsvImportMappingDialog(
+            state = state,
+            onMappingChange = viewModel::updateCsvImportMapping,
+            onCancel = viewModel::cancelCsvImport,
+            onImport = viewModel::confirmCsvImport
+        )
+    }
+}
+
+private fun readCsvWithLimit(input: java.io.InputStream): ByteArray {
+    val output = ByteArrayOutputStream()
+    val buffer = ByteArray(8_192)
+    var total = 0
+    while (true) {
+        val count = input.read(buffer)
+        if (count < 0) break
+        total += count
+        if (total > 20_000_000) throw IOException("CSV import is limited to 20 MB")
+        output.write(buffer, 0, count)
+    }
+    return output.toByteArray()
 }

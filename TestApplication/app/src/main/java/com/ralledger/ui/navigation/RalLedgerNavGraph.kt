@@ -191,7 +191,9 @@ fun RalLedgerMainScreen(
                 InsightsScreen(viewModel = vm)
             }
             composable(Screen.Settings.route) {
-                val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory(appContainer.backupRepository))
+                val vm: SettingsViewModel = viewModel(
+                    factory = SettingsViewModel.Factory(appContainer.backupRepository, appContainer.repository)
+                )
                 SettingsScreen(
                     viewModel = vm,
                     appearance = themeSettings,

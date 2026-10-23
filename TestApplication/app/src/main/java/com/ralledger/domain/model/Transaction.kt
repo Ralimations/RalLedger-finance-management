@@ -17,7 +17,9 @@ data class Transaction(
     val description: String = "",
     val notes: String = "",
     val reversesEntryId: String? = null,
-    val isReversed: Boolean = false
+    val isReversed: Boolean = false,
+    val secondaryCategoryId: String? = null,
+    val secondaryCategoryName: String? = null
 )
 
 data class TransactionCorrection(

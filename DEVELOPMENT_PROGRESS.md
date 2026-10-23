@@ -108,6 +108,17 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - After the searchable-list edit, the source passed debug assembly, all 21 unit tests, lint (0 errors; 23 warnings), and Android-test Kotlin compilation at the prior checkpoint. A fresh rerun in this session could not reach project tasks: Gradle failed to resolve the configured `org.gradle.toolchains.foojay-resolver-convention:1.0.0` plugin, including in offline mode. The earlier connected rerun also could not start because ADB had no online emulator (`emulator-5562` remained offline and no AVDs were listed). The screen/editor compiled at the prior checkpoint; hands-on goal interaction and restart persistence remain for Android Studio validation.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (22,225,331 bytes). Automated tests used synthetic records; the previously documented `UI_Test_Wallet` remains on the development emulator if it reconnects.
 
+## Schema 11 — Interest-bearing accounts and time deposits
+
+- Added the schema 10→11 migration for interest-product profiles and posted-interest history. Profiles link to one compatible asset account; time deposits require a matching Time Deposit account and a positive original principal.
+- Added an Actual/365 estimate using exact centavo arithmetic, configurable simple/daily/monthly/quarterly/annual compounding, basis-point annual/tax rates, and gross/tax/net projections. Estimates stay informational; only an explicitly recorded actual credit changes the journal.
+- Interest credits post gross income and withholding-tax expense together, increasing the selected account only by net interest. Withholding tax uses its own expense category in Insights and monthly budget totals. Rate/tax snapshots and journal reversals preserve the audit trail. A 100% tax credit is supported without a zero-value account journal line.
+- Added Planning → Interest & deposits with profile search/type/archive filters, terms editor, estimated interest, maturity status, actual-credit entry, history, reversal, archive/restore and safe delete-if-unused. Account archive also archives its linked interest profile and tells the user; restoring the profile remains a separate action.
+- Encrypted backups now serialize and validate interest profiles, tax categories, credit/journal relationships, balances, reversal state, and older backups with no interest arrays. Archived profiles linked to archived accounts remain restorable.
+- Pure domain tests were compiled with the locally cached Kotlin compiler and run with JUnit: 12 tests passed across interest estimates, monthly budget aggregation and transaction filters, including exact-centavo math, invalid terms, rounding, a daylight-saving calendar boundary, assigning interest tax to its separate expense-category budget, and finding/filtering the tax category. This isolates those modules only; it does not verify the Android module or Room integration.
+- A fresh offline Gradle run stopped before project configuration because `org.gradle.toolchains.foojay-resolver-convention:1.0.0` is unavailable in the local plugin cache. The Gradle wrapper's distribution download was denied by the restricted network. Therefore schema-11 Room generation, Android compilation, unit-suite integration, lint and instrumentation are not verified in this checkpoint; no connected device was available for interest UI smoke.
+- The existing debug APK remains the earlier schema-10 build (22,225,331 bytes); it does not contain the interest/time-deposit implementation and is not a schema-11 release artifact.
+
 ## Module readiness
 
 | Module | Status | Limits |
@@ -123,7 +134,8 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 | Budgets | Monthly expense-category budgets; create/edit/archive/restore/confirmed delete; live spend, remaining amount and overspend indicators; safe category references and merge handling; encrypted backup support | Connected budget lifecycle and merge tests pass. No carry-forward, fund allocation, or multi-period budget rules |
 | Subscriptions | Metadata create/edit; pause/resume/cancel/reactivate; archive/restore; guarded delete; monthly normalization; backup state | Connected lifecycle and backup tests pass. Linked payment posting/history and due notifications remain incomplete |
 | Savings goals | Create/edit target, date and notes; searchable list; reserve/release existing liquid cash with dated history; archive/restore; delete only before use | Connected lifecycle and encrypted backup/restore passed before the final search-field edit; final source build/unit/lint/test compilation pass; screen interaction and restart persistence remain |
-| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, budgets, expected income, savings goals and allocation history, bills/loans/payment audit trail, subscription archive state, receivable archive state, and write-off history | Connected round-trip validates implemented record types; interest/time deposits, preferences and future modules are not covered |
+| Interest-bearing savings and time deposits | Schema-11 profile terms, interest/tax estimate, compounding, maturity, actual gross/tax/net credits, history and journal reversal; archive/restore and delete-unused | Implementation and migration are present; only the pure calculator's 5 JUnit tests passed in the current checkpoint. Android compile, Room migration, repository/backup instrumentation and UI/restart smoke need Android Studio verification |
+| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, budgets, expected income, savings goals/allocations, interest profiles/credits, bills/loans/payment audit trail, subscriptions, receivables and write-off history | Prior connected round-trip passed through schema 10. Schema-11 interest backup code is present but not currently verified; older backups omit new interest arrays |
 | Dashboard | Available Money is primary; Net Worth is separate; debt liabilities, payable totals, loan proceeds and reversal-aware month cash flow flow from the ledger | User-specific account flags cannot be inspected without a device database |
 | Appearance and insights UI | Saved theme mode/palette options; monthly interactive spending chart and clearer money summaries | Must be checked on device for motion, contrast, and small-screen layout; native home-screen widgets are still incomplete |
 | Time deposits, CSV/XLSX import, reports export, app lock, widgets, advanced charts | Incomplete | No end-to-end implementation in this checkpoint |
@@ -131,8 +143,8 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 ## Known audit findings and disposition
 
 - The prior dashboard discrepancy is reproduced as a regression test under the stated account assumptions: liquid cash is ₱2,111; total assets and net worth are ₱17,111 when liabilities are zero and receivables are ₱15,000. The actual historical database flags were not available, so its specific cause is not claimed as proven.
-- No existing user database was reset. Populated synthetic schema-1/schema-2 databases were migrated through schema 10 on the emulator; user-specific historical database contents and flags remain uninspected.
-- The Android UI describes backup coverage accurately for the records that exist today. This is not a complete RalLedger v2 backup of the broader requested future modules.
+- No existing user database was reset. Populated synthetic schema-1/schema-2 databases were migrated through schema 10 on the emulator. The schema-11 migration is not verified yet; user-specific historical database contents and flags remain uninspected.
+- The Android UI describes backup coverage accurately for previously verified records; schema-11 interest backup integration remains unverified. CSV, expanded reports, linked subscription payments/notifications, app lock, saved views, and home-screen widgets remain outside this checkpoint.
 
 ## Android Studio validation checklist
 
@@ -157,12 +169,14 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - [x] Verify Bills & loans, Add bill/Add loan forms, and Subscriptions tab routing after the final mapping correction.
 - [ ] Complete hands-on Bills & loans payment entry, reversal, restart persistence, and small-screen checks.
 - [ ] Smoke-check Savings goals create/edit, reserve/release, archive/restore, and persistence after restart in Android Studio.
+- [ ] Resolve the missing Foojay plugin through the approved Android Studio/Gradle environment; compile and run schema-11 migration, interest lifecycle/backup tests, lint and the full suites on an online emulator.
+- [ ] Smoke-check interest-bearing savings and time-deposit profile editing, estimates, actual credit, tax classification, reversal, archive/restore, account archive, backup/restore and relaunch persistence.
 - [ ] Finish hands-on account/category/receivable/subscription workflows, settings persistence, charts, smaller-screen sizing, and SAF export/restore UI checks.
 
 ## Next development steps
 
 1. Finish hands-on account/category/receivable/subscription CRUD, settings persistence, chart interaction, smaller-screen layout, and SAF export/restore checks.
 2. Finish hands-on Bills & loans payment, reversal, restart persistence and small-screen checks.
-3. Implement interest-bearing accounts and time deposits with gross/net interest, tax, maturity and manual credits.
-4. Add linked subscription payment posting/history and due notifications; add CSV/MyMoney CSV import, spreadsheet export and expanded date-range reports.
+3. Verify the schema-11 interest/time-deposit slice in Android Studio, including migration, account/profile lifecycle, tax accounting, encrypted backup and device UI.
+4. Add linked subscription payment posting/history and due notifications; add CSV import, spreadsheet export and expanded date-range reports.
 5. Add remaining customizable preferences, optional PIN/biometric lock, export privacy controls, saved filters/reports and home-screen widgets; verify each persisted workflow and backup state.

@@ -17,8 +17,12 @@ import com.ralledger.data.local.entity.ReceivableWriteOffEntity
 import com.ralledger.data.local.entity.ReconciliationEntity
 import com.ralledger.data.local.entity.SavingsGoalEntity
 import com.ralledger.data.local.entity.SavingsGoalEventEntity
+import com.ralledger.data.local.entity.InterestProductEntity
+import com.ralledger.data.local.entity.InterestCreditEntity
 import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalDomainModel
 import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalEventDomainModel
+import com.ralledger.data.local.entity.toDomainModel as toInterestProductDomainModel
+import com.ralledger.data.local.entity.toDomainModel as toInterestCreditDomainModel
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.AccountCategory
@@ -40,6 +44,10 @@ import com.ralledger.domain.model.ReceivableStatus
 import com.ralledger.domain.model.Reconciliation
 import com.ralledger.domain.model.SavingsGoal
 import com.ralledger.domain.model.SavingsGoalEventType
+import com.ralledger.domain.model.InterestProduct
+import com.ralledger.domain.model.InterestCredit
+import com.ralledger.domain.model.InterestProductType
+import com.ralledger.domain.model.InterestCompounding
 import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.SubscriptionStatus
 import com.ralledger.domain.model.Transaction
@@ -68,6 +76,7 @@ class RalLedgerRepository(
     private val subscriptionDao = database.subscriptionDao()
     private val reconciliationDao = database.reconciliationDao()
     private val savingsGoalDao = database.savingsGoalDao()
+    private val interestDao = database.interestDao()
 
     // Dynamically calculate ledger balances for all accounts from journal line aggregates
     val accountsFlow: Flow<List<Account>> = combine(
@@ -170,11 +179,16 @@ class RalLedgerRepository(
         }
     }
 
-    suspend fun setAccountArchived(id: String, isArchived: Boolean) {
-        database.withTransaction {
+    suspend fun setAccountArchived(id: String, isArchived: Boolean): Boolean {
+        return database.withTransaction {
             require(!isSystemAccount(id)) { "System accounts cannot be changed" }
             require(accountDao.getAccountById(id) != null) { "This account no longer exists" }
+            val interestProduct = interestDao.getProductForAccount(id)
             accountDao.setArchived(id, isArchived)
+            if (isArchived && interestProduct != null && !interestProduct.isArchived) {
+                interestDao.updateProduct(interestProduct.copy(isArchived = true))
+            }
+            interestProduct != null
         }
     }
 
@@ -188,7 +202,8 @@ class RalLedgerRepository(
                 receivableDao.countPaymentsForAccount(id) +
                 debtDao.countPaymentsForAccount(id) +
                 debtDao.countDebtsForFundingAccount(id) +
-                subscriptionDao.countAccountReferences(id)
+                subscriptionDao.countAccountReferences(id) +
+                interestDao.countProductsForAccount(id)
             require(referenceCount == 0L && account.openingBalanceCentavos == 0L) {
                 "This account has financial history or linked records and cannot be permanently deleted. Archive it to keep its history safe."
             }
@@ -269,6 +284,7 @@ class RalLedgerRepository(
             require(journalDao.countCategoryReferences(id) == 0L &&
                 budgetDao.countCategoryReferences(id) == 0L && expectedIncomeDao.countCategoryReferences(id) == 0L &&
                 debtDao.countDebtsForCategory(id) == 0L && debtDao.countPaymentsForCategory(id) == 0L &&
+                interestDao.countCreditsForTaxCategory(id) == 0L &&
                 categoryDao.countChildren(id) == 0L
             ) {
                 "This category has transaction history, budgets, expected income, or subcategories. Archive it to preserve its history."
@@ -301,6 +317,7 @@ class RalLedgerRepository(
             expectedIncomeDao.reassignCategory(sourceId, targetId)
             debtDao.reassignDebtCategory(sourceId, targetId)
             debtDao.reassignPaymentCategory(sourceId, targetId)
+            interestDao.reassignTaxCategory(sourceId, targetId)
             receivableDao.reassignIncomeCategory(sourceId, targetId)
             receivableDao.reassignWriteOffCategory(sourceId, targetId)
             categoryDao.moveChildren(sourceId, targetId)
@@ -348,7 +365,7 @@ class RalLedgerRepository(
     }
 
     fun getCategoryTransactionsFlow(categoryId: String): Flow<List<Transaction>> = transactionsFlow.map { transactions ->
-        transactions.filter { it.categoryId == categoryId }
+        transactions.filter { it.categoryId == categoryId || it.secondaryCategoryId == categoryId }
     }
 
     suspend fun createBill(title: String, counterparty: String, amount: Money, dueDate: Long, expenseCategoryId: String): String {
@@ -510,6 +527,217 @@ class RalLedgerRepository(
         }
     }
 
+    val interestProductsFlow: Flow<List<InterestProduct>> = combine(
+        interestDao.getProductsFlow(),
+        interestDao.getCreditsFlow(),
+        accountsFlow
+    ) { products, credits, accounts ->
+        val accountMap = accounts.associateBy { it.id }
+        val creditsByProduct = credits.groupBy { it.productId }
+        products.mapNotNull { product ->
+            val account = accountMap[product.accountId] ?: return@mapNotNull null
+            product.toInterestProductDomainModel(
+                accountName = account.name,
+                accountBalance = account.currentLedgerBalance,
+                credits = creditsByProduct[product.id].orEmpty().map { it.toInterestCreditDomainModel() }
+            )
+        }
+    }
+
+    suspend fun createInterestProduct(
+        accountId: String,
+        type: InterestProductType,
+        annualRateBasisPoints: Int,
+        taxRateBasisPoints: Int,
+        compounding: InterestCompounding,
+        openedAt: Long,
+        maturityDate: Long?,
+        principal: Money?,
+        notes: String
+    ): String {
+        validateInterestTerms(annualRateBasisPoints, taxRateBasisPoints, openedAt, maturityDate, principal, type)
+        val id = UUID.randomUUID().toString()
+        database.withTransaction {
+            validateInterestAccount(accountId, type, principal)
+            require(interestDao.getProductForAccount(accountId) == null) {
+                "This account already has an interest profile. Edit that profile or choose another account."
+            }
+            interestDao.insertProduct(
+                InterestProductEntity(
+                    id = id,
+                    accountId = accountId,
+                    type = type.name,
+                    annualRateBasisPoints = annualRateBasisPoints,
+                    taxRateBasisPoints = taxRateBasisPoints,
+                    compounding = compounding.name,
+                    openedAt = openedAt,
+                    maturityDate = maturityDate,
+                    principalCentavos = principal?.centavos,
+                    notes = notes.trim(),
+                    isArchived = false,
+                    createdAt = System.currentTimeMillis()
+                )
+            )
+        }
+        return id
+    }
+
+    suspend fun updateInterestProduct(
+        id: String,
+        annualRateBasisPoints: Int,
+        taxRateBasisPoints: Int,
+        compounding: InterestCompounding,
+        openedAt: Long,
+        maturityDate: Long?,
+        principal: Money?,
+        notes: String
+    ) {
+        database.withTransaction {
+            val current = interestDao.getProductById(id)
+                ?: throw IllegalArgumentException("This interest profile no longer exists")
+            val type = InterestProductType.valueOf(current.type)
+            validateInterestTerms(annualRateBasisPoints, taxRateBasisPoints, openedAt, maturityDate, principal, type)
+            val hasCredits = interestDao.countCredits(id) > 0L
+            require(!hasCredits || (openedAt == current.openedAt && principal?.centavos == current.principalCentavos)) {
+                "The opening date and principal are locked after an interest credit is posted; edit the rate or maturity instead."
+            }
+            validateInterestAccount(current.accountId, type, principal)
+            interestDao.updateProduct(
+                current.copy(
+                    annualRateBasisPoints = annualRateBasisPoints,
+                    taxRateBasisPoints = taxRateBasisPoints,
+                    compounding = compounding.name,
+                    openedAt = openedAt,
+                    maturityDate = maturityDate,
+                    principalCentavos = principal?.centavos,
+                    notes = notes.trim()
+                )
+            )
+        }
+    }
+
+    suspend fun setInterestProductArchived(id: String, archived: Boolean) {
+        database.withTransaction {
+            val product = interestDao.getProductById(id)
+                ?: throw IllegalArgumentException("This interest profile no longer exists")
+            val account = accountDao.getAccountById(product.accountId)
+                ?: throw IllegalStateException("The linked account no longer exists")
+            if (!archived) require(!account.isArchived) { "Restore the linked account before restoring this interest profile" }
+            interestDao.updateProduct(product.copy(isArchived = archived))
+        }
+    }
+
+    suspend fun deleteUnusedInterestProduct(id: String) {
+        database.withTransaction {
+            require(interestDao.getProductById(id) != null) { "This interest profile no longer exists" }
+            require(interestDao.countCredits(id) == 0L) {
+                "This profile has posted interest history. Archive it to preserve the audit trail."
+            }
+            interestDao.deleteProduct(id)
+        }
+    }
+
+    suspend fun recordInterestCredit(
+        productId: String,
+        gross: Money,
+        taxWithheld: Money,
+        incomeCategoryId: String,
+        taxExpenseCategoryId: String?,
+        creditedAt: Long,
+        notes: String
+    ) {
+        require(gross.isPositive) { "Enter gross interest greater than zero" }
+        require(!taxWithheld.isNegative && taxWithheld <= gross) { "Tax withheld must be zero or less than or equal to gross interest" }
+        require(creditedAt > 0L && creditedAt <= System.currentTimeMillis()) { "Interest credits must use a past or current date" }
+        database.withTransaction {
+            val product = interestDao.getProductById(productId)
+                ?: throw IllegalArgumentException("This interest profile no longer exists")
+            require(!product.isArchived) { "Restore this profile before recording interest" }
+            require(creditedAt >= product.openedAt) { "The credit date cannot be before the profile opened" }
+            validateFinancialAccount(product.accountId)
+            validateCategory(incomeCategoryId, CategoryType.INCOME)
+            val effectiveTaxCategoryId = if (taxWithheld.isPositive) taxExpenseCategoryId else null
+            if (taxWithheld.isPositive) validateCategory(effectiveTaxCategoryId ?: "", CategoryType.EXPENSE)
+            val entry = AccountingEngine.createInterestCreditEntry(
+                accountId = product.accountId,
+                incomeCategoryId = incomeCategoryId,
+                taxExpenseCategoryId = effectiveTaxCategoryId,
+                gross = gross,
+                taxWithheld = taxWithheld,
+                description = "Interest credit: ${accountDao.getAccountById(product.accountId)?.name.orEmpty()}",
+                timestamp = creditedAt
+            )
+            postJournalEntry(
+                entry = entry,
+                transactionType = TransactionType.INTEREST_CREDIT,
+                amount = gross,
+                fee = taxWithheld,
+                primaryAccountId = product.accountId,
+                categoryId = incomeCategoryId,
+                notes = notes.trim()
+            )
+            interestDao.insertCredit(
+                InterestCreditEntity(
+                    id = UUID.randomUUID().toString(),
+                    productId = product.id,
+                    journalEntryId = entry.id,
+                    grossCentavos = gross.centavos,
+                    taxCentavos = taxWithheld.centavos,
+                    annualRateBasisPoints = product.annualRateBasisPoints,
+                    taxRateBasisPoints = product.taxRateBasisPoints,
+                    taxExpenseCategoryId = effectiveTaxCategoryId,
+                    creditedAt = creditedAt,
+                    notes = notes.trim(),
+                    reversedAt = null
+                )
+            )
+        }
+    }
+
+    private suspend fun validateInterestAccount(accountId: String, type: InterestProductType, principal: Money?) {
+        val account = accountDao.getAccountById(accountId)
+            ?: throw IllegalArgumentException("Choose an existing financial account")
+        val accountType = AccountType.valueOf(account.accountType)
+        require(accountType.isAsset && !accountType.isReceivable && !account.isArchived) {
+            "Choose an active asset account"
+        }
+        when (type) {
+            InterestProductType.SAVINGS_ACCOUNT -> require(accountType in setOf(
+                AccountType.TRADITIONAL_BANK, AccountType.DIGITAL_BANK, AccountType.E_WALLET, AccountType.PHYSICAL_SAVINGS
+            )) { "Choose a bank, e-wallet, or savings account for an interest profile" }
+            InterestProductType.TIME_DEPOSIT -> {
+                require(accountType == AccountType.TIME_DEPOSIT) { "Choose an account with the Time Deposit type" }
+                val amount = principal ?: throw IllegalArgumentException("Enter the original deposit principal")
+                require(amount.isPositive) { "Deposit principal must be greater than zero" }
+                require(getAccountById(accountId)?.currentLedgerBalance?.let { it >= amount } == true) {
+                    "The time-deposit account balance must cover the original principal"
+                }
+            }
+        }
+    }
+
+    private fun validateInterestTerms(
+        annualRateBasisPoints: Int,
+        taxRateBasisPoints: Int,
+        openedAt: Long,
+        maturityDate: Long?,
+        principal: Money?,
+        type: InterestProductType
+    ) {
+        require(annualRateBasisPoints in 0..1_000_000) { "Annual rate must be from 0% to 10,000%" }
+        require(taxRateBasisPoints in 0..10_000) { "Tax rate must be from 0% to 100%" }
+        require(openedAt in 1L..System.currentTimeMillis()) { "Opening date cannot be in the future" }
+        when (type) {
+            InterestProductType.SAVINGS_ACCOUNT -> require(maturityDate == null && principal == null) {
+                "Savings profiles use the current account balance and do not have a maturity date"
+            }
+            InterestProductType.TIME_DEPOSIT -> {
+                require(maturityDate != null && maturityDate > openedAt) { "Maturity must be after the opening date" }
+                require(principal?.isPositive == true) { "Deposit principal must be greater than zero" }
+            }
+        }
+    }
+
     suspend fun createSavingsGoal(name: String, target: Money, targetDate: Long?, notes: String): String {
         validateSavingsGoalFields(name, target, targetDate)
         val id = UUID.randomUUID().toString()
@@ -650,6 +878,19 @@ class RalLedgerRepository(
                 reversesEntryId = entry.reversesEntryId,
                 isReversed = entry.id in reversedEntryIds
             )
+        }
+    }.combine(interestDao.getCreditsFlow()) { transactions, interestCredits ->
+        val creditsByEntry = interestCredits.associateBy { it.journalEntryId }
+        transactions.map { transaction ->
+            val credit = creditsByEntry[transaction.journalEntryId]
+            if (credit == null) transaction else transaction.copy(
+                secondaryCategoryId = credit.taxExpenseCategoryId
+            )
+        }
+    }.combine(categoryDao.getAllCategoriesFlow()) { transactions, categories ->
+        val categoryNames = categories.associate { it.id to it.name }
+        transactions.map { transaction ->
+            transaction.copy(secondaryCategoryName = transaction.secondaryCategoryId?.let(categoryNames::get))
         }
     }
 
@@ -985,6 +1226,12 @@ class RalLedgerRepository(
             val originalType = TransactionType.valueOf(originalEntity.transactionType)
 
             when (originalType) {
+                TransactionType.INTEREST_CREDIT -> {
+                    val credit = interestDao.getCreditByJournalEntry(journalEntryId)
+                        ?: throw IllegalStateException("Interest credit history is missing")
+                    require(credit.reversedAt == null) { "This interest credit has already been reversed" }
+                    interestDao.updateCredit(credit.copy(reversedAt = System.currentTimeMillis()))
+                }
                 TransactionType.RECEIVABLE_COLLECTION -> {
                     val payment = receivableDao.getPaymentByJournalEntryId(journalEntryId)
                         ?: throw IllegalStateException("Receivable payment history is missing")

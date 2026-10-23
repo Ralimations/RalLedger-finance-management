@@ -22,6 +22,7 @@ class BudgetSpendingCalculatorTest {
             transaction("reversed-expense", TransactionType.EXPENSE, 9_000L, currentMonth, "food", reversed = true),
             transaction("reversal", TransactionType.REVERSAL, 9_000L, currentMonth, "food"),
             transaction("transfer-fee", TransactionType.TRANSFER, 20_000L, currentMonth, "food", fee = 500L),
+            transaction("interest-tax", TransactionType.INTEREST_CREDIT, 10_000L, currentMonth, "interest-income", fee = 2_000L, secondaryCategoryId = "tax"),
             transaction("no-fee", TransactionType.TRANSFER, 80_000L, currentMonth, "food"),
             transaction("other-category", TransactionType.EXPENSE, 7_000L, currentMonth, "home"),
             transaction("previous-month", TransactionType.EXPENSE, 4_000L, previousMonth, "food")
@@ -30,6 +31,7 @@ class BudgetSpendingCalculatorTest {
         val totals = BudgetSpendingCalculator.aggregate(transactions)
 
         assertEquals(Money(7_700L), totals[BudgetSpendingKey("food", period.year, period.monthValue)])
+        assertEquals(Money(2_000L), totals[BudgetSpendingKey("tax", period.year, period.monthValue)])
         assertEquals(Money(7_000L), totals[BudgetSpendingKey("home", period.year, period.monthValue)])
         assertEquals(Money(4_000L), totals[BudgetSpendingKey("food", previousPeriod.year, previousPeriod.monthValue)])
     }
@@ -41,7 +43,8 @@ class BudgetSpendingCalculatorTest {
         timestamp: Long,
         categoryId: String,
         fee: Long = 0L,
-        reversed: Boolean = false
+        reversed: Boolean = false,
+        secondaryCategoryId: String? = null
     ) = Transaction(
         id = id,
         journalEntryId = id,
@@ -51,7 +54,8 @@ class BudgetSpendingCalculatorTest {
         fee = Money(fee),
         accountId = "wallet",
         categoryId = categoryId,
-        isReversed = reversed
+        isReversed = reversed,
+        secondaryCategoryId = secondaryCategoryId
     )
 
     private fun timestamp(year: Int, month: Int, day: Int): Long = Calendar.getInstance().apply {

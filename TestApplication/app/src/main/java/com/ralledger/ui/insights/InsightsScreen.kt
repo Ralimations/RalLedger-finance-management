@@ -80,26 +80,42 @@ fun InsightsScreen(viewModel: InsightsViewModel) {
     val monthTransactions = remember(state.transactions, selectedMonth, reversedEntries) {
         state.transactions.filter { transaction ->
             transaction.journalEntryId !in reversedEntries &&
-                transaction.transactionType in setOf(TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF) &&
+                transaction.transactionType in setOf(TransactionType.INCOME, TransactionType.INTEREST_CREDIT, TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF) &&
                 transaction.belongsTo(selectedMonth)
         }
     }
-    val monthIncome = monthTransactions.filter { it.transactionType == TransactionType.INCOME }
+    val monthIncome = monthTransactions.filter { it.transactionType in setOf(TransactionType.INCOME, TransactionType.INTEREST_CREDIT) }
         .fold(Money.ZERO) { sum, transaction -> sum + transaction.amount }
-    val monthExpenses = monthTransactions.filter { it.transactionType in setOf(TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF) }
-        .fold(Money.ZERO) { sum, transaction -> sum + transaction.amount }
+    val monthExpenses = monthTransactions.fold(Money.ZERO) { sum, transaction ->
+        sum + when (transaction.transactionType) {
+            TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF -> transaction.amount
+            TransactionType.INTEREST_CREDIT -> transaction.fee
+            else -> Money.ZERO
+        }
+    }
+    val monthInterestNet = monthTransactions.filter { it.transactionType == TransactionType.INTEREST_CREDIT }
+        .fold(Money.ZERO) { sum, transaction -> sum + (transaction.amount - transaction.fee) }
     val monthNet = monthIncome - monthExpenses
 
     val categoryById = remember(state.categories) { state.categories.associateBy { it.id } }
     val slices = remember(monthTransactions, categoryById) {
-        val grouped = monthTransactions.filter { it.transactionType in setOf(TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF) }
-            .groupBy { it.categoryId ?: "uncategorized" }
-        grouped.entries.mapIndexed { index, (id, entries) ->
+        val grouped = monthTransactions.flatMap { transaction ->
+            when (transaction.transactionType) {
+                TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF -> listOf(
+                    (transaction.categoryId ?: "uncategorized") to transaction.amount
+                )
+                TransactionType.INTEREST_CREDIT -> if (transaction.fee.isPositive) listOf(
+                    (transaction.secondaryCategoryId ?: "interest-tax") to transaction.fee
+                ) else emptyList()
+                else -> emptyList()
+            }
+        }.groupBy({ it.first }, { it.second })
+        grouped.entries.mapIndexed { index, (id, amounts) ->
             val category = categoryById[id]
-            val amount = entries.fold(Money.ZERO) { sum, transaction -> sum + transaction.amount }
+            val amount = amounts.fold(Money.ZERO, Money::plus)
             CategorySlice(
                 id = id,
-                name = category?.name ?: entries.firstNotNullOfOrNull { it.categoryName } ?: "Uncategorized",
+                name = category?.name ?: if (id == "interest-tax") "Interest tax withheld" else "Uncategorized",
                 amount = amount,
                 color = category?.colorHex.toComposeColor() ?: fallbackChartColors[index % fallbackChartColors.size]
             )
@@ -138,6 +154,23 @@ fun InsightsScreen(viewModel: InsightsViewModel) {
         }
 
         item { MonthSummaryCard(monthIncome, monthExpenses, monthNet) }
+
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Interest credited · net", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
+                    Text(monthInterestNet.format(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
+                }
+            }
+        }
 
         item {
             Card(

@@ -17,6 +17,7 @@ import com.ralledger.data.local.dao.ReceivableDao
 import com.ralledger.data.local.dao.ReconciliationDao
 import com.ralledger.data.local.dao.SubscriptionDao
 import com.ralledger.data.local.dao.SavingsGoalDao
+import com.ralledger.data.local.dao.InterestDao
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
@@ -32,6 +33,8 @@ import com.ralledger.data.local.entity.ReconciliationEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.data.local.entity.SavingsGoalEntity
 import com.ralledger.data.local.entity.SavingsGoalEventEntity
+import com.ralledger.data.local.entity.InterestProductEntity
+import com.ralledger.data.local.entity.InterestCreditEntity
 import com.ralledger.domain.model.AccountCategory
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.CategoryType
@@ -55,9 +58,11 @@ import kotlinx.coroutines.launch
         SubscriptionEntity::class,
         ReconciliationEntity::class,
         SavingsGoalEntity::class,
-        SavingsGoalEventEntity::class
+        SavingsGoalEventEntity::class,
+        InterestProductEntity::class,
+        InterestCreditEntity::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -72,9 +77,10 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun subscriptionDao(): SubscriptionDao
     abstract fun reconciliationDao(): ReconciliationDao
     abstract fun savingsGoalDao(): SavingsGoalDao
+    abstract fun interestDao(): InterestDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 10
+        const val CURRENT_SCHEMA_VERSION = 11
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -267,6 +273,56 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS interest_products (
+                        id TEXT NOT NULL,
+                        accountId TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        annualRateBasisPoints INTEGER NOT NULL,
+                        taxRateBasisPoints INTEGER NOT NULL,
+                        compounding TEXT NOT NULL,
+                        openedAt INTEGER NOT NULL,
+                        maturityDate INTEGER,
+                        principalCentavos INTEGER,
+                        notes TEXT NOT NULL,
+                        isArchived INTEGER NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(accountId) REFERENCES accounts(id) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_interest_products_accountId ON interest_products(accountId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_interest_products_type ON interest_products(type)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_interest_products_maturityDate ON interest_products(maturityDate)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_interest_products_isArchived ON interest_products(isArchived)")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS interest_credits (
+                        id TEXT NOT NULL,
+                        productId TEXT NOT NULL,
+                        journalEntryId TEXT NOT NULL,
+                        grossCentavos INTEGER NOT NULL,
+                        taxCentavos INTEGER NOT NULL,
+                        annualRateBasisPoints INTEGER NOT NULL,
+                        taxRateBasisPoints INTEGER NOT NULL,
+                        taxExpenseCategoryId TEXT,
+                        creditedAt INTEGER NOT NULL,
+                        notes TEXT NOT NULL,
+                        reversedAt INTEGER,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(productId) REFERENCES interest_products(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(journalEntryId) REFERENCES journal_entries(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(taxExpenseCategoryId) REFERENCES categories(id) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_interest_credits_productId ON interest_credits(productId)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_interest_credits_journalEntryId ON interest_credits(journalEntryId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_interest_credits_creditedAt ON interest_credits(creditedAt)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_interest_credits_taxExpenseCategoryId ON interest_credits(taxExpenseCategoryId)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
 
@@ -277,7 +333,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

@@ -63,12 +63,20 @@ object DashboardSummaryCalculator {
             .forEach { transaction ->
                 when (transaction.transactionType) {
                     TransactionType.INCOME -> monthlyIncome += transaction.amount
+                    TransactionType.INTEREST_CREDIT -> {
+                        monthlyIncome += transaction.amount
+                        monthlyExpenses += transaction.fee
+                    }
                     TransactionType.EXPENSE -> monthlyExpenses += transaction.amount
                     TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> monthlyExpenses += transaction.amount
                     TransactionType.LOAN_DISBURSEMENT -> monthlyLoanProceeds += transaction.amount
                     TransactionType.REVERSAL -> {
                         when (transactionsById[transaction.reversesEntryId]?.transactionType) {
                             TransactionType.INCOME -> monthlyIncome -= transaction.amount
+                            TransactionType.INTEREST_CREDIT -> {
+                                monthlyIncome -= transaction.amount
+                                monthlyExpenses -= transaction.fee
+                            }
                             TransactionType.EXPENSE -> monthlyExpenses -= transaction.amount
                             TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> monthlyExpenses -= transaction.amount
                             TransactionType.LOAN_DISBURSEMENT -> monthlyLoanProceeds -= transaction.amount

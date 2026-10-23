@@ -67,6 +67,35 @@ object AccountingEngine {
         return entry
     }
 
+    fun createInterestCreditEntry(
+        accountId: String,
+        incomeCategoryId: String,
+        taxExpenseCategoryId: String?,
+        gross: Money,
+        taxWithheld: Money,
+        description: String,
+        timestamp: Long = System.currentTimeMillis()
+    ): JournalEntry {
+        require(gross.isPositive) { "Gross interest must be greater than zero" }
+        require(!taxWithheld.isNegative && taxWithheld <= gross) { "Tax withheld must be zero or less than or equal to gross interest" }
+        require(taxWithheld.isZero || !taxExpenseCategoryId.isNullOrBlank()) { "Choose an expense category for tax withheld" }
+        val entryId = UUID.randomUUID().toString()
+        val lines = buildList {
+            val net = gross - taxWithheld
+            if (net.isPositive) add(JournalLine(UUID.randomUUID().toString(), entryId, accountId, LineType.DEBIT, net))
+            if (taxWithheld.isPositive) {
+                add(JournalLine(UUID.randomUUID().toString(), entryId, taxExpenseCategoryId!!, LineType.DEBIT, taxWithheld))
+            }
+            add(JournalLine(UUID.randomUUID().toString(), entryId, incomeCategoryId, LineType.CREDIT, gross))
+        }
+        return JournalEntry(
+            id = entryId,
+            timestamp = timestamp,
+            description = description.ifBlank { "Interest credited" },
+            lines = lines
+        ).also { check(it.isBalanced()) { "Interest credit journal entry must be balanced" } }
+    }
+
     fun createExpenseEntry(
         accountId: String,
         expenseCategoryId: String,

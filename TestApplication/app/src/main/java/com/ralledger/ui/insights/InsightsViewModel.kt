@@ -41,37 +41,41 @@ class InsightsViewModel(
         val validTransactions = transactions.filter {
             it.journalEntryId !in reversedJournalIds &&
                 it.transactionType in setOf(
-                    TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF,
+                    TransactionType.INCOME, TransactionType.INTEREST_CREDIT, TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF,
                     TransactionType.PAYABLE_RECOGNITION, TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT
                 )
         }
 
         val totalIncome = validTransactions
-            .filter { it.transactionType == TransactionType.INCOME }
+            .filter { it.transactionType in setOf(TransactionType.INCOME, TransactionType.INTEREST_CREDIT) }
             .fold(Money.ZERO) { total, transaction -> total + transaction.amount }
         val totalExpenses = validTransactions
             .fold(Money.ZERO) { total, transaction ->
                 total + when (transaction.transactionType) {
                     TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION -> transaction.amount
                     TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> transaction.fee
+                    TransactionType.INTEREST_CREDIT -> transaction.fee
                     else -> Money.ZERO
                 }
             }
 
         val categoryMap = categories.associateBy { it.id }
-        val spendingByCategory = validTransactions
-            .filter { it.transactionType in setOf(
-                TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION,
-                TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT
-            ) }
-            .groupBy { transaction ->
-                transaction.categoryId?.let { categoryMap[it]?.name } ?: transaction.categoryName ?: "Uncategorized"
+        val categorizedExpenses = validTransactions.flatMap { transaction ->
+            when (transaction.transactionType) {
+                TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION -> listOf(
+                    (transaction.categoryId?.let { categoryMap[it]?.name } ?: transaction.categoryName ?: "Uncategorized") to transaction.amount
+                )
+                TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> listOf(
+                    (transaction.categoryId?.let { categoryMap[it]?.name } ?: transaction.categoryName ?: "Uncategorized") to transaction.fee
+                )
+                TransactionType.INTEREST_CREDIT -> if (transaction.fee.isPositive) listOf(
+                    (transaction.secondaryCategoryId?.let { categoryMap[it]?.name } ?: transaction.secondaryCategoryName ?: "Interest tax withheld") to transaction.fee
+                ) else emptyList()
+                else -> emptyList()
             }
-            .mapValues { (_, entries) -> entries.fold(Money.ZERO) { total, transaction ->
-                total + if (transaction.transactionType in setOf(TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT)) {
-                    transaction.fee
-                } else transaction.amount
-            } }
+        }
+        val spendingByCategory = categorizedExpenses.groupBy({ it.first }, { it.second })
+            .mapValues { (_, amounts) -> amounts.fold(Money.ZERO, Money::plus) }
 
         val receivablesAging = receivables
             .groupBy { it.status.name }

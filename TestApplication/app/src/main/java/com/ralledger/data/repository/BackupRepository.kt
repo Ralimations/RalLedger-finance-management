@@ -16,6 +16,8 @@ import com.ralledger.data.local.entity.ReceivableWriteOffEntity
 import com.ralledger.data.local.entity.ReconciliationEntity
 import com.ralledger.data.local.entity.SavingsGoalEntity
 import com.ralledger.data.local.entity.SavingsGoalEventEntity
+import com.ralledger.data.local.entity.InterestProductEntity
+import com.ralledger.data.local.entity.InterestCreditEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.LineType
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +45,8 @@ data class BackupPreview(
     val debtPayments: Int,
     val savingsGoals: Int = 0,
     val savingsGoalEvents: Int = 0,
+    val interestProducts: Int = 0,
+    val interestCredits: Int = 0,
     val journalEntries: Int,
     val journalLines: Int,
     val receivables: Int,
@@ -96,6 +100,7 @@ class BackupRepository(
             val expectedIncome = database.expectedIncomeDao()
             val debts = database.debtDao()
             val savingsGoals = database.savingsGoalDao()
+            val interest = database.interestDao()
             val journals = database.journalDao()
             val receivables = database.receivableDao()
             val subscriptions = database.subscriptionDao()
@@ -110,6 +115,8 @@ class BackupRepository(
             debts.clearDebts()
             savingsGoals.clearEvents()
             savingsGoals.clearGoals()
+            interest.clearCredits()
+            interest.clearProducts()
             journals.clearJournalLines()
             journals.clearJournalEntries()
             receivables.clearReceivables()
@@ -130,8 +137,10 @@ class BackupRepository(
             if (snapshot.debtPayments.isNotEmpty()) debts.insertPayments(snapshot.debtPayments)
             if (snapshot.savingsGoals.isNotEmpty()) savingsGoals.insertGoals(snapshot.savingsGoals)
             if (snapshot.savingsGoalEvents.isNotEmpty()) savingsGoals.insertEvents(snapshot.savingsGoalEvents)
+            if (snapshot.interestProducts.isNotEmpty()) interest.insertProducts(snapshot.interestProducts)
             if (snapshot.payments.isNotEmpty()) receivables.insertPayments(snapshot.payments)
             if (snapshot.writeOffs.isNotEmpty()) receivables.insertWriteOffs(snapshot.writeOffs)
+            if (snapshot.interestCredits.isNotEmpty()) interest.insertCredits(snapshot.interestCredits)
             if (snapshot.subscriptions.isNotEmpty()) subscriptions.insertSubscriptions(snapshot.subscriptions)
             if (snapshot.reconciliations.isNotEmpty()) reconciliations.insertReconciliations(snapshot.reconciliations)
 
@@ -170,6 +179,8 @@ class BackupRepository(
         debtPayments = database.debtDao().getAllPayments(),
         savingsGoals = database.savingsGoalDao().getAllGoals(),
         savingsGoalEvents = database.savingsGoalDao().getAllEvents(),
+        interestProducts = database.interestDao().getAllProducts(),
+        interestCredits = database.interestDao().getAllCredits(),
         entries = database.journalDao().getAllJournalEntries(),
         lines = database.journalDao().getAllJournalLines(),
         receivables = database.receivableDao().getAllReceivables(),
@@ -257,6 +268,8 @@ class BackupRepository(
         val debtPayments: List<DebtPaymentEntity>,
         val savingsGoals: List<SavingsGoalEntity>,
         val savingsGoalEvents: List<SavingsGoalEventEntity>,
+        val interestProducts: List<InterestProductEntity>,
+        val interestCredits: List<InterestCreditEntity>,
         val entries: List<JournalEntryEntity>,
         val lines: List<JournalLineEntity>,
         val receivables: List<ReceivableEntity>,
@@ -278,6 +291,8 @@ class BackupRepository(
             put("debtPayments", JSONArray().also { array -> debtPayments.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("savingsGoals", JSONArray().also { array -> savingsGoals.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("savingsGoalEvents", JSONArray().also { array -> savingsGoalEvents.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("interestProducts", JSONArray().also { array -> interestProducts.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("interestCredits", JSONArray().also { array -> interestCredits.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalEntries", JSONArray().also { array -> entries.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalLines", JSONArray().also { array -> lines.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("receivables", JSONArray().also { array -> receivables.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
@@ -289,6 +304,7 @@ class BackupRepository(
 
         fun preview(): BackupPreview {
             val errors = mutableListOf<String>()
+            val now = System.currentTimeMillis()
             fun <T> checkUnique(label: String, rows: List<T>, id: (T) -> String) {
                 if (rows.map(id).toSet().size != rows.size) errors += "Duplicate $label IDs"
             }
@@ -300,6 +316,9 @@ class BackupRepository(
             checkUnique("debt payment", debtPayments) { it.id }
             checkUnique("savings goal", savingsGoals) { it.id }
             checkUnique("savings goal event", savingsGoalEvents) { it.id }
+            checkUnique("interest product", interestProducts) { it.id }
+            checkUnique("interest credit", interestCredits) { it.id }
+            checkUnique("interest journal entry", interestCredits) { it.journalEntryId }
             checkUnique("journal entry", entries) { it.id }
             checkUnique("journal line", lines) { it.id }
             checkUnique("receivable", receivables) { it.id }
@@ -309,6 +328,21 @@ class BackupRepository(
             checkUnique("reconciliation", reconciliations) { it.id }
 
             val goalsById = savingsGoals.associateBy { it.id }
+            val interestProductsById = interestProducts.associateBy { it.id }
+            val interestProductsByAccount = interestProducts.groupBy { it.accountId }
+            if (interestProductsByAccount.values.any { it.size > 1 }) errors += "An account has more than one interest profile"
+            if (interestProducts.any { product ->
+                    val type = runCatching { com.ralledger.domain.model.InterestProductType.valueOf(product.type) }.getOrNull()
+                    val compounding = runCatching { com.ralledger.domain.model.InterestCompounding.valueOf(product.compounding) }.isSuccess
+                    product.accountId.isBlank() || product.annualRateBasisPoints !in 0..1_000_000 ||
+                        product.taxRateBasisPoints !in 0..10_000 || !compounding || product.openedAt <= 0L || product.openedAt > now || product.createdAt <= 0L ||
+                        when (type) {
+                            com.ralledger.domain.model.InterestProductType.SAVINGS_ACCOUNT -> product.maturityDate != null || product.principalCentavos != null
+                            com.ralledger.domain.model.InterestProductType.TIME_DEPOSIT -> product.maturityDate == null ||
+                                product.maturityDate <= product.openedAt || (product.principalCentavos ?: 0L) <= 0L
+                            null -> true
+                        }
+                }) errors += "Interest profile has an invalid account, rate, date, type, or principal"
             if (savingsGoals.any { it.name.isBlank() || it.targetAmountCentavos <= 0L || it.allocatedAmountCentavos < 0L || (it.targetDate != null && it.targetDate <= 0L) || it.createdAt <= 0L }) {
                 errors += "Savings goal has an invalid name, target, date, or allocation"
             }
@@ -348,6 +382,53 @@ class BackupRepository(
                 }
             ) errors += "Journal entry references a missing related record"
             val categoriesById = categories.associateBy { it.id }
+            if (interestProducts.any { product ->
+                    val account = accountsById[product.accountId]
+                    val accountType = account?.accountType?.let { runCatching { com.ralledger.domain.model.AccountType.valueOf(it) }.getOrNull() }
+                    account == null || accountType == null || !accountType.isAsset || accountType.isReceivable ||
+                        (product.type == "TIME_DEPOSIT" && accountType != com.ralledger.domain.model.AccountType.TIME_DEPOSIT) ||
+                        (product.type == "SAVINGS_ACCOUNT" && accountType !in setOf(
+                            com.ralledger.domain.model.AccountType.TRADITIONAL_BANK, com.ralledger.domain.model.AccountType.DIGITAL_BANK,
+                            com.ralledger.domain.model.AccountType.E_WALLET, com.ralledger.domain.model.AccountType.PHYSICAL_SAVINGS
+                        )) || (account.isArchived && !product.isArchived)
+                }) errors += "Interest profile references an incompatible or archived account"
+            val entriesById = entries.associateBy { it.id }
+            if (interestCredits.any { credit ->
+                    val product = interestProductsById[credit.productId]
+                    val entry = entriesById[credit.journalEntryId]
+                    val taxCategory = credit.taxExpenseCategoryId?.let(categoriesById::get)
+                    product == null || entry == null || entry.transactionType != "INTEREST_CREDIT" ||
+                        entry.primaryAccountId != product.accountId || entry.amountCentavos != credit.grossCentavos ||
+                        entry.feeCentavos != credit.taxCentavos || entry.timestamp != credit.creditedAt ||
+                        credit.grossCentavos <= 0L || credit.taxCentavos < 0L || credit.taxCentavos > credit.grossCentavos ||
+                        credit.annualRateBasisPoints !in 0..1_000_000 || credit.taxRateBasisPoints !in 0..10_000 ||
+                        credit.creditedAt < (product?.openedAt ?: Long.MAX_VALUE) ||
+                        credit.creditedAt > now ||
+                        (credit.taxCentavos > 0L && taxCategory?.type != "EXPENSE") ||
+                        (credit.taxCentavos == 0L && credit.taxExpenseCategoryId != null) ||
+                        (credit.reversedAt != null && credit.reversedAt <= 0L)
+                }) errors += "Interest credit references a missing or mismatched profile, journal, category, or amount"
+            interestCredits.forEach { credit ->
+                val entry = entriesById[credit.journalEntryId] ?: return@forEach
+                val entryLines = lines.filter { it.journalEntryId == entry.id }
+                val product = interestProductsById[credit.productId] ?: return@forEach
+                val net = credit.grossCentavos - credit.taxCentavos
+                val validAccountDebit = if (net == 0L) entryLines.none { it.accountId == product.accountId && it.lineType == "DEBIT" }
+                    else entryLines.any { it.accountId == product.accountId && it.lineType == "DEBIT" && it.amountCentavos == net }
+                val validIncomeCredit = entry.categoryId?.let { incomeCategoryId ->
+                    categoriesById[incomeCategoryId]?.type == "INCOME" &&
+                        entryLines.any { it.accountId == incomeCategoryId && it.lineType == "CREDIT" && it.amountCentavos == credit.grossCentavos }
+                } == true
+                val validTaxDebit = if (credit.taxCentavos == 0L) true else credit.taxExpenseCategoryId?.let { taxCategoryId ->
+                    entryLines.any { it.accountId == taxCategoryId && it.lineType == "DEBIT" && it.amountCentavos == credit.taxCentavos }
+                } == true
+                val expectedLineCount = (if (net > 0L) 1 else 0) + 1 + if (credit.taxCentavos > 0L) 1 else 0
+                if (!validAccountDebit || !validIncomeCredit || !validTaxDebit || entryLines.size != expectedLineCount) {
+                    errors += "Interest credit ${credit.id} does not match its balanced journal posting"
+                }
+                val hasReversal = entries.any { it.reversesEntryId == entry.id }
+                if ((credit.reversedAt != null) != hasReversal) errors += "Interest credit ${credit.id} reversal state does not match its journal"
+            }
             if (categories.any { category ->
                     category.parentCategoryId?.let { parentId ->
                         val parent = categoriesById[parentId]
@@ -556,6 +637,8 @@ class BackupRepository(
                 debtPayments = debtPayments.size,
                 savingsGoals = savingsGoals.size,
                 savingsGoalEvents = savingsGoalEvents.size,
+                interestProducts = interestProducts.size,
+                interestCredits = interestCredits.size,
                 journalEntries = entries.size,
                 journalLines = lines.size,
                 receivables = receivables.size,
@@ -585,6 +668,8 @@ class BackupRepository(
                     debtPayments = json.optJSONArray("debtPayments")?.objects()?.map { it.toDebtPayment() }.orEmpty(),
                     savingsGoals = json.optJSONArray("savingsGoals")?.objects()?.map { it.toSavingsGoal() }.orEmpty(),
                     savingsGoalEvents = json.optJSONArray("savingsGoalEvents")?.objects()?.map { it.toSavingsGoalEvent() }.orEmpty(),
+                    interestProducts = json.optJSONArray("interestProducts")?.objects()?.map { it.toInterestProduct() }.orEmpty(),
+                    interestCredits = json.optJSONArray("interestCredits")?.objects()?.map { it.toInterestCredit() }.orEmpty(),
                     entries = json.getJSONArray("journalEntries").objects().map { it.toJournalEntry() },
                     lines = json.getJSONArray("journalLines").objects().map { it.toJournalLine() },
                     receivables = json.getJSONArray("receivables").objects().map { it.toReceivable() },
@@ -714,6 +799,36 @@ private fun SavingsGoalEventEntity.toJson() = JSONObject().apply {
 private fun JSONObject.toSavingsGoalEvent() = SavingsGoalEventEntity(
     id = getString("id"), goalId = getString("goalId"), type = getString("type"),
     amountCentavos = getLong("amountCentavos"), date = getLong("date"), note = optString("note", "")
+)
+
+private fun InterestProductEntity.toJson() = JSONObject().apply {
+    put("id", id); put("accountId", accountId); put("type", type)
+    put("annualRateBasisPoints", annualRateBasisPoints); put("taxRateBasisPoints", taxRateBasisPoints)
+    put("compounding", compounding); put("openedAt", openedAt); putNullable("maturityDate", maturityDate)
+    putNullable("principalCentavos", principalCentavos); put("notes", notes); put("isArchived", isArchived)
+    put("createdAt", createdAt)
+}
+private fun JSONObject.toInterestProduct() = InterestProductEntity(
+    id = getString("id"), accountId = getString("accountId"), type = getString("type"),
+    annualRateBasisPoints = getInt("annualRateBasisPoints"), taxRateBasisPoints = getInt("taxRateBasisPoints"),
+    compounding = getString("compounding"), openedAt = getLong("openedAt"), maturityDate = longOrNull("maturityDate"),
+    principalCentavos = longOrNull("principalCentavos"), notes = optString("notes", ""),
+    isArchived = getBoolean("isArchived"), createdAt = getLong("createdAt")
+)
+
+private fun InterestCreditEntity.toJson() = JSONObject().apply {
+    put("id", id); put("productId", productId); put("journalEntryId", journalEntryId)
+    put("grossCentavos", grossCentavos); put("taxCentavos", taxCentavos)
+    put("annualRateBasisPoints", annualRateBasisPoints); put("taxRateBasisPoints", taxRateBasisPoints)
+    putNullable("taxExpenseCategoryId", taxExpenseCategoryId); put("creditedAt", creditedAt)
+    put("notes", notes); putNullable("reversedAt", reversedAt)
+}
+private fun JSONObject.toInterestCredit() = InterestCreditEntity(
+    id = getString("id"), productId = getString("productId"), journalEntryId = getString("journalEntryId"),
+    grossCentavos = getLong("grossCentavos"), taxCentavos = getLong("taxCentavos"),
+    annualRateBasisPoints = getInt("annualRateBasisPoints"), taxRateBasisPoints = getInt("taxRateBasisPoints"),
+    taxExpenseCategoryId = stringOrNull("taxExpenseCategoryId"), creditedAt = getLong("creditedAt"),
+    notes = optString("notes", ""), reversedAt = longOrNull("reversedAt")
 )
 
 private fun JournalEntryEntity.toJson() = JSONObject().apply {

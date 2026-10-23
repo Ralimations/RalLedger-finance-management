@@ -12,14 +12,15 @@ object BudgetSpendingCalculator {
         val spending = mutableMapOf<BudgetSpendingKey, Long>()
         transactions.forEach { transaction ->
             if (transaction.isReversed) return@forEach
-            val categoryId = transaction.categoryId ?: return@forEach
-            val amount = when (transaction.transactionType) {
-                TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION -> transaction.amount.centavos
-                TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> transaction.fee.centavos
-                TransactionType.TRANSFER -> transaction.fee.centavos
-                else -> 0L
+            val (categoryId, amount) = when (transaction.transactionType) {
+                TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION ->
+                    transaction.categoryId to transaction.amount.centavos
+                TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT, TransactionType.TRANSFER ->
+                    transaction.categoryId to transaction.fee.centavos
+                TransactionType.INTEREST_CREDIT -> transaction.secondaryCategoryId to transaction.fee.centavos
+                else -> null to 0L
             }
-            if (amount <= 0L) return@forEach
+            if (categoryId == null || amount <= 0L) return@forEach
 
             val calendar = Calendar.getInstance().apply { timeInMillis = transaction.timestamp }
             val key = BudgetSpendingKey(

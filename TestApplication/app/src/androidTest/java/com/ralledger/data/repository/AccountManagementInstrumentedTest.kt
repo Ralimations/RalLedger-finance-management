@@ -84,7 +84,7 @@ class AccountManagementInstrumentedTest {
         }
 
         val migrated = Room.databaseBuilder(context, RalLedgerDatabase::class.java, databaseName)
-            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9, RalLedgerDatabase.MIGRATION_9_10)
+            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9, RalLedgerDatabase.MIGRATION_9_10, RalLedgerDatabase.MIGRATION_10_11)
             .build()
         try {
             runBlocking {
@@ -121,8 +121,10 @@ class AccountManagementInstrumentedTest {
                 val reconciliation = migrated.reconciliationDao().getAllReconciliations().single()
                 assertEquals("legacy_reconciliation", reconciliation.id)
                 assertEquals(-500L, reconciliation.differenceCentavos)
+                assertTrue(migrated.interestDao().getAllProducts().isEmpty())
+                assertTrue(migrated.interestDao().getAllCredits().isEmpty())
             }
-            assertEquals(10, migrated.openHelper.readableDatabase.version)
+            assertEquals(11, migrated.openHelper.readableDatabase.version)
         } finally {
             migrated.close()
             context.deleteDatabase(databaseName)
@@ -154,7 +156,7 @@ class AccountManagementInstrumentedTest {
         }
 
         val migrated = Room.databaseBuilder(context, RalLedgerDatabase::class.java, databaseName)
-            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9, RalLedgerDatabase.MIGRATION_9_10)
+            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9, RalLedgerDatabase.MIGRATION_9_10, RalLedgerDatabase.MIGRATION_10_11)
             .build()
         try {
             val account = kotlinx.coroutines.runBlocking { migrated.accountDao().getAccountById("legacy_account") }
@@ -164,7 +166,7 @@ class AccountManagementInstrumentedTest {
             val category = kotlinx.coroutines.runBlocking { migrated.categoryDao().getCategoryById("legacy_category") }
             assertEquals(null, category?.parentCategoryId)
             assertFalse(category?.isArchived ?: true)
-            assertEquals(10, migrated.openHelper.readableDatabase.version)
+            assertEquals(11, migrated.openHelper.readableDatabase.version)
         } finally {
             migrated.close()
             context.deleteDatabase(databaseName)

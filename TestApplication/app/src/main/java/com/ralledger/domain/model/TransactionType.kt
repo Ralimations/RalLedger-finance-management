@@ -2,6 +2,7 @@ package com.ralledger.domain.model
 
 enum class TransactionType(val displayName: String) {
     INCOME("Income"),
+    INTEREST_CREDIT("Interest Credit"),
     EXPENSE("Expense"),
     TRANSFER("Transfer"),
     RECEIVABLE_RECOGNITION("Receivable Recognized"),

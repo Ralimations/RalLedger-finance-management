@@ -20,6 +20,7 @@ enum class AccountType(
     E_WALLET("E-Wallet", AccountCategory.ASSET, isLiquid = true),
     PHYSICAL_WALLET("Physical Cash Wallet", AccountCategory.ASSET, isLiquid = true),
     PHYSICAL_SAVINGS("Physical Savings", AccountCategory.ASSET, isLiquid = false),
+    TIME_DEPOSIT("Time Deposit", AccountCategory.ASSET, isLiquid = false),
     ACCOUNTS_RECEIVABLE("Accounts Receivable", AccountCategory.ASSET, isReceivable = true),
 
     ACCOUNTS_PAYABLE("Accounts Payable", AccountCategory.LIABILITY, isPayable = true),

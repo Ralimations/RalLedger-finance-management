@@ -67,4 +67,26 @@ class TransactionFilterTest {
         assertTrue(TransactionFilter(type = TransactionTypeFilter.EXPENSE).matches(writeOff))
         assertFalse(TransactionFilter(type = TransactionTypeFilter.OTHER).matches(writeOff))
     }
+
+    @Test
+    fun interestCreditMatchesItsIncomeAndTaxExpenseCategories() {
+        val interestCredit = Transaction(
+            id = "interest",
+            journalEntryId = "interest",
+            transactionType = TransactionType.INTEREST_CREDIT,
+            amount = Money(10_000L),
+            fee = Money(2_000L),
+            accountId = "savings",
+            categoryId = "interest-income",
+            categoryName = "Interest income",
+            secondaryCategoryId = "withholding-tax",
+            secondaryCategoryName = "Withholding tax"
+        )
+
+        assertTrue(TransactionFilter(type = TransactionTypeFilter.INCOME).matches(interestCredit))
+        assertTrue(TransactionFilter(type = TransactionTypeFilter.EXPENSE).matches(interestCredit))
+        assertTrue(TransactionFilter(categoryId = "withholding-tax").matches(interestCredit))
+        assertTrue(TransactionFilter(query = "withholding tax").matches(interestCredit))
+        assertFalse(TransactionFilter(categoryId = "other").matches(interestCredit))
+    }
 }

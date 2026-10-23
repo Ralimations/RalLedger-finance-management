@@ -92,8 +92,13 @@ class AccountsViewModel(
     fun setArchived(id: String, isArchived: Boolean) {
         viewModelScope.launch {
             try {
-                repository.setAccountArchived(id, isArchived)
-                _operationMessage.value = if (isArchived) "Account archived." else "Account restored."
+                val hasInterestProfile = repository.setAccountArchived(id, isArchived)
+                _operationMessage.value = when {
+                    isArchived && hasInterestProfile -> "Account and linked interest profile archived."
+                    !isArchived && hasInterestProfile -> "Account restored. Restore its interest profile separately if needed."
+                    isArchived -> "Account archived."
+                    else -> "Account restored."
+                }
             } catch (error: Exception) {
                 _operationMessage.value = error.localizedMessage ?: "Account status could not be changed."
             }

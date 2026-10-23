@@ -116,8 +116,8 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Added Planning → Interest & deposits with profile search/type/archive filters, terms editor, estimated interest, maturity status, actual-credit entry, history, reversal, archive/restore and safe delete-if-unused. Account archive also archives its linked interest profile and tells the user; restoring the profile remains a separate action.
 - Encrypted backups now serialize and validate interest profiles, tax categories, credit/journal relationships, balances, reversal state, and older backups with no interest arrays. Archived profiles linked to archived accounts remain restorable.
 - Pure domain tests were compiled with the locally cached Kotlin compiler and run with JUnit: 12 tests passed across interest estimates, monthly budget aggregation and transaction filters, including exact-centavo math, invalid terms, rounding, a daylight-saving calendar boundary, assigning interest tax to its separate expense-category budget, and finding/filtering the tax category. This isolates those modules only; it does not verify the Android module or Room integration.
-- A fresh offline Gradle run stopped before project configuration because `org.gradle.toolchains.foojay-resolver-convention:1.0.0` is unavailable in the local plugin cache. The Gradle wrapper's distribution download was denied by the restricted network. Therefore schema-11 Room generation, Android compilation, unit-suite integration, lint and instrumentation are not verified in this checkpoint; no connected device was available for interest UI smoke.
-- The existing debug APK remains the earlier schema-10 build (22,225,331 bytes); it does not contain the interest/time-deposit implementation and is not a schema-11 release artifact.
+- The first offline Gradle attempt stopped before project configuration because the Foojay plugin was not cached. After the user approved Gradle downloads, schema-11/12 Room code generation and Android compilation succeeded; the full connected suite could not execute because the only emulator was offline. Runtime migration, repository/backup instrumentation, and interest UI smoke therefore remain unverified.
+- The current debug APK was rebuilt with schema-12 source after the approval (22,394,639 bytes); this is a debug verification artifact, not a release-signed APK.
 
 ## Schema 12 — Linked subscription payments
 
@@ -127,7 +127,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Added the payment dialog and expandable history; rows show date, category, account, amount, notes and reversal state. The newest unreversed payment can be reversed after confirmation. Payments feed budget, Insights, dashboard cash-flow and transaction expense/search filters.
 - Encrypted backup serialization and integrity validation include payment references, balanced journals, category/account types, schedule snapshots and reversal-state consistency. Category merge reassigns payment category references; category/account foreign keys protect linked history.
 - Added pure tests for schedule advancement and month-end cadence, transaction expense filters, budget aggregation and reversal-aware cash flow, plus repository instrumentation coverage for posting, schedule progression, reverse ordering, category merge, protected deletion, history and encrypted backup restore. A direct local Kotlin/JUnit run passed 32 pure domain/unit tests; the run uses a temporary stub only for the database system-account ID constants and does not compile Room, Compose or Android integration.
-- Android/Room compilation, connected tests, lint and device smoke remain unverified. Offline Gradle configuration stops at the missing `org.gradle.toolchains.foojay-resolver-convention:1.0.0` plugin; this task's attempt failed before any Android task ran.
+- Android/Room compilation, unit tests, lint and Android-test source compilation now pass after Gradle downloads were approved. Connected migration/payment/backup tests and device smoke remain unverified because the emulator is offline.
 
 ## Module readiness
 
@@ -142,10 +142,10 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 | Bills and personal loans | Bill recognition to expense/payable; loan proceeds to cash/liability without income classification; partial principal and interest payments; payment reversal, cancellation by journal reversal, metadata edit, closed-record archive/restore, due-date state, search and encrypted backup | Connected debt lifecycle, reversals, category merge, schema migration and backup restore pass. Manual route and Add bill/Add loan form smoke passes; payment form interaction/restart still needs QA; posted amount/category cannot be edited or deleted |
 | Reconciliation | Atomic adjustments for asset/liability accounts implemented and unit-tested | Screen accessibility is limited; unmatched-transaction workflow is incomplete |
 | Budgets | Monthly expense-category budgets; create/edit/archive/restore/confirmed delete; live spend, remaining amount and overspend indicators; safe category references and merge handling; encrypted backup support | Connected budget lifecycle and merge tests pass. No carry-forward, fund allocation, or multi-period budget rules |
-| Subscriptions | Daily/weekly/monthly/quarterly/annual schedule create/edit, pause/resume/cancel/reactivate, archive/restore, guarded delete, normalized commitments, categorized ledger payment, history and ordered reversal | Daily schedule advancement and monthly normalization pass focused JVM tests. Schema-12 Android/Room/backup integration is not verified in this environment; due reminders remain incomplete |
+| Subscriptions | Daily/weekly/monthly/quarterly/annual schedule create/edit, pause/resume/cancel/reactivate, archive/restore, guarded delete, normalized commitments, categorized ledger payment, history and ordered reversal | Android build, unit tests and instrumentation-source compilation pass; connected schema-12 migration/payment/backup tests remain unrun because the emulator is offline; due reminders remain incomplete |
 | Savings goals | Create/edit target, date and notes; searchable list; reserve/release existing liquid cash with dated history; archive/restore; delete only before use | Connected lifecycle and encrypted backup/restore passed before the final search-field edit; final source build/unit/lint/test compilation pass; screen interaction and restart persistence remain |
-| Interest-bearing savings and time deposits | Schema-11 profile terms, interest/tax estimate, compounding, maturity, actual gross/tax/net credits, history and journal reversal; archive/restore and delete-unused | Implementation and migration are present; only the pure calculator's 5 JUnit tests passed in the current checkpoint. Android compile, Room migration, repository/backup instrumentation and UI/restart smoke need Android Studio verification |
-| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, budgets, expected income, savings goals/allocations, interest profiles/credits, bills/loans/payment audit trail, subscriptions/payment history, receivables and write-off history | Prior connected round-trip passed through schema 10. Schema-11/12 serialization and validation code is present but not currently verified; older backups omit the new arrays |
+| Interest-bearing savings and time deposits | Schema-11 profile terms, interest/tax estimate, compounding, maturity, actual gross/tax/net credits, history and journal reversal; archive/restore and delete-unused | Android build and instrumentation-source compilation pass; calculator tests pass; runtime migration, repository/backup instrumentation and UI/restart smoke remain unverified because the emulator is offline |
+| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, budgets, expected income, savings goals/allocations, interest profiles/credits, bills/loans/payment audit trail, subscriptions/payment history, receivables and write-off history | Current Android build and instrumentation-source compilation pass; prior connected round-trip passed through schema 10. Schema-11/12 runtime round-trip remains unverified because the emulator is offline; older backups omit the new arrays |
 | Dashboard | Available Money is primary; Net Worth is separate; debt liabilities, payable totals, loan proceeds and reversal-aware month cash flow flow from the ledger | User-specific account flags cannot be inspected without a device database |
 | Appearance and insights UI | Saved theme mode/palette options; interactive daily, weekly, monthly, yearly, custom-range and all-time cash-flow/category charts | Must be checked on device for contrast, overflow, and small-screen layout; native home-screen widgets are still incomplete |
 | Historical net worth/liquid-assets, savings growth, subscription/collection trend and aging reports, business reports, CSV/XLSX import/export, app lock, widgets | Incomplete | No end-to-end implementation in this checkpoint |
@@ -153,8 +153,8 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 ## Known audit findings and disposition
 
 - The prior dashboard discrepancy is reproduced as a regression test under the stated account assumptions: liquid cash is ₱2,111; total assets and net worth are ₱17,111 when liabilities are zero and receivables are ₱15,000. The actual historical database flags were not available, so its specific cause is not claimed as proven.
-- No existing user database was reset. Populated synthetic schema-1/schema-2 databases were migrated through schema 10 on the emulator. The schema-11 migration is not verified yet; user-specific historical database contents and flags remain uninspected.
-- The Android UI describes backup coverage accurately for previously verified records; schema-11 interest and schema-12 subscription-payment backup integration remain unverified. CSV, expanded reports, subscription notifications, app lock, saved views, and home-screen widgets remain outside this checkpoint.
+- No existing user database was reset. Populated synthetic schema-1/schema-2 databases were migrated through schema 10 on the emulator. Schema-11/12 migration code compiles and Room schema generation passes, but runtime migration remains unverified because the emulator is offline; user-specific historical database contents and flags remain uninspected.
+- The Android UI describes backup coverage accurately for previously runtime-verified records; schema-11 interest and schema-12 subscription-payment backup round-trips remain unverified. CSV, expanded reports, subscription notifications, app lock, saved views, and home-screen widgets remain outside this checkpoint.
 
 ## Android Studio validation checklist
 
@@ -179,7 +179,8 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - [x] Verify Bills & loans, Add bill/Add loan forms, and Subscriptions tab routing after the final mapping correction.
 - [ ] Complete hands-on Bills & loans payment entry, reversal, restart persistence, and small-screen checks.
 - [ ] Smoke-check Savings goals create/edit, reserve/release, archive/restore, and persistence after restart in Android Studio.
-- [ ] Resolve the missing Foojay plugin through the approved Android Studio/Gradle environment; compile and run schema-11/12 migrations, interest and subscription-payment lifecycle/backup tests, lint and the full suites on an online emulator.
+- [x] Resolve the Foojay plugin using the approved Gradle download; debug build, 40 unit tests, lint, and Android-test source compilation pass.
+- [ ] Run schema-11/12 migration, interest and subscription-payment lifecycle/backup tests on an online emulator; the current connected-test attempt was blocked because `emulator-5562` was offline.
 - [ ] Smoke-check interest-bearing savings and time-deposit profile editing, estimates, actual credit, tax classification, reversal, archive/restore, account archive, backup/restore and relaunch persistence.
 - [ ] Finish hands-on account/category/receivable/subscription workflows, settings persistence, charts, smaller-screen sizing, and SAF export/restore UI checks.
 
@@ -187,8 +188,8 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 1. Finish hands-on account/category/receivable/subscription CRUD, settings persistence, chart interaction, smaller-screen layout, and SAF export/restore checks.
 2. Finish hands-on Bills & loans payment, reversal, restart persistence and small-screen checks.
-3. Verify the schema-11 interest/time-deposit slice in Android Studio, including migration, account/profile lifecycle, tax accounting, encrypted backup and device UI.
-4. Verify linked subscription payment posting/history and multi-period Insights in Android Studio; then add subscription trend views, due notifications, CSV import and spreadsheet export.
+3. Verify the schema-11 interest/time-deposit slice on an online emulator, including runtime migration, account/profile lifecycle, tax accounting, encrypted backup and device UI.
+4. Verify linked subscription payment posting/history and multi-period Insights on an online emulator; then add subscription trend views, due notifications, CSV import and spreadsheet export.
 5. Add remaining customizable preferences, optional PIN/biometric lock, export privacy controls, saved filters/reports and home-screen widgets; verify each persisted workflow and backup state.
 
 ## Insights period analytics — 2026-10-23
@@ -199,7 +200,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Corrected account distribution to include active asset accounts only and to show receivables in their separate section rather than mixing liabilities into assets.
 - Added seven pure-domain unit tests for calendar period boundaries, leap-year/month ranges, custom inclusive dates/navigation, reversal date attribution, category reversal totals, income-source totals, transfer fees, subscription payments, receivable collections, buckets and empty all-time data.
 - Focused verification: the calculator and seven tests compile with the already cached Kotlin 2.2.10 compiler/JUnit artifacts and pass in a local JVM run. This is not an Android/Compose build.
-- Android Gradle verification was attempted with `--offline` and stopped during settings configuration because `org.gradle.toolchains.foojay-resolver-convention:1.0.0` is not cached. No Android app tasks ran and no dependencies were downloaded. The schema-11/12 Android integration and this Insights UI still require a Gradle-capable Android Studio environment.
+- After Gradle downloads were approved, Android compilation, unit tests, lint and Android-test source compilation passed for this Insights implementation. Device UI smoke and connected migration/backup tests remain unverified because the emulator was offline.
 - Not completed in this analytics slice: historical net-worth/liquid-assets reconstruction, savings-growth charts, subscription cost trends, receivables aging trends, personal/business reports, CSV/XLSX flows, and device/UI smoke checks.
 
 ## Daily subscription billing — 2026-10-23
@@ -208,4 +209,14 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Daily schedule advancement skips every occurrence that falls on or before the actual payment time, consistent with overdue weekly/monthly schedule handling. The Compose form derives its options from the enum, so Daily appears in create/edit selectors without a separate screen change.
 - The frequency is persisted by enum name in an existing string field; no Room schema migration is needed. Encrypted backup validation uses the enum parser and therefore recognizes the new value.
 - Added a normalization unit assertion and a daily overdue-schedule test. The subscription model and schedule plus six focused existing/new tests compile and pass using cached Kotlin/JUnit artifacts.
-- Android Gradle/UI/repository/backup verification remains blocked at settings configuration by the uncached Foojay plugin; no notifications or background billing automation were added.
+- Android build, 40-test unit suite, lint and Android-test source compilation pass after the user approved Gradle downloads. Connected repository/backup verification remains unrun because the emulator was offline; no notifications or background billing automation were added.
+
+## Latest Android verification — 2026-10-23
+
+- The debug build initially exposed a compile error in backup validation: `accountsById` was declared below code that used it. Moved the lookup before its first use and removed the later duplicate declaration.
+- After the user approved Gradle downloads, the combined `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug` and `:app:compileDebugAndroidTestKotlin` task completed successfully.
+- Unit results: 40 tests, 0 failures, 0 errors, 0 skipped. This includes 7 Insights calculator tests and 6 subscription model/schedule tests.
+- Lint completed with 0 errors and 23 warnings. Warnings include target API and deprecated Compose/icon API guidance.
+- Android-test source compilation passed. The connected test task was attempted but skipped `emulator-5562` as OFFLINE and failed with “No online devices found.” ADB reconnect did not bring a device online.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (22,394,639 bytes; built 2026-10-23). It contains the current schema-12 source but is not release-signed. Schema-11/12 runtime migrations, repository/backup instrumentation, and current UI smoke are still pending an online emulator.
+- No user database was reset or modified. The unrelated `TestApplication/.idea/deploymentTargetSelector.xml` local IDE change remains uncommitted.

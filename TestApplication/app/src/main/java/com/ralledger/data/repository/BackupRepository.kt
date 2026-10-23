@@ -379,6 +379,7 @@ class BackupRepository(
             val categoryIds = categories.map { it.id }.toSet()
             val receivableIds = receivables.map { it.id }.toSet()
             val debtIds = debts.map { it.id }.toSet()
+            val accountsById = accounts.associateBy { it.id }
             val accountIds = accounts.map { it.id }.toSet()
             val validLineAccounts = accountIds + categoryIds + receivableIds + debtIds
             if (lines.any { it.accountId !in validLineAccounts }) {
@@ -509,7 +510,6 @@ class BackupRepository(
             }
             val receivablesById = receivables.associateBy { it.id }
             val debtsById = debts.associateBy { it.id }
-            val accountsById = accounts.associateBy { it.id }
             if (debts.any { debt ->
                     val kind = runCatching { com.ralledger.domain.model.DebtKind.valueOf(debt.kind) }.getOrNull()
                     val status = runCatching { com.ralledger.domain.model.DebtStatus.valueOf(debt.status) }.getOrNull()

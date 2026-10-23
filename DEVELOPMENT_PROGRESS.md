@@ -446,3 +446,9 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - The focused `CounterpartyManagementInstrumentedTest` passed on `emulator-5554`, including rename, archive, merge, unchanged journal history and encrypted backup/restore. All 67 unit tests, lint, debug APK assembly and Android instrumentation Kotlin compilation pass. A full connected-suite attempt remained in Gradle's connected-test startup without launching `AndroidJUnitRunner`, so it was stopped; populated schema-16 migration results remain pending.
 - Client links currently cover receivables and expected income. Bills, loans and subscriptions retain their existing free-text counterparty fields; saved contacts are therefore a partial workflow, not a completed all-module contact system.
 - Refreshed `releases/RalLedger-debug.apk` from the verified debug build: 23,485,819 bytes; SHA-256 `1DA9DA7A1DEDD2BDE7F6354BF3D1F8E6496D9EA3ED7CCCCFAE42641647F98385`. `apksigner` verifies its v2 signature. It is debug-signed, manifest version `1.0`; production signing is not configured.
+
+## Latest GitHub publication — 2026-10-24
+
+- Merged the saved-client update into `main` and pushed commit `1b502a353f57ba7afbc0c20021ea51632206d968` to `Ralimations/RalLedger-finance-management`.
+- The pushed repository tree contains `releases/RalLedger-debug.apk` at 23,485,819 bytes; its Git blob matches the local APK. The APK is a debug build, not production-signed.
+- Current local checks: 67 unit tests pass; lint, APK assembly and Android-test compilation pass; the focused counterparty Room/backup test passes. A full connected-suite attempt was stopped before the runner launched, so the populated schema-16 migration and broad device suite still need a successful run.

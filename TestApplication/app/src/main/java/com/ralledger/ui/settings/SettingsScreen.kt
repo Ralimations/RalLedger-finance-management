@@ -141,7 +141,7 @@ fun SettingsScreen(
             ) {
                 Text("Encrypted Backup & Restore", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 Text(
-                    "The backup contains your current accounts, categories, journal, receivables, payment history, subscriptions, and reconciliations. It is encrypted with a password you choose. Keep that password separately; it cannot be recovered.",
+                    "The backup contains your current accounts, categories, budgets, journal, receivables, payment history, subscriptions, and reconciliations. It is encrypted with a password you choose. Keep that password separately; it cannot be recovered.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 OutlinedTextField(
@@ -199,6 +199,7 @@ fun SettingsScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("Created ${SimpleDateFormat("MMM d, yyyy HH:mm", Locale.getDefault()).format(Date(preview.createdAt))}")
                     Text("${preview.accounts} accounts · ${preview.categories} categories")
+                    Text("${preview.budgets} budgets")
                     Text("${preview.journalEntries} journal entries · ${preview.journalLines} journal lines")
                     Text("${preview.receivables} receivables · ${preview.payments} payments")
                     Text("${preview.subscriptions} subscriptions · ${preview.reconciliations} reconciliations")

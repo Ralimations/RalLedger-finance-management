@@ -3,6 +3,7 @@ package com.ralledger.data.repository
 import androidx.room.withTransaction
 import com.ralledger.data.local.RalLedgerDatabase
 import com.ralledger.data.local.entity.AccountEntity
+import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
 import com.ralledger.data.local.entity.JournalEntryEntity
 import com.ralledger.data.local.entity.JournalLineEntity
@@ -13,6 +14,7 @@ import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.AccountCategory
 import com.ralledger.domain.model.AccountType
+import com.ralledger.domain.model.Budget
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.DashboardSummary
@@ -28,6 +30,8 @@ import com.ralledger.domain.model.Transaction
 import com.ralledger.domain.model.TransactionCorrection
 import com.ralledger.domain.model.TransactionType
 import com.ralledger.domain.usecase.AccountingEngine
+import com.ralledger.domain.usecase.BudgetSpendingCalculator
+import com.ralledger.domain.usecase.BudgetSpendingKey
 import com.ralledger.domain.usecase.DashboardSummaryCalculator
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -39,6 +43,7 @@ class RalLedgerRepository(
     private val database: RalLedgerDatabase
 ) {
     private val accountDao = database.accountDao()
+    private val budgetDao = database.budgetDao()
     private val journalDao = database.journalDao()
     private val categoryDao = database.categoryDao()
     private val receivableDao = database.receivableDao()
@@ -240,8 +245,10 @@ class RalLedgerRepository(
             val category = categoryDao.getCategoryById(id)
                 ?: throw IllegalArgumentException("This category no longer exists")
             requireEditableCategory(category)
-            require(journalDao.countCategoryReferences(id) == 0L && categoryDao.countChildren(id) == 0L) {
-                "This category has transaction history or subcategories. Archive it to preserve its history."
+            require(journalDao.countCategoryReferences(id) == 0L &&
+                budgetDao.countCategoryReferences(id) == 0L && categoryDao.countChildren(id) == 0L
+            ) {
+                "This category has transaction history, budgets, or subcategories. Archive it to preserve its history."
             }
             categoryDao.deleteCategory(id)
         }
@@ -259,8 +266,15 @@ class RalLedgerRepository(
             require(source.type == target.type && !target.isArchived && target.parentCategoryId == null) {
                 "Choose an active top-level category of the same type"
             }
+            val sourceBudgets = budgetDao.getBudgetsForCategory(sourceId)
+            require(sourceBudgets.none { budget ->
+                budgetDao.getBudgetForCategoryPeriod(targetId, budget.year, budget.month) != null
+            }) {
+                "This category and the destination already have budgets for the same month. Delete one before merging."
+            }
             journalDao.reassignEntryCategory(sourceId, targetId)
             journalDao.reassignCategoryLedgerLines(sourceId, targetId)
+            budgetDao.reassignCategory(sourceId, targetId)
             categoryDao.moveChildren(sourceId, targetId)
             categoryDao.deleteCategory(sourceId)
         }
@@ -343,6 +357,99 @@ class RalLedgerRepository(
                 reversesEntryId = entry.reversesEntryId,
                 isReversed = entry.id in reversedEntryIds
             )
+        }
+    }
+
+    val budgetsFlow: Flow<List<Budget>> = combine(
+        budgetDao.getAllBudgetsFlow(),
+        categoryDao.getAllCategoriesFlow(),
+        transactionsFlow
+    ) { budgetEntities, categoryEntities, transactions ->
+        val categoryNames = categoryEntities.associate { it.id to it.name }
+        val spendingByCategoryPeriod = BudgetSpendingCalculator.aggregate(transactions)
+        budgetEntities.map { budget ->
+            val key = BudgetSpendingKey(budget.categoryId, budget.year, budget.month)
+            Budget(
+                id = budget.id,
+                categoryId = budget.categoryId,
+                categoryName = categoryNames[budget.categoryId] ?: "Category",
+                year = budget.year,
+                month = budget.month,
+                limit = Money(budget.limitCentavos),
+                spent = spendingByCategoryPeriod[key] ?: Money.ZERO,
+                isArchived = budget.isArchived
+            )
+        }
+    }
+
+    suspend fun createBudget(categoryId: String, year: Int, month: Int, limit: Money): String {
+        validateBudgetValues(year, month, limit)
+        val id = UUID.randomUUID().toString()
+        database.withTransaction {
+            validateBudgetCategory(categoryId)
+            require(budgetDao.getBudgetForCategoryPeriod(categoryId, year, month) == null) {
+                "A budget already exists for this category and month"
+            }
+            budgetDao.insertBudget(
+                BudgetEntity(
+                    id = id,
+                    categoryId = categoryId,
+                    year = year,
+                    month = month,
+                    limitCentavos = limit.centavos
+                )
+            )
+        }
+        return id
+    }
+
+    suspend fun updateBudget(id: String, categoryId: String, year: Int, month: Int, limit: Money) {
+        validateBudgetValues(year, month, limit)
+        database.withTransaction {
+            val current = budgetDao.getBudgetById(id)
+                ?: throw IllegalArgumentException("This budget no longer exists")
+            validateBudgetCategory(categoryId, allowArchived = current.isArchived && categoryId == current.categoryId)
+            val existing = budgetDao.getBudgetForCategoryPeriod(categoryId, year, month)
+            require(existing == null || existing.id == id) {
+                "A budget already exists for this category and month"
+            }
+            budgetDao.updateBudget(
+                current.copy(
+                    categoryId = categoryId,
+                    year = year,
+                    month = month,
+                    limitCentavos = limit.centavos
+                )
+            )
+        }
+    }
+
+    suspend fun setBudgetArchived(id: String, isArchived: Boolean) {
+        database.withTransaction {
+            val budget = budgetDao.getBudgetById(id)
+                ?: throw IllegalArgumentException("This budget no longer exists")
+            if (!isArchived) validateBudgetCategory(budget.categoryId)
+            budgetDao.setArchived(id, isArchived)
+        }
+    }
+
+    suspend fun deleteBudget(id: String) {
+        database.withTransaction {
+            require(budgetDao.getBudgetById(id) != null) { "This budget no longer exists" }
+            budgetDao.deleteBudget(id)
+        }
+    }
+
+    private fun validateBudgetValues(year: Int, month: Int, limit: Money) {
+        require(year in 1900..9999 && month in 1..12) { "Choose a valid budget month" }
+        require(limit.isPositive) { "Enter a budget limit greater than zero" }
+    }
+
+    private suspend fun validateBudgetCategory(categoryId: String, allowArchived: Boolean = false) {
+        val category = categoryDao.getCategoryById(categoryId)
+            ?: throw IllegalArgumentException("Choose an existing expense category")
+        require(category.type == CategoryType.EXPENSE.name && (allowArchived || !category.isArchived)) {
+            "Choose an active expense category"
         }
     }
 

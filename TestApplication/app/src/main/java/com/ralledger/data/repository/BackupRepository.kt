@@ -3,6 +3,7 @@ package com.ralledger.data.repository
 import androidx.room.withTransaction
 import com.ralledger.data.local.RalLedgerDatabase
 import com.ralledger.data.local.entity.AccountEntity
+import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
 import com.ralledger.data.local.entity.JournalEntryEntity
 import com.ralledger.data.local.entity.JournalLineEntity
@@ -30,6 +31,7 @@ data class BackupPreview(
     val createdAt: Long,
     val accounts: Int,
     val categories: Int,
+    val budgets: Int,
     val journalEntries: Int,
     val journalLines: Int,
     val receivables: Int,
@@ -77,6 +79,7 @@ class BackupRepository(
 
         database.withTransaction {
             val accounts = database.accountDao()
+            val budgets = database.budgetDao()
             val categories = database.categoryDao()
             val journals = database.journalDao()
             val receivables = database.receivableDao()
@@ -91,11 +94,13 @@ class BackupRepository(
             receivables.clearReceivables()
             subscriptions.clearSubscriptions()
             reconciliations.clearReconciliations()
+            budgets.clearBudgets()
             categories.clearCategories()
             accounts.clearAccounts()
 
             if (snapshot.accounts.isNotEmpty()) accounts.insertAccounts(snapshot.accounts)
             if (snapshot.categories.isNotEmpty()) categories.insertCategoriesForRestore(snapshot.categories)
+            if (snapshot.budgets.isNotEmpty()) budgets.insertBudgetsForRestore(snapshot.budgets)
             if (snapshot.entries.isNotEmpty()) journals.insertJournalEntries(snapshot.entries)
             if (snapshot.lines.isNotEmpty()) journals.insertJournalLinesForRestore(snapshot.lines)
             if (snapshot.receivables.isNotEmpty()) receivables.insertReceivables(snapshot.receivables)
@@ -132,6 +137,7 @@ class BackupRepository(
         createdAt = System.currentTimeMillis(),
         accounts = database.accountDao().getAllAccounts(),
         categories = database.categoryDao().getAllCategories(),
+        budgets = database.budgetDao().getAllBudgets(),
         entries = database.journalDao().getAllJournalEntries(),
         lines = database.journalDao().getAllJournalLines(),
         receivables = database.receivableDao().getAllReceivables(),
@@ -212,6 +218,7 @@ class BackupRepository(
         val createdAt: Long,
         val accounts: List<AccountEntity>,
         val categories: List<CategoryEntity>,
+        val budgets: List<BudgetEntity>,
         val entries: List<JournalEntryEntity>,
         val lines: List<JournalLineEntity>,
         val receivables: List<ReceivableEntity>,
@@ -226,6 +233,7 @@ class BackupRepository(
             put("createdAt", createdAt)
             put("accounts", JSONArray().also { array -> accounts.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("categories", JSONArray().also { array -> categories.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("budgets", JSONArray().also { array -> budgets.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalEntries", JSONArray().also { array -> entries.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalLines", JSONArray().also { array -> lines.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("receivables", JSONArray().also { array -> receivables.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
@@ -241,6 +249,7 @@ class BackupRepository(
             }
             checkUnique("account", accounts) { it.id }
             checkUnique("category", categories) { it.id }
+            checkUnique("budget", budgets) { it.id }
             checkUnique("journal entry", entries) { it.id }
             checkUnique("journal line", lines) { it.id }
             checkUnique("receivable", receivables) { it.id }
@@ -273,6 +282,15 @@ class BackupRepository(
                     } == true
                 }
             ) errors += "Category has a missing, mismatched, or nested parent"
+            if (budgets.any { it.categoryId !in categoryIds || categoriesById[it.categoryId]?.type != "EXPENSE" }) {
+                errors += "Budget references a missing or non-expense category"
+            }
+            if (budgets.any { it.limitCentavos <= 0L || it.year !in 1900..9999 || it.month !in 1..12 }) {
+                errors += "Budget has an invalid period or limit"
+            }
+            if (budgets.map { Triple(it.categoryId, it.year, it.month) }.toSet().size != budgets.size) {
+                errors += "Duplicate category budgets for the same month"
+            }
             if (accounts.any { runCatching { com.ralledger.domain.model.AccountType.valueOf(it.accountType) }.isFailure } ||
                 categories.any { runCatching { com.ralledger.domain.model.CategoryType.valueOf(it.type) }.isFailure } ||
                 receivables.any { runCatching { com.ralledger.domain.model.ReceivableStatus.valueOf(it.status) }.isFailure } ||
@@ -343,6 +361,7 @@ class BackupRepository(
                 createdAt = createdAt,
                 accounts = accounts.size,
                 categories = categories.size,
+                budgets = budgets.size,
                 journalEntries = entries.size,
                 journalLines = lines.size,
                 receivables = receivables.size,
@@ -365,6 +384,7 @@ class BackupRepository(
                     createdAt = json.getLong("createdAt"),
                     accounts = json.getJSONArray("accounts").objects().map { it.toAccount() },
                     categories = json.getJSONArray("categories").objects().map { it.toCategory() },
+                    budgets = json.optJSONArray("budgets")?.objects()?.map { it.toBudget() }.orEmpty(),
                     entries = json.getJSONArray("journalEntries").objects().map { it.toJournalEntry() },
                     lines = json.getJSONArray("journalLines").objects().map { it.toJournalLine() },
                     receivables = json.getJSONArray("receivables").objects().map { it.toReceivable() },
@@ -421,6 +441,15 @@ private fun JSONObject.toCategory() = CategoryEntity(
     id = getString("id"), name = getString("name"), type = getString("type"), iconName = getString("iconName"),
     colorHex = getString("colorHex"), isDefault = getBoolean("isDefault"),
     parentCategoryId = stringOrNull("parentCategoryId"), isArchived = optBoolean("isArchived", false)
+)
+
+private fun BudgetEntity.toJson() = JSONObject().apply {
+    put("id", id); put("categoryId", categoryId); put("year", year); put("month", month)
+    put("limitCentavos", limitCentavos); put("isArchived", isArchived)
+}
+private fun JSONObject.toBudget() = BudgetEntity(
+    id = getString("id"), categoryId = getString("categoryId"), year = getInt("year"),
+    month = getInt("month"), limitCentavos = getLong("limitCentavos"), isArchived = optBoolean("isArchived", false)
 )
 
 private fun JournalEntryEntity.toJson() = JSONObject().apply {

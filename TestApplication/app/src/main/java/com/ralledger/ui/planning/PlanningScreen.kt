@@ -25,11 +25,12 @@ import com.ralledger.ui.subscriptions.SubscriptionsViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlanningScreen(
+    budgetsViewModel: BudgetsViewModel,
     receivablesViewModel: ReceivablesViewModel,
     subscriptionsViewModel: SubscriptionsViewModel
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Receivables", "Subscriptions")
+    val tabs = listOf("Budgets", "Receivables", "Subscriptions")
 
     Column(
         modifier = Modifier
@@ -41,11 +42,6 @@ fun PlanningScreen(
                 text = "Financial Planning",
                 style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text = "Manage uncollected dues & recurring subscriptions",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
             )
         }
 
@@ -60,8 +56,9 @@ fun PlanningScreen(
         }
 
         when (selectedTab) {
-            0 -> ReceivablesScreen(viewModel = receivablesViewModel)
-            1 -> SubscriptionsScreen(viewModel = subscriptionsViewModel)
+            0 -> BudgetsScreen(viewModel = budgetsViewModel)
+            1 -> ReceivablesScreen(viewModel = receivablesViewModel)
+            2 -> SubscriptionsScreen(viewModel = subscriptionsViewModel)
         }
     }
 }

@@ -8,12 +8,14 @@ import androidx.room.withTransaction
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ralledger.data.local.dao.AccountDao
+import com.ralledger.data.local.dao.BudgetDao
 import com.ralledger.data.local.dao.CategoryDao
 import com.ralledger.data.local.dao.JournalDao
 import com.ralledger.data.local.dao.ReceivableDao
 import com.ralledger.data.local.dao.ReconciliationDao
 import com.ralledger.data.local.dao.SubscriptionDao
 import com.ralledger.data.local.entity.AccountEntity
+import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
 import com.ralledger.data.local.entity.JournalEntryEntity
 import com.ralledger.data.local.entity.JournalLineEntity
@@ -31,6 +33,7 @@ import kotlinx.coroutines.launch
 @Database(
     entities = [
         AccountEntity::class,
+        BudgetEntity::class,
         JournalEntryEntity::class,
         JournalLineEntity::class,
         CategoryEntity::class,
@@ -39,12 +42,13 @@ import kotlinx.coroutines.launch
         SubscriptionEntity::class,
         ReconciliationEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
 
     abstract fun accountDao(): AccountDao
+    abstract fun budgetDao(): BudgetDao
     abstract fun journalDao(): JournalDao
     abstract fun categoryDao(): CategoryDao
     abstract fun receivableDao(): ReceivableDao
@@ -52,7 +56,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun reconciliationDao(): ReconciliationDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 4
+        const val CURRENT_SCHEMA_VERSION = 5
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -79,6 +83,26 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS budgets (
+                        id TEXT NOT NULL,
+                        categoryId TEXT NOT NULL,
+                        year INTEGER NOT NULL,
+                        month INTEGER NOT NULL,
+                        limitCentavos INTEGER NOT NULL,
+                        isArchived INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(categoryId) REFERENCES categories(id)
+                            ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_budgets_categoryId ON budgets(categoryId)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_budgets_year_month_categoryId ON budgets(year, month, categoryId)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
 
@@ -89,7 +113,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

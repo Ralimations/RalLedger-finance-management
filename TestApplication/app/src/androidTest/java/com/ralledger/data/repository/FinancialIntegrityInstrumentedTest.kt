@@ -56,6 +56,7 @@ class FinancialIntegrityInstrumentedTest {
             )
 
             val repository = RalLedgerRepository(source)
+            repository.createBudget("cat_test_expense", 2026, 10, Money(50_000L))
             repository.recordIncome("wallet_test", "cat_test_income", Money(12345L), "Synthetic test income")
             val receivable = repository.createReceivable(
                 clientName = "Synthetic Client",
@@ -82,10 +83,12 @@ class FinancialIntegrityInstrumentedTest {
             val destinationBackupRepository = BackupRepository(destination)
             val preview = destinationBackupRepository.prepareRestore(encryptedBackup!!, password)
             assertTrue(preview.canRestore)
+            assertEquals(1, preview.budgets)
             destinationBackupRepository.restorePreparedBackup()
 
             assertEquals(source.accountDao().getAllAccounts(), destination.accountDao().getAllAccounts())
             assertEquals(source.categoryDao().getAllCategories(), destination.categoryDao().getAllCategories())
+            assertEquals(source.budgetDao().getAllBudgets(), destination.budgetDao().getAllBudgets())
             assertEquals(source.journalDao().getAllJournalEntries(), destination.journalDao().getAllJournalEntries())
             assertEquals(source.journalDao().getAllJournalLines(), destination.journalDao().getAllJournalLines())
             assertEquals(source.receivableDao().getAllReceivables(), destination.receivableDao().getAllReceivables())

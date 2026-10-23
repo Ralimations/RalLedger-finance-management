@@ -15,7 +15,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Corrected liability reconciliation normal-side handling and added positive/negative tests for asset and liability adjustments.
 - Added transaction reversal entries with preserved audit history. Reversing a collection restores the receivable balance and marks the payment reversed atomically. Reversal and payment relationships are migrated and indexed.
 - Receivable creation now recognizes income once through a balanced journal entry. Collection checks positive amounts, remaining balance, collectible status, and active liquid destination accounts under a database transaction. Overdue status is derived from due dates in the live flow.
-- Added encrypted SAF backup save/open flows using AES-256-GCM with a random nonce and PBKDF2-HMAC-SHA256 password derivation. Backups cover the current Room schema: accounts, categories, journal entries/lines, receivables/payments, subscriptions, and reconciliations. Restore previews counts and integrity errors, then replaces current rows atomically with a post-restore equivalence check.
+- Added encrypted SAF backup save/open flows using AES-256-GCM with a random nonce and PBKDF2-HMAC-SHA256 password derivation. The current schema-5 backup covers accounts, categories, budgets, journal entries/lines, receivables/payments, subscriptions, and reconciliations. Restore previews counts and integrity errors, then replaces current rows atomically with a post-restore equivalence check.
 - Disabled Android automatic data backup and excluded app data in both legacy and Android 12+ extraction rules; the portable in-app backup remains the supported recovery path.
 - Corrected dashboard asset aggregation and moved it into a unit-testable calculator. Reversal postings are included as contra income/expense on the reversal date. Subscription commitments are normalized to monthly amounts.
 - Added synthetic instrumentation coverage for concurrent receivable collection, payment reversal, and encrypted backup/restore equivalence. The test source compiles; it has not run on a device.
@@ -45,6 +45,8 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Added row actions for Correct, Duplicate, and Void with reversal. Reversed originals have no further actions; correction preserves the transaction type and exposes the relevant editable fields.
 - Added unit coverage for transaction search/filter behavior and emulator coverage for atomic correction, preserved original journal lines, rejected invalid targets, and receivable safety.
 - Added a schema-1 migration fixture populated across accounts, categories, journal entries/lines, receivables/payments, subscriptions and reconciliations. It verifies all records survive the 1→2→3→4 upgrade and that newly introduced fields get safe defaults.
+- Added monthly category budgets with create, edit, archive/restore, and confirmed delete controls in Planning. Actual spending is calculated from persisted non-reversed expenses and transfer fees; reversed entries do not count. Budget/category merge collisions are rejected atomically, while non-colliding category merges preserve budget links.
+- Raised Room to schema 5 with a category foreign key and unique category/month budget constraint. Encrypted backup/restore now includes budget records and validates category, period, limit, and duplicate integrity.
 
 ## Verification
 
@@ -62,10 +64,12 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Passed: final combined debug build, 14 unit tests, lint, Android-test Kotlin compilation, and 5 connected emulator tests after the dashboard and category-action layout updates; lint reports 23 issues, with no task failure.
 - Passed: final combined `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:compileDebugAndroidTestKotlin`, and `:app:connectedDebugAndroidTest` after transaction correction/filter and schema-1 fixture work. Results: 18 unit tests and 8 connected emulator tests, all passing; lint task succeeds with 23 guidance issues and no task failure.
 - Passed: schema-1 fixture migration preserves account, category, journal, receivable/payment, subscription and reconciliation data through schema 4; schema-2 fixture migration preserves account/category data and adds blank description, no parent and active category status.
+- Passed after the budget module: `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, and `:app:compileDebugAndroidTestKotlin`. Results: 19 unit tests, 0 failures; lint succeeds with 23 warnings and 0 errors; Android instrumentation sources, including schema-1→5, budget CRUD/merge, and budget backup coverage, compile.
+- Not verified on-device after the budget changes: `:app:connectedDebugAndroidTest` could not install its test APK because ADB reported the emulator offline. No connected test report was produced for this run. Budget lifecycle, 4→5 database migration, and budget backup round-trip tests are written but still need to execute on a live emulator.
 - Passed: debug APK launch smoke check on `emulator-5554`; Overview showed Available Money first with Net Worth separate, the transaction shortcut clear of the monthly summary, the Accounts empty state, and Categories opened from Settings. The category list and Add category dialog were visually checked; full account/category form submission and lifecycle actions remain outstanding. One offline emulator was skipped.
 - Passed: transaction UI smoke on `emulator-5554` using only synthetic data. The journal filter panel rendered; Duplicate opened with account/category/amount/description/date prefilled; Correct opened with editable fields; saving a correction displayed the reversal, a Reversed marker on the original, and the replacement entry. The synthetic correction was posted only to the emulator test install.
-- Debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`.
-- Latest debug APK size: 21,920,301 bytes.
+- Debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (rebuilt with schema 5 and the Budgets tab).
+- Latest debug APK size: 21,984,793 bytes.
 - Gradle verification used the cached Gradle 9.6.0 distribution copied into ignored `.ralledger-local` plus the local JDK 25. Repository access was needed to resolve Foojay and Android plugins. Project settings/wrapper versions were restored unchanged after diagnosis.
 
 ## Module readiness
@@ -74,12 +78,13 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 |---|---|---|
 | Money input and accounting engine | Implemented and unit-tested | Android screens still need hands-on validation |
 | Accounts | Create, metadata edit, icon/color, dashboard inclusion, search, history, archive/restore, guarded unused delete and backup; lifecycle/migration tests pass | Currency/type/opening balance intentionally immutable after creation; full screen interactions still need manual QA |
-| Transactions | Income, expense, transfers/fees, search, type/account/category/date filters, duplicate, reversal, and atomic correction by reversal plus replacement; connected correction tests pass | No draft lifecycle, transaction type conversion, attachments/tags, refunds, or loan UI; linked receivable postings cannot use generic correction. Full manual account/category CRUD UI validation remains outstanding |
+| Transactions | Income, expense, transfers/fees, search, type/account/category/date filters, duplicate, reversal, and atomic correction by reversal plus replacement; connected correction tests passed before the budget schema change | No draft lifecycle, transaction type conversion, attachments/tags, refunds, or loan UI; linked receivable postings cannot use generic correction. Re-run connected suite and UI checks |
 | Categories and income sources | Create, rename, recolor, re-icon, one-level subcategory, search, archive/restore, history, merge and unused delete; migration/backup tests pass | Income sources are represented by income categories; no separate source analytics. Full screen interactions still need manual QA |
 | Receivables | Recognition, partial collection, due-date status, history records, reversal logic and emulator instrumentation | Cancellation, write-off, editable due dates, and full payment-history UI are incomplete |
 | Reconciliation | Atomic adjustments for asset/liability accounts implemented and unit-tested | Screen accessibility is limited; unmatched-transaction workflow is incomplete |
+| Budgets | Monthly expense-category budgets; create/edit/archive/restore/confirmed delete; live spend, remaining amount and overspend indicators; safe category references and merge handling; encrypted backup support | Unit calculator passes. Budget CRUD, schema 4→5 migration, and budget backup round-trip instrumentation are written and compile but were not run because the emulator went offline. No carry-forward, fund allocation, or multi-period budget rules |
 | Subscriptions | CRUD foundation and monthly normalization implemented | Periods remain weekly/monthly/quarterly/annual; notifications, charge confirmation, and richer lifecycle controls are incomplete |
-| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state; emulator round-trip passes | No payables, budgets, savings goals, preferences, or time deposits exist yet to export |
+| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, and budget serialization/validation | Existing entity round-trip passed before budgets; budget round-trip assertion is added but awaits connected emulator execution. Payables, savings goals, preferences, and time deposits are not implemented |
 | Dashboard | Available Money is primary; Net Worth is separate; totals and reversal-aware month summary are implemented and unit-tested | User-specific account flags cannot be inspected without a device database |
 | Appearance and insights UI | Saved theme mode/palette options; monthly interactive spending chart and clearer money summaries | Must be checked on device for motion, contrast, and small-screen layout; native home-screen widgets are still incomplete |
 | Budgets, payables/debt, savings goals, expected income, time deposits, CSV/XLSX import, reports export, app lock, widgets, advanced charts | Incomplete | No end-to-end implementation in this checkpoint |
@@ -109,8 +114,8 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Next development steps
 
-1. Continue hands-on account/category CRUD checks, including archive/restore and delete guards.
-2. Implement the next financial modules with full CRUD and accounting coverage: budgets, payables/debts, savings goals, expected income, and time deposits.
-3. Add CSV import/export and expanded statistics/reports, extending encrypted backup and restore coverage with each persisted module.
-4. Finish subscription lifecycle controls, optional app lock, export privacy controls, and home-screen widgets after their underlying data/actions exist.
-5. Manually validate transaction quick-add, filter/date controls, correction and reversal states, account/category forms, and smaller-screen layouts; rerun build/tests/lint after each milestone.
+1. Restore an online emulator and run the connected suite; smoke-check the Budgets tab, monthly spend, overspend, edit, archive/restore, delete confirmation, schema 4→5 upgrade, and backup round-trip.
+2. Continue hands-on account/category CRUD checks, including archive/restore and delete guards.
+3. Implement payables/debts, savings goals, expected income, and time deposits with full lifecycle, reporting, and backup coverage.
+4. Add CSV import/export and expanded statistics/reports, extending encrypted backup and restore coverage with each persisted module.
+5. Finish subscription lifecycle controls, optional app lock, export privacy controls, and home-screen widgets; then validate transaction filters/correction and smaller-screen layouts.

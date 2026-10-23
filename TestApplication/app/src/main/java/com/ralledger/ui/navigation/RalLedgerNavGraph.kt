@@ -132,7 +132,11 @@ fun RalLedgerMainScreen(
                             Icon(Icons.Default.Add, contentDescription = "Record transaction")
                         }
                     }
-                    IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
+                    IconButton(onClick = {
+                        navController.navigate(Screen.Settings.route) {
+                            launchSingleTop = true
+                        }
+                    }) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
                 }
@@ -156,12 +160,22 @@ fun RalLedgerMainScreen(
                         } else null,
                         selected = currentRoute == screen.route,
                         onClick = {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
+                            if (currentRoute == Screen.Settings.route || currentRoute == Screen.Categories.route) {
+                                val returnedToTab = navController.popBackStack(screen.route, inclusive = false)
+                                if (!returnedToTab) {
+                                    while (navController.currentDestination?.route !in navScreens.map { it.route }) {
+                                        if (!navController.popBackStack()) break
+                                    }
                                 }
-                                launchSingleTop = true
-                                restoreState = true
+                            }
+                            if (navController.currentDestination?.route != screen.route) {
+                                navController.navigate(screen.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
                             }
                         }
                     )

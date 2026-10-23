@@ -43,7 +43,7 @@ fun DashboardScreen(viewModel: DashboardViewModel, settings: DashboardSettings) 
 
         items(settings.visibleInOrder, key = { it.name }) { widget ->
             when (widget) {
-                DashboardWidget.AVAILABLE_MONEY -> AvailableMoneyCard(summary.liquidCashAndBankBalances)
+                DashboardWidget.AVAILABLE_MONEY -> AvailableMoneyCard(summary.availableToSpendFunds)
                 DashboardWidget.NET_WORTH -> NetWorthCard(summary)
                 DashboardWidget.RESERVED_SAVINGS -> MetricCard(
                     modifier = Modifier.fillMaxWidth(),

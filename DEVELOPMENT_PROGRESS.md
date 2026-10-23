@@ -22,6 +22,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Added custom unit tests for centavo parsing, reconciliation, journal reversals, monthly subscription conversion, dashboard totals, and reversal effects on current-month totals.
 - Applied a cohesive visual pass to the existing app: saved System/Light/Dark appearance plus Ocean/Indigo/Sage palettes; rounded shared surfaces; a money-first dashboard; numeric-first transaction entry; and a month-switchable, tappable category-spending chart.
 - Scoped the app-wide transaction FAB to Home and Insights so it no longer overlaps the account, transaction, receivable, or subscription screens' own primary actions.
+- Simplified the dashboard header to a single `Overview` label and removed the redundant tagline and supporting sentence.
 - Insights now total only income and expense activity for the selected month, omit reversed entries from the original period, and show category shares and normalized subscription commitments.
 
 ## Verification
@@ -30,6 +31,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Passed: `:app:assembleDebug`
 - Passed after the visual redesign: fresh `:app:assembleDebug --rerun-tasks` (all 38 tasks executed; no test tasks run in this UI pass).
 - Passed after the FAB overlap fix: `:app:assembleDebug` (incremental debug rebuild).
+- Passed after trimming dashboard copy: `:app:assembleDebug`.
 - Passed: `:app:testDebugUnitTest` — 14 tests, 0 failures, 0 errors.
 - Passed: `:app:lintDebug` — task succeeds; lint reports 20 guidance findings, mostly available SDK/dependency updates and target API guidance.
 - Passed: `:app:compileDebugAndroidTestKotlin` — the new database/backup instrumentation test source compiles.

@@ -36,8 +36,7 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
     ) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("Your money, in focus", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
-                Text("A clear view of where you stand today.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Overview", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
             }
         }
 

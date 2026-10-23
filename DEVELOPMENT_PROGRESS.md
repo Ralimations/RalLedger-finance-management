@@ -148,7 +148,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 | Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, budgets, expected income, savings goals/allocations, interest profiles/credits, bills/loans/payment audit trail, subscriptions/payment history, receivables and write-off history | Prior connected round-trip passed through schema 10. Schema-11/12 serialization and validation code is present but not currently verified; older backups omit the new arrays |
 | Dashboard | Available Money is primary; Net Worth is separate; debt liabilities, payable totals, loan proceeds and reversal-aware month cash flow flow from the ledger | User-specific account flags cannot be inspected without a device database |
 | Appearance and insights UI | Saved theme mode/palette options; interactive daily, weekly, monthly, yearly, custom-range and all-time cash-flow/category charts | Must be checked on device for contrast, overflow, and small-screen layout; native home-screen widgets are still incomplete |
-| Historical net worth/liquid-assets, savings growth, subscription/collection statistics, business reports, CSV/XLSX import/export, app lock, widgets | Incomplete | No end-to-end implementation in this checkpoint |
+| Historical net worth/liquid-assets, savings growth, subscription/collection trend and aging reports, business reports, CSV/XLSX import/export, app lock, widgets | Incomplete | No end-to-end implementation in this checkpoint |
 
 ## Known audit findings and disposition
 
@@ -168,12 +168,12 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - [x] Run the connected suite on an online emulator; populated schema-1/schema-2 migration chains through schema 10, debt/receivable/expected-income/savings-goal lifecycle, and encrypted backup round-trip passed before the final savings-goal search-field edit. Connected rerun after that edit was blocked because no emulator was online.
 - [x] Verify repository reconciliation corrections for asset and liability accounts with positive and negative differences while preserving original opening journal entries.
 - [x] Smoke-check account-menu reconciliation on emulator; verified adjustment text, reason entry, saved balance and success feedback.
-- [ ] Add subscriptions with weekly, monthly, quarterly, and annual billing; edit a schedule, pause/resume, cancel/reactivate, archive/restore, and verify normalized dashboard total.
+- [ ] Add subscriptions with daily, weekly, monthly, quarterly, and annual billing; edit a schedule, pause/resume, cancel/reactivate, archive/restore, and verify normalized dashboard total.
 - [x] Run subscription lifecycle and archived-subscription backup tests as part of the schema-8 connected suite. The populated schema-1→8 chain also traverses the 5→6 migration.
 - [ ] Export an encrypted backup, restore it into an empty test install, and compare accounts, journal, receivables, payment history, and dashboard balances.
 - [ ] Restart the app and verify records persist; inspect UI sizing, insets, dialogs, and navigation on multiple screen sizes.
 - [ ] Switch System/Light/Dark and Ocean/Indigo/Sage in Settings; confirm selection persists after relaunch and chart colors remain readable.
-- [ ] Change insight months and tap chart segments/category rows; verify monthly totals match the transaction journal.
+- [ ] Validate day/week/month/year/custom/all-time Insights, custom date boundaries, reversals, category taps, source totals, and selected-bucket values against the journal.
 - [x] Run `connectedDebugAndroidTest`; 13 tests passed, including backup and concurrent collection coverage.
 - [x] Smoke-check expected-income tab and editor; create, cancel, and delete a synthetic forecast and verify the list returns to empty.
 - [x] Verify Bills & loans, Add bill/Add loan forms, and Subscriptions tab routing after the final mapping correction.
@@ -188,7 +188,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 1. Finish hands-on account/category/receivable/subscription CRUD, settings persistence, chart interaction, smaller-screen layout, and SAF export/restore checks.
 2. Finish hands-on Bills & loans payment, reversal, restart persistence and small-screen checks.
 3. Verify the schema-11 interest/time-deposit slice in Android Studio, including migration, account/profile lifecycle, tax accounting, encrypted backup and device UI.
-4. Verify linked subscription payment posting/history in Android Studio; then add due notifications, CSV import, spreadsheet export and expanded date-range reports.
+4. Verify linked subscription payment posting/history and multi-period Insights in Android Studio; then add subscription trend views, due notifications, CSV import and spreadsheet export.
 5. Add remaining customizable preferences, optional PIN/biometric lock, export privacy controls, saved filters/reports and home-screen widgets; verify each persisted workflow and backup state.
 
 ## Insights period analytics — 2026-10-23

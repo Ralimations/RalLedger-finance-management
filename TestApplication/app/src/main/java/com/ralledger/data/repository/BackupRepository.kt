@@ -25,6 +25,7 @@ import com.ralledger.data.local.entity.SavedTransactionFilterEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.LineType
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -62,20 +63,26 @@ data class BackupPreview(
     val writeOffs: Int,
     val subscriptions: Int,
     val reconciliations: Int,
-    val validationErrors: List<String>
+    val validationErrors: List<String>,
+    val userPreferencesIncluded: Boolean = false
 ) {
     val canRestore: Boolean get() = validationErrors.isEmpty()
 }
 
 class BackupRepository(
-    private val database: RalLedgerDatabase
+    private val database: RalLedgerDatabase,
+    private val userPreferencesStore: BackupPreferencesStore? = null
 ) {
     @Volatile
     private var pendingRestore: BackupSnapshot? = null
 
     suspend fun createEncryptedBackup(password: String): ByteArray = withContext(Dispatchers.IO) {
         requireValidPassword(password)
-        val snapshot = database.withTransaction { readSnapshot() }
+        val userPreferences = userPreferencesStore?.read()
+        val snapshot = database.withTransaction {
+            val data = readSnapshot(userPreferences)
+            data.copy(userPreferences = userPreferences?.effectiveFor(data.accounts))
+        }
         encrypt(snapshot.toJson().toString().toByteArray(StandardCharsets.UTF_8), password)
     }
 
@@ -89,84 +96,104 @@ class BackupRepository(
         } finally {
             Arrays.fill(clearText, 0)
         }
-        val preview = snapshot.preview()
+        val preview = previewForThisInstallation(snapshot)
         pendingRestore = snapshot
         preview
     }
 
     suspend fun restorePreparedBackup(): BackupPreview = withContext(Dispatchers.IO) {
         val snapshot = pendingRestore ?: throw IllegalStateException("Choose and inspect a backup before restoring")
-        val preview = snapshot.preview()
+        val preview = previewForThisInstallation(snapshot)
         require(preview.canRestore) {
             "Backup failed integrity checks: ${preview.validationErrors.joinToString()}"
         }
 
-        database.withTransaction {
-            val accounts = database.accountDao()
-            val budgets = database.budgetDao()
-            val categories = database.categoryDao()
-            val expectedIncome = database.expectedIncomeDao()
-            val debts = database.debtDao()
-            val savingsGoals = database.savingsGoalDao()
-            val interest = database.interestDao()
-            val subscriptionPayments = database.subscriptionPaymentDao()
-            val transactionTags = database.transactionTagDao()
-            val savedFilters = database.savedTransactionFilterDao()
-            val journals = database.journalDao()
-            val receivables = database.receivableDao()
-            val subscriptions = database.subscriptionDao()
-            val reconciliations = database.reconciliationDao()
+        val previousUserPreferences = snapshot.userPreferences?.let { userPreferencesStore?.read() }
+        var preferencesWriteAttempted = false
+        try {
+            database.withTransaction {
+                val accounts = database.accountDao()
+                val budgets = database.budgetDao()
+                val categories = database.categoryDao()
+                val expectedIncome = database.expectedIncomeDao()
+                val debts = database.debtDao()
+                val savingsGoals = database.savingsGoalDao()
+                val interest = database.interestDao()
+                val subscriptionPayments = database.subscriptionPaymentDao()
+                val transactionTags = database.transactionTagDao()
+                val savedFilters = database.savedTransactionFilterDao()
+                val journals = database.journalDao()
+                val receivables = database.receivableDao()
+                val subscriptions = database.subscriptionDao()
+                val reconciliations = database.reconciliationDao()
 
-            // Clear child rows first. Room rolls this entire replacement back if any insert or
-            // the verification step fails.
-            receivables.clearPayments()
-            receivables.clearWriteOffs()
-            expectedIncome.clear()
-            debts.clearPayments()
-            debts.clearDebts()
-            savingsGoals.clearEvents()
-            savingsGoals.clearGoals()
-            interest.clearCredits()
-            interest.clearProducts()
-            subscriptionPayments.clearPayments()
-            transactionTags.clearAllAssignments()
-            transactionTags.clearTags()
-            savedFilters.clear()
-            journals.clearJournalLines()
-            journals.clearJournalEntries()
-            receivables.clearReceivables()
-            subscriptions.clearSubscriptions()
-            reconciliations.clearReconciliations()
-            budgets.clearBudgets()
-            categories.clearCategories()
-            accounts.clearAccounts()
+                // Clear child rows first. Room rolls this entire replacement back if any insert or
+                // the verification step fails.
+                receivables.clearPayments()
+                receivables.clearWriteOffs()
+                expectedIncome.clear()
+                debts.clearPayments()
+                debts.clearDebts()
+                savingsGoals.clearEvents()
+                savingsGoals.clearGoals()
+                interest.clearCredits()
+                interest.clearProducts()
+                subscriptionPayments.clearPayments()
+                transactionTags.clearAllAssignments()
+                transactionTags.clearTags()
+                savedFilters.clear()
+                journals.clearJournalLines()
+                journals.clearJournalEntries()
+                receivables.clearReceivables()
+                subscriptions.clearSubscriptions()
+                reconciliations.clearReconciliations()
+                budgets.clearBudgets()
+                categories.clearCategories()
+                accounts.clearAccounts()
 
-            if (snapshot.accounts.isNotEmpty()) accounts.insertAccounts(snapshot.accounts)
-            if (snapshot.categories.isNotEmpty()) categories.insertCategoriesForRestore(snapshot.categories)
-            if (snapshot.budgets.isNotEmpty()) budgets.insertBudgetsForRestore(snapshot.budgets)
-            if (snapshot.entries.isNotEmpty()) journals.insertJournalEntries(snapshot.entries)
-            if (snapshot.lines.isNotEmpty()) journals.insertJournalLinesForRestore(snapshot.lines)
-            if (snapshot.receivables.isNotEmpty()) receivables.insertReceivables(snapshot.receivables)
-            if (snapshot.expectedIncome.isNotEmpty()) expectedIncome.insertAll(snapshot.expectedIncome)
-            if (snapshot.debts.isNotEmpty()) debts.insertDebts(snapshot.debts)
-            if (snapshot.debtPayments.isNotEmpty()) debts.insertPayments(snapshot.debtPayments)
-            if (snapshot.savingsGoals.isNotEmpty()) savingsGoals.insertGoals(snapshot.savingsGoals)
-            if (snapshot.savingsGoalEvents.isNotEmpty()) savingsGoals.insertEvents(snapshot.savingsGoalEvents)
-            if (snapshot.interestProducts.isNotEmpty()) interest.insertProducts(snapshot.interestProducts)
-            if (snapshot.payments.isNotEmpty()) receivables.insertPayments(snapshot.payments)
-            if (snapshot.writeOffs.isNotEmpty()) receivables.insertWriteOffs(snapshot.writeOffs)
-            if (snapshot.interestCredits.isNotEmpty()) interest.insertCredits(snapshot.interestCredits)
-            if (snapshot.subscriptions.isNotEmpty()) subscriptions.insertSubscriptions(snapshot.subscriptions)
-            if (snapshot.subscriptionPayments.isNotEmpty()) subscriptionPayments.insertPayments(snapshot.subscriptionPayments)
-            if (snapshot.transactionTags.isNotEmpty()) transactionTags.insertTags(snapshot.transactionTags)
-            if (snapshot.journalEntryTags.isNotEmpty()) transactionTags.insertAssignments(snapshot.journalEntryTags)
-            if (snapshot.savedTransactionFilters.isNotEmpty()) savedFilters.insertForRestore(snapshot.savedTransactionFilters)
-            if (snapshot.reconciliations.isNotEmpty()) reconciliations.insertReconciliations(snapshot.reconciliations)
+                if (snapshot.accounts.isNotEmpty()) accounts.insertAccounts(snapshot.accounts)
+                if (snapshot.categories.isNotEmpty()) categories.insertCategoriesForRestore(snapshot.categories)
+                if (snapshot.budgets.isNotEmpty()) budgets.insertBudgetsForRestore(snapshot.budgets)
+                if (snapshot.entries.isNotEmpty()) journals.insertJournalEntries(snapshot.entries)
+                if (snapshot.lines.isNotEmpty()) journals.insertJournalLinesForRestore(snapshot.lines)
+                if (snapshot.receivables.isNotEmpty()) receivables.insertReceivables(snapshot.receivables)
+                if (snapshot.expectedIncome.isNotEmpty()) expectedIncome.insertAll(snapshot.expectedIncome)
+                if (snapshot.debts.isNotEmpty()) debts.insertDebts(snapshot.debts)
+                if (snapshot.debtPayments.isNotEmpty()) debts.insertPayments(snapshot.debtPayments)
+                if (snapshot.savingsGoals.isNotEmpty()) savingsGoals.insertGoals(snapshot.savingsGoals)
+                if (snapshot.savingsGoalEvents.isNotEmpty()) savingsGoals.insertEvents(snapshot.savingsGoalEvents)
+                if (snapshot.interestProducts.isNotEmpty()) interest.insertProducts(snapshot.interestProducts)
+                if (snapshot.payments.isNotEmpty()) receivables.insertPayments(snapshot.payments)
+                if (snapshot.writeOffs.isNotEmpty()) receivables.insertWriteOffs(snapshot.writeOffs)
+                if (snapshot.interestCredits.isNotEmpty()) interest.insertCredits(snapshot.interestCredits)
+                if (snapshot.subscriptions.isNotEmpty()) subscriptions.insertSubscriptions(snapshot.subscriptions)
+                if (snapshot.subscriptionPayments.isNotEmpty()) subscriptionPayments.insertPayments(snapshot.subscriptionPayments)
+                if (snapshot.transactionTags.isNotEmpty()) transactionTags.insertTags(snapshot.transactionTags)
+                if (snapshot.journalEntryTags.isNotEmpty()) transactionTags.insertAssignments(snapshot.journalEntryTags)
+                if (snapshot.savedTransactionFilters.isNotEmpty()) savedFilters.insertForRestore(snapshot.savedTransactionFilters)
+                if (snapshot.reconciliations.isNotEmpty()) reconciliations.insertReconciliations(snapshot.reconciliations)
 
-            val restored = readSnapshot().copy(createdAt = snapshot.createdAt)
-            check(restored.toJson().toString() == snapshot.toJson().toString()) {
-                "Restored records do not match the validated backup"
+                snapshot.userPreferences?.let { preferences ->
+                    preferencesWriteAttempted = true
+                    requireNotNull(userPreferencesStore).write(preferences)
+                }
+
+                val restored = readSnapshot(snapshot.userPreferences).copy(createdAt = snapshot.createdAt)
+                check(restored.toJson().toString() == snapshot.toJson().toString()) {
+                    "Restored records do not match the validated backup"
+                }
             }
+        } catch (error: Throwable) {
+            if (preferencesWriteAttempted && previousUserPreferences != null) {
+                runCatching {
+                    withContext(NonCancellable) {
+                        userPreferencesStore?.write(previousUserPreferences)
+                    }
+                }
+                    .exceptionOrNull()
+                    ?.let(error::addSuppressed)
+            }
+            throw error
         }
         pendingRestore = null
         preview
@@ -178,17 +205,31 @@ class BackupRepository(
 
     suspend fun writeEncryptedBackupToDocument(password: String, writeDocument: suspend (ByteArray) -> Unit): BackupPreview {
         requireValidPassword(password)
-        val snapshot = database.withTransaction { readSnapshot() }
+        val userPreferences = userPreferencesStore?.read()
+        val snapshot = database.withTransaction {
+            val data = readSnapshot(userPreferences)
+            data.copy(userPreferences = userPreferences?.effectiveFor(data.accounts))
+        }
         val bytes = encrypt(snapshot.toJson().toString().toByteArray(StandardCharsets.UTF_8), password)
         try {
             writeDocument(bytes)
         } finally {
             Arrays.fill(bytes, 0)
         }
-        return snapshot.preview()
+        return previewForThisInstallation(snapshot)
     }
 
-    private suspend fun readSnapshot() = BackupSnapshot(
+    private fun previewForThisInstallation(snapshot: BackupSnapshot): BackupPreview {
+        val preview = snapshot.preview()
+        if (snapshot.userPreferences != null && userPreferencesStore == null) {
+            return preview.copy(
+                validationErrors = (preview.validationErrors + "This installation cannot restore backed-up user preferences").distinct()
+            )
+        }
+        return preview
+    }
+
+    private suspend fun readSnapshot(userPreferences: BackupUserPreferences? = null) = BackupSnapshot(
         createdAt = System.currentTimeMillis(),
         accounts = database.accountDao().getAllAccounts(),
         categories = database.categoryDao().getAllCategories(),
@@ -210,7 +251,8 @@ class BackupRepository(
         payments = database.receivableDao().getAllPayments(),
         writeOffs = database.receivableDao().getAllWriteOffs(),
         subscriptions = database.subscriptionDao().getAllSubscriptions(),
-        reconciliations = database.reconciliationDao().getAllReconciliations()
+        reconciliations = database.reconciliationDao().getAllReconciliations(),
+        userPreferences = userPreferences
     )
 
     private fun requireValidPassword(password: String) {
@@ -303,7 +345,8 @@ class BackupRepository(
         val payments: List<ReceivablePaymentEntity>,
         val writeOffs: List<ReceivableWriteOffEntity>,
         val subscriptions: List<SubscriptionEntity>,
-        val reconciliations: List<ReconciliationEntity>
+        val reconciliations: List<ReconciliationEntity>,
+        val userPreferences: BackupUserPreferences? = null
     ) {
         fun toJson() = JSONObject().apply {
             put("appName", "RalLedger")
@@ -331,6 +374,7 @@ class BackupRepository(
             put("receivableWriteOffs", JSONArray().also { array -> writeOffs.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("subscriptions", JSONArray().also { array -> subscriptions.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("reconciliations", JSONArray().also { array -> reconciliations.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            userPreferences?.let { put("userPreferences", it.toJson()) }
         }
 
         fun preview(): BackupPreview {
@@ -364,6 +408,7 @@ class BackupRepository(
             checkUnique("receivable write-off", writeOffs) { it.id }
             checkUnique("subscription", subscriptions) { it.id }
             checkUnique("reconciliation", reconciliations) { it.id }
+            userPreferences?.let { errors += it.validationErrors(accounts) }
 
             val goalsById = savingsGoals.associateBy { it.id }
             val interestProductsById = interestProducts.associateBy { it.id }
@@ -752,7 +797,8 @@ class BackupRepository(
                 writeOffs = writeOffs.size,
                 subscriptions = subscriptions.size,
                 reconciliations = reconciliations.size,
-                validationErrors = errors.distinct()
+                validationErrors = errors.distinct(),
+                userPreferencesIncluded = userPreferences != null
             )
         }
 
@@ -786,7 +832,8 @@ class BackupRepository(
                     payments = json.getJSONArray("receivablePayments").objects().map { it.toPayment() },
                     writeOffs = json.optJSONArray("receivableWriteOffs")?.objects()?.map { it.toReceivableWriteOff() }.orEmpty(),
                     subscriptions = json.getJSONArray("subscriptions").objects().map { it.toSubscription() },
-                    reconciliations = json.getJSONArray("reconciliations").objects().map { it.toReconciliation() }
+                    reconciliations = json.getJSONArray("reconciliations").objects().map { it.toReconciliation() },
+                    userPreferences = json.optJSONObject("userPreferences")?.let(BackupUserPreferences::fromJson)
                 )
             }
         }

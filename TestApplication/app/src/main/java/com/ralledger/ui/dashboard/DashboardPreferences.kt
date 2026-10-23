@@ -51,6 +51,15 @@ class DashboardPreferences(context: Context) {
         }
     }
 
+    suspend fun restore(settings: DashboardSettings) {
+        val order = normalizeDashboardOrder(settings.order.joinToString(",") { it.name })
+        val visible = settings.visible.intersect(DashboardWidget.entries.toSet())
+        store.edit { preferences ->
+            preferences[ORDER_KEY] = order.joinToString(",") { it.name }
+            preferences[VISIBLE_KEY] = visible.sortedBy { it.ordinal }.joinToString(",") { it.name }
+        }
+    }
+
     private companion object {
         val ORDER_KEY = stringPreferencesKey("widget_order")
         val VISIBLE_KEY = stringPreferencesKey("visible_widgets")

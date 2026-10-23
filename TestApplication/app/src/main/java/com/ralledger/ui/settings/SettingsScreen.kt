@@ -554,6 +554,15 @@ fun SettingsScreen(
                     Text("${preview.transactionTags} transaction labels · ${preview.taggedJournalEntries} labeled journal entries")
                     Text("${preview.savedTransactionFilters} saved transaction filters")
                     Text(
+                        if (preview.userPreferencesIncluded) {
+                            "Appearance, dashboard, display, entry, and reminder settings included; app lock stays on this device"
+                        } else {
+                            "No saved app settings in this backup; current settings will be kept"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
                         "Restoring replaces all current RalLedger records on this device.",
                         color = MaterialTheme.colorScheme.error
                     )

@@ -42,6 +42,13 @@ class ThemePreferences(context: Context) {
         store.edit { it[PALETTE_KEY] = palette.name }
     }
 
+    suspend fun restore(settings: ThemeSettings) {
+        store.edit { preferences ->
+            preferences[MODE_KEY] = settings.mode.name
+            preferences[PALETTE_KEY] = settings.palette.name
+        }
+    }
+
     private companion object {
         val MODE_KEY = stringPreferencesKey("theme_mode")
         val PALETTE_KEY = stringPreferencesKey("theme_palette")

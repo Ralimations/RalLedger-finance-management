@@ -139,7 +139,9 @@ fun RalLedgerMainScreen(
             }
         },
         floatingActionButton = {
-            if (currentRoute != Screen.Transactions.route && currentRoute != Screen.Settings.route) {
+            // Screens with their own primary action own the FAB slot. Keep the
+            // app-wide transaction shortcut on overview screens only.
+            if (currentRoute == Screen.Dashboard.route || currentRoute == Screen.Insights.route) {
                 FloatingActionButton(onClick = { showAddDialog = true }) {
                     Icon(Icons.Default.Add, contentDescription = "Add Transaction")
                 }

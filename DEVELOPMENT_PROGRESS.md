@@ -21,6 +21,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Added synthetic instrumentation coverage for concurrent receivable collection, payment reversal, and encrypted backup/restore equivalence. The test source compiles; it has not run on a device.
 - Added custom unit tests for centavo parsing, reconciliation, journal reversals, monthly subscription conversion, dashboard totals, and reversal effects on current-month totals.
 - Applied a cohesive visual pass to the existing app: saved System/Light/Dark appearance plus Ocean/Indigo/Sage palettes; rounded shared surfaces; a money-first dashboard; numeric-first transaction entry; and a month-switchable, tappable category-spending chart.
+- Scoped the app-wide transaction FAB to Home and Insights so it no longer overlaps the account, transaction, receivable, or subscription screens' own primary actions.
 - Insights now total only income and expense activity for the selected month, omit reversed entries from the original period, and show category shares and normalized subscription commitments.
 
 ## Verification
@@ -28,6 +29,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Environment: JDK 25.0.4.1 Temurin was downloaded from the official Adoptium API, SHA-256 checked against its official metadata, and placed in ignored `.ralledger-local/jdk25` so no project Java/Gradle versions needed changing. The installed SDK already includes API 35/37, build-tools 36.0.0, platform-tools, emulator, and an API 37 x86_64 system image.
 - Passed: `:app:assembleDebug`
 - Passed after the visual redesign: fresh `:app:assembleDebug --rerun-tasks` (all 38 tasks executed; no test tasks run in this UI pass).
+- Passed after the FAB overlap fix: `:app:assembleDebug` (incremental debug rebuild).
 - Passed: `:app:testDebugUnitTest` — 14 tests, 0 failures, 0 errors.
 - Passed: `:app:lintDebug` — task succeeds; lint reports 20 guidance findings, mostly available SDK/dependency updates and target API guidance.
 - Passed: `:app:compileDebugAndroidTestKotlin` — the new database/backup instrumentation test source compiles.

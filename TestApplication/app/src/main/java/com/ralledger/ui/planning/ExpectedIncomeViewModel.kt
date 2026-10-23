@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ralledger.data.repository.RalLedgerRepository
 import com.ralledger.domain.model.Category
+import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.ExpectedIncome
 import com.ralledger.domain.model.Money
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -21,16 +22,18 @@ class ExpectedIncomeViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val categories: StateFlow<List<Category>> = repository.categoriesFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val counterparties: StateFlow<List<Counterparty>> = repository.counterpartiesFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
 
-    fun create(description: String, counterparty: String, amount: Money, date: Long, categoryId: String) = runAction("Expected income saved") {
-        repository.createExpectedIncome(description, counterparty, amount, date, categoryId)
+    fun create(description: String, counterparty: String, amount: Money, date: Long, categoryId: String, counterpartyId: String?) = runAction("Expected income saved") {
+        repository.createExpectedIncome(description, counterparty, amount, date, categoryId, counterpartyId)
     }
 
-    fun update(item: ExpectedIncome, description: String, counterparty: String, amount: Money, date: Long, categoryId: String) = runAction("Changes saved") {
-        repository.updateExpectedIncome(item.id, description, counterparty, amount, date, categoryId)
+    fun update(item: ExpectedIncome, description: String, counterparty: String, amount: Money, date: Long, categoryId: String, counterpartyId: String?) = runAction("Changes saved") {
+        repository.updateExpectedIncome(item.id, description, counterparty, amount, date, categoryId, counterpartyId)
     }
 
     fun cancel(item: ExpectedIncome) = runAction("Expected income cancelled") { repository.cancelExpectedIncome(item.id) }

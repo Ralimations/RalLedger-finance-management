@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
+import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Receivable
 import com.ralledger.domain.model.ReceivableStatus
@@ -69,6 +70,7 @@ fun ReceivablesScreen(viewModel: ReceivablesViewModel) {
     val receivables by viewModel.receivables.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
+    val counterparties by viewModel.counterparties.collectAsState()
     val operationMessage by viewModel.operationMessage.collectAsState()
     var includeArchived by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
@@ -146,13 +148,14 @@ fun ReceivablesScreen(viewModel: ReceivablesViewModel) {
         ReceivableEditorDialog(
             receivable = editing,
             categories = incomeCategories,
+            counterparties = counterparties,
             onDismiss = { showEditor = false },
-            onConfirm = { client, amount, dueDate, description, categoryId ->
+            onConfirm = { client, amount, dueDate, description, categoryId, counterpartyId ->
                 val current = editing
                 if (current == null) {
-                    viewModel.createReceivable(client, amount, dueDate, categoryId, description)
+                    viewModel.createReceivable(client, amount, dueDate, categoryId, description, counterpartyId)
                 } else {
-                    viewModel.updateReceivable(current.id, client, dueDate, description)
+                    viewModel.updateReceivable(current.id, client, dueDate, description, counterpartyId)
                 }
                 showEditor = false
             }
@@ -359,8 +362,9 @@ private fun HistoryRow(
 private fun ReceivableEditorDialog(
     receivable: Receivable?,
     categories: List<Category>,
+    counterparties: List<Counterparty>,
     onDismiss: () -> Unit,
-    onConfirm: (client: String, amount: Money, dueDate: Long, description: String, categoryId: String?) -> Unit
+    onConfirm: (client: String, amount: Money, dueDate: Long, description: String, categoryId: String?, counterpartyId: String?) -> Unit
 ) {
     var client by remember(receivable?.id) { mutableStateOf(receivable?.clientName.orEmpty()) }
     var amountText by remember(receivable?.id) { mutableStateOf(receivable?.originalAmount?.let { moneyInput(it.centavos) }.orEmpty()) }
@@ -368,6 +372,8 @@ private fun ReceivableEditorDialog(
     var dueDate by remember(receivable?.id) { mutableStateOf(receivable?.dueDate ?: System.currentTimeMillis() + 30L * 86_400_000L) }
     var selectedCategoryId by remember(receivable?.id) { mutableStateOf(receivable?.linkedCategoryId ?: categories.firstOrNull()?.id.orEmpty()) }
     var categoryExpanded by remember { mutableStateOf(false) }
+    var counterpartyExpanded by remember { mutableStateOf(false) }
+    var selectedCounterpartyId by remember(receivable?.id) { mutableStateOf(receivable?.counterpartyId) }
     var datePickerOpen by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val datePickerState = if (datePickerOpen) rememberDatePickerState(initialSelectedDateMillis = dueDate) else null
@@ -380,7 +386,36 @@ private fun ReceivableEditorDialog(
                 modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                OutlinedTextField(client, { client = it; error = null }, label = { Text("Client / counterparty") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    client,
+                    { client = it; selectedCounterpartyId = null; error = null },
+                    label = { Text("Client / counterparty") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                ExposedDropdownMenuBox(
+                    expanded = counterpartyExpanded,
+                    onExpandedChange = { counterpartyExpanded = !counterpartyExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = counterparties.firstOrNull { it.id == selectedCounterpartyId }?.name ?: "No saved client linked",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Link saved client") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = counterpartyExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = counterpartyExpanded, onDismissRequest = { counterpartyExpanded = false }) {
+                        DropdownMenuItem(
+                            text = { Text("No saved client") },
+                            onClick = { selectedCounterpartyId = null; counterpartyExpanded = false }
+                        )
+                        counterparties.filter { !it.isArchived || it.id == receivable?.counterpartyId }.forEach { item ->
+                            DropdownMenuItem(
+                                text = { Text(item.name + if (item.isArchived) " (archived)" else "") },
+                                onClick = { client = item.name; selectedCounterpartyId = item.id; counterpartyExpanded = false }
+                            )
+                        }
+                    }
+                }
                 if (receivable == null) {
                     OutlinedTextField(
                         amountText, { amountText = it; error = null },
@@ -416,7 +451,7 @@ private fun ReceivableEditorDialog(
                     client.isBlank() -> error = "Enter a client or counterparty name."
                     amount == null || !amount.isPositive -> error = "Enter an amount greater than zero."
                     receivable == null && selectedCategoryId.isBlank() -> error = "Choose an income source."
-                    else -> onConfirm(client.trim(), amount, dueDate, description.trim(), selectedCategoryId.ifBlank { null })
+                    else -> onConfirm(client.trim(), amount, dueDate, description.trim(), selectedCategoryId.ifBlank { null }, selectedCounterpartyId)
                 }
             }) { Text(if (receivable == null) "Record receivable" else "Save details") }
         },

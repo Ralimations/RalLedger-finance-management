@@ -1,12 +1,12 @@
 # RalLedger v2.0 Development Progress
 
-Updated: 2026-10-23
+Updated: 2026-10-24
 Branch: `feature/ralledger-v2-live-ready`
 Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Delivered in this checkpoint
 
-- Verified the original clean `master` baseline and created the requested feature branch. No remote is configured; nothing was pushed or merged.
+- Verified the original clean `master` baseline and created the requested feature branch. At that initial checkpoint no remote was configured; later publishing checkpoints are recorded below.
 - Added root ignore rules for local Android configuration, generated builds, signing material, local JDK files, databases, and financial exports.
 - Replaced permissive floating-point input parsing in production screens with decimal-safe centavo parsing and visible validation.
 - Made account opening balance + journal posting atomic; opening balances are shown without an expense sign.
@@ -429,4 +429,13 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - A previous `:app:connectedDebugAndroidTest` run on `emulator-5554` passed 25 tests with 0 failures or skips, including preference round-trip and legacy-backup compatibility. On the final source, `:app:assembleDebug`, `:app:testDebugUnitTest` (66 tests, 0 failures/errors/skips), `:app:lintDebug` (28 warnings, 0 errors), and `:app:compileDebugAndroidTestKotlin` passed.
 - Refreshed `releases/RalLedger-debug.apk`: 23,430,221 bytes; SHA-256 `1839A368E93E66685EC7F1ED24346635A0C918975176DC9236A77B558A486128`. It is debug-signed, manifest version `1.0`; production signing remains unconfigured.
 - The latest connected-task attempt reported 0 tests. A direct backup-class run was aborted with `INSTRUMENTATION_ABORTED: System has crashed`; Android System UI and Phone processes also reported startup ANRs, and Package Manager was unavailable during reboot. The new preference-write failure/rollback/retry case is compiled but not emulator-verified.
-- The new GitHub repository is configured as `origin`. This continuation remains on `feature/ralledger-v2-live-ready`; this APK and the implementation are local pending the remaining release-readiness work. Manual SAF settings round-trip, cross-store crash consistency, wrong-password/cancel recovery, and small-screen checks remain open.
+- At this checkpoint the new GitHub repository was configured as `origin`; this implementation and APK were still local pending the remaining release-readiness work. Manual SAF settings round-trip, cross-store crash consistency, wrong-password/cancel recovery, and small-screen checks remain open.
+
+## Saved clients and counterparty links — 2026-10-23
+
+- Added a persisted counterparty directory with case- and whitespace-normalized duplicate prevention, client/supplier/both/other types, notes, search, edit, archive/restore, merge and guarded deletion.
+- Receivables and expected-income forecasts can link to a saved counterparty or keep using free text. Linked names follow a rename; converting a forecast carries the link to its receivable. Existing journal descriptions remain unchanged.
+- Added Room schema 16 and nullable restrictive foreign keys from receivables and expected income. Encrypted backups carry counterparties and their record links while remaining compatible with backups created before this schema.
+- The focused `CounterpartyManagementInstrumentedTest` passed on `emulator-5554`, including rename, archive, merge, unchanged journal history and encrypted backup/restore. All 67 unit tests, lint, debug APK assembly and Android instrumentation Kotlin compilation pass. A full connected-suite attempt remained in Gradle's connected-test startup without launching `AndroidJUnitRunner`, so it was stopped; populated schema-16 migration results remain pending.
+- Client links currently cover receivables and expected income. Bills, loans and subscriptions retain their existing free-text counterparty fields; saved contacts are therefore a partial workflow, not a completed all-module contact system.
+- Refreshed `releases/RalLedger-debug.apk` from the verified debug build: 23,485,819 bytes; SHA-256 `1DA9DA7A1DEDD2BDE7F6354BF3D1F8E6496D9EA3ED7CCCCFAE42641647F98385`. `apksigner` verifies its v2 signature. It is debug-signed, manifest version `1.0`; production signing is not configured.

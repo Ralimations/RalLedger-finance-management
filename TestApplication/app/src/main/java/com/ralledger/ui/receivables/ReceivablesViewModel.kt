@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.ralledger.data.repository.RalLedgerRepository
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.Category
+import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Receivable
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,14 +32,18 @@ class ReceivablesViewModel(
     val categories: StateFlow<List<Category>> = repository.categoriesFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val counterparties: StateFlow<List<Counterparty>> = repository.counterpartiesFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     fun createReceivable(
         clientName: String,
         amount: Money,
         dueDate: Long,
         incomeCategoryId: String?,
-        description: String
+        description: String,
+        counterpartyId: String?
     ) {
-        runOperation("Receivable created.") { repository.createReceivable(clientName, amount, dueDate, incomeCategoryId, description) }
+        runOperation("Receivable created.") { repository.createReceivable(clientName, amount, dueDate, incomeCategoryId, description, counterpartyId) }
     }
 
     fun collectReceivable(
@@ -50,9 +55,9 @@ class ReceivablesViewModel(
         runOperation("Payment recorded.") { repository.collectReceivable(receivableId, destinationAccountId, amount, notes) }
     }
 
-    fun updateReceivable(id: String, clientName: String, dueDate: Long, description: String) {
+    fun updateReceivable(id: String, clientName: String, dueDate: Long, description: String, counterpartyId: String?) {
         runOperation("Receivable details updated.") {
-            repository.updateReceivableDetails(id, clientName, dueDate, description)
+            repository.updateReceivableDetails(id, clientName, dueDate, description, counterpartyId)
         }
     }
 

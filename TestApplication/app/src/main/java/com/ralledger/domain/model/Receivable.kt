@@ -44,5 +44,6 @@ data class Receivable(
     val status: ReceivableStatus = ReceivableStatus.CONFIRMED,
     val payments: List<ReceivablePayment> = emptyList(),
     val writeOffs: List<ReceivableWriteOff> = emptyList(),
-    val isArchived: Boolean = false
+    val isArchived: Boolean = false,
+    val counterpartyId: String? = null
 )

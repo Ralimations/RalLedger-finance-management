@@ -22,8 +22,14 @@ interface ExpectedIncomeDao {
     @Query("SELECT COUNT(*) FROM expected_income WHERE incomeCategoryId = :categoryId")
     suspend fun countCategoryReferences(categoryId: String): Long
 
+    @Query("SELECT COUNT(*) FROM expected_income WHERE counterpartyId = :counterpartyId")
+    suspend fun countCounterpartyReferences(counterpartyId: String): Long
+
     @Query("UPDATE expected_income SET incomeCategoryId = :targetId WHERE incomeCategoryId = :sourceId")
     suspend fun reassignCategory(sourceId: String, targetId: String)
+
+    @Query("UPDATE expected_income SET counterpartyId = :targetId WHERE counterpartyId = :sourceId")
+    suspend fun reassignCounterparty(sourceId: String, targetId: String)
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(item: ExpectedIncomeEntity)

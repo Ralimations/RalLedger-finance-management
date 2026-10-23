@@ -5,6 +5,7 @@ import com.ralledger.data.local.RalLedgerDatabase
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
+import com.ralledger.data.local.entity.CounterpartyEntity
 import com.ralledger.data.local.entity.ExpectedIncomeEntity
 import com.ralledger.data.local.entity.DebtEntity
 import com.ralledger.data.local.entity.DebtPaymentEntity
@@ -24,6 +25,7 @@ import com.ralledger.data.local.entity.JournalEntryTagEntity
 import com.ralledger.data.local.entity.SavedTransactionFilterEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.LineType
+import com.ralledger.domain.model.normalizeCounterpartyName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -64,7 +66,8 @@ data class BackupPreview(
     val subscriptions: Int,
     val reconciliations: Int,
     val validationErrors: List<String>,
-    val userPreferencesIncluded: Boolean = false
+    val userPreferencesIncluded: Boolean = false,
+    val counterparties: Int = 0
 ) {
     val canRestore: Boolean get() = validationErrors.isEmpty()
 }
@@ -115,6 +118,7 @@ class BackupRepository(
                 val accounts = database.accountDao()
                 val budgets = database.budgetDao()
                 val categories = database.categoryDao()
+                val counterparties = database.counterpartyDao()
                 val expectedIncome = database.expectedIncomeDao()
                 val debts = database.debtDao()
                 val savingsGoals = database.savingsGoalDao()
@@ -145,6 +149,7 @@ class BackupRepository(
                 journals.clearJournalLines()
                 journals.clearJournalEntries()
                 receivables.clearReceivables()
+                counterparties.clear()
                 subscriptions.clearSubscriptions()
                 reconciliations.clearReconciliations()
                 budgets.clearBudgets()
@@ -153,6 +158,7 @@ class BackupRepository(
 
                 if (snapshot.accounts.isNotEmpty()) accounts.insertAccounts(snapshot.accounts)
                 if (snapshot.categories.isNotEmpty()) categories.insertCategoriesForRestore(snapshot.categories)
+                if (snapshot.counterparties.isNotEmpty()) counterparties.insertAll(snapshot.counterparties)
                 if (snapshot.budgets.isNotEmpty()) budgets.insertBudgetsForRestore(snapshot.budgets)
                 if (snapshot.entries.isNotEmpty()) journals.insertJournalEntries(snapshot.entries)
                 if (snapshot.lines.isNotEmpty()) journals.insertJournalLinesForRestore(snapshot.lines)
@@ -233,6 +239,7 @@ class BackupRepository(
         createdAt = System.currentTimeMillis(),
         accounts = database.accountDao().getAllAccounts(),
         categories = database.categoryDao().getAllCategories(),
+        counterparties = database.counterpartyDao().getAll(),
         budgets = database.budgetDao().getAllBudgets(),
         expectedIncome = database.expectedIncomeDao().getAllExpectedIncome(),
         debts = database.debtDao().getAllDebts(),
@@ -327,6 +334,7 @@ class BackupRepository(
         val createdAt: Long,
         val accounts: List<AccountEntity>,
         val categories: List<CategoryEntity>,
+        val counterparties: List<CounterpartyEntity>,
         val budgets: List<BudgetEntity>,
         val expectedIncome: List<ExpectedIncomeEntity>,
         val debts: List<DebtEntity>,
@@ -355,6 +363,7 @@ class BackupRepository(
             put("createdAt", createdAt)
             put("accounts", JSONArray().also { array -> accounts.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("categories", JSONArray().also { array -> categories.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("counterparties", JSONArray().also { array -> counterparties.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("budgets", JSONArray().also { array -> budgets.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("expectedIncome", JSONArray().also { array -> expectedIncome.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("debts", JSONArray().also { array -> debts.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
@@ -385,6 +394,8 @@ class BackupRepository(
             }
             checkUnique("account", accounts) { it.id }
             checkUnique("category", categories) { it.id }
+            checkUnique("counterparty", counterparties) { it.id }
+            checkUnique("counterparty name", counterparties) { it.normalizedName }
             checkUnique("budget", budgets) { it.id }
             checkUnique("expected income", expectedIncome) { it.id }
             checkUnique("debt", debts) { it.id }
@@ -409,6 +420,13 @@ class BackupRepository(
             checkUnique("subscription", subscriptions) { it.id }
             checkUnique("reconciliation", reconciliations) { it.id }
             userPreferences?.let { errors += it.validationErrors(accounts) }
+
+            val counterpartiesById = counterparties.associateBy { it.id }
+            if (counterparties.any { item ->
+                    item.name.isBlank() || item.normalizedName != normalizeCounterpartyName(item.name) ||
+                        runCatching { com.ralledger.domain.model.CounterpartyKind.valueOf(item.kind) }.isFailure || item.createdAt <= 0L
+                }
+            ) errors += "Counterparty has an invalid name, type, or creation date"
 
             val goalsById = savingsGoals.associateBy { it.id }
             val interestProductsById = interestProducts.associateBy { it.id }
@@ -595,9 +613,10 @@ class BackupRepository(
             }
             if (expectedIncome.any {
                     it.incomeCategoryId !in categoryIds || categoriesById[it.incomeCategoryId]?.type != "INCOME" ||
-                        it.amountCentavos <= 0L || it.expectedDate <= 0L || it.createdAt <= 0L
+                        it.amountCentavos <= 0L || it.expectedDate <= 0L || it.createdAt <= 0L ||
+                        (it.counterpartyId != null && it.counterpartyId !in counterpartiesById)
                 }
-            ) errors += "Expected income references a missing or non-income category or has an invalid amount or date"
+            ) errors += "Expected income references a missing category or counterparty or has an invalid amount or date"
             if (expectedIncome.any { runCatching { com.ralledger.domain.model.ExpectedIncomeStatus.valueOf(it.status) }.isFailure }) {
                 errors += "Expected income contains an unsupported status"
             }
@@ -680,12 +699,18 @@ class BackupRepository(
                         linkedReceivable == null || linkedReceivable.originalAmountCentavos != expected.amountCentavos ||
                             linkedReceivable.linkedCategoryId != expected.incomeCategoryId ||
                             linkedReceivable.dueDate != expected.expectedDate ||
-                            (expected.counterparty.isNotBlank() && linkedReceivable.clientName != expected.counterparty)
+                            (expected.counterpartyId != linkedReceivable.counterpartyId) ||
+                            (expected.counterpartyId == null && expected.counterparty.isNotBlank() && linkedReceivable.clientName != expected.counterparty)
                     } else {
                         expected.convertedReceivableId != null
                     }
                 }
             ) errors += "Expected income conversion does not match its receivable"
+            if (receivables.any { receivable ->
+                    (receivable.counterpartyId != null && receivable.counterpartyId !in counterpartiesById) ||
+                        (receivable.linkedCategoryId != null && receivable.linkedCategoryId !in categoryIds)
+                }
+            ) errors += "Receivable references a missing income category or counterparty"
             if (accounts.any { runCatching { com.ralledger.domain.model.AccountType.valueOf(it.accountType) }.isFailure } ||
                 categories.any { runCatching { com.ralledger.domain.model.CategoryType.valueOf(it.type) }.isFailure } ||
                 receivables.any { runCatching { com.ralledger.domain.model.ReceivableStatus.valueOf(it.status) }.isFailure } ||
@@ -778,6 +803,7 @@ class BackupRepository(
                 createdAt = createdAt,
                 accounts = accounts.size,
                 categories = categories.size,
+                counterparties = counterparties.size,
                 budgets = budgets.size,
                 expectedIncome = expectedIncome.size,
                 debts = debts.size,
@@ -814,6 +840,7 @@ class BackupRepository(
                     createdAt = json.getLong("createdAt"),
                     accounts = json.getJSONArray("accounts").objects().map { it.toAccount() },
                     categories = json.getJSONArray("categories").objects().map { it.toCategory() },
+                    counterparties = json.optJSONArray("counterparties")?.objects()?.map { it.toCounterparty() }.orEmpty(),
                     budgets = json.optJSONArray("budgets")?.objects()?.map { it.toBudget() }.orEmpty(),
                     expectedIncome = json.optJSONArray("expectedIncome")?.objects()?.map { it.toExpectedIncome() }.orEmpty(),
                     debts = json.optJSONArray("debts")?.objects()?.map { it.toDebt() }.orEmpty(),
@@ -886,6 +913,16 @@ private fun JSONObject.toCategory() = CategoryEntity(
     parentCategoryId = stringOrNull("parentCategoryId"), isArchived = optBoolean("isArchived", false)
 )
 
+private fun CounterpartyEntity.toJson() = JSONObject().apply {
+    put("id", id); put("name", name); put("normalizedName", normalizedName); put("kind", kind)
+    put("notes", notes); put("isArchived", isArchived); put("createdAt", createdAt)
+}
+private fun JSONObject.toCounterparty() = CounterpartyEntity(
+    id = getString("id"), name = getString("name"), normalizedName = getString("normalizedName"),
+    kind = getString("kind"), notes = optString("notes", ""), isArchived = optBoolean("isArchived", false),
+    createdAt = getLong("createdAt")
+)
+
 private fun BudgetEntity.toJson() = JSONObject().apply {
     put("id", id); put("categoryId", categoryId); put("year", year); put("month", month)
     put("limitCentavos", limitCentavos); put("isArchived", isArchived)
@@ -900,14 +937,14 @@ private fun ExpectedIncomeEntity.toJson() = JSONObject().apply {
     put("amountCentavos", amountCentavos); put("expectedDate", expectedDate)
     put("incomeCategoryId", incomeCategoryId); put("status", status)
     putNullable("convertedReceivableId", convertedReceivableId); put("isArchived", isArchived)
-    put("createdAt", createdAt)
+    put("createdAt", createdAt); putNullable("counterpartyId", counterpartyId)
 }
 private fun JSONObject.toExpectedIncome() = ExpectedIncomeEntity(
     id = getString("id"), description = getString("description"), counterparty = getString("counterparty"),
     amountCentavos = getLong("amountCentavos"), expectedDate = getLong("expectedDate"),
     incomeCategoryId = getString("incomeCategoryId"), status = getString("status"),
     convertedReceivableId = stringOrNull("convertedReceivableId"), isArchived = optBoolean("isArchived", false),
-    createdAt = getLong("createdAt")
+    createdAt = getLong("createdAt"), counterpartyId = stringOrNull("counterpartyId")
 )
 
 private fun DebtEntity.toJson() = JSONObject().apply {
@@ -1057,13 +1094,14 @@ private fun ReceivableEntity.toJson() = JSONObject().apply {
     put("id", id); put("clientName", clientName); put("originalAmountCentavos", originalAmountCentavos)
     put("outstandingAmountCentavos", outstandingAmountCentavos); put("recognitionDate", recognitionDate)
     put("dueDate", dueDate); putNullable("linkedCategoryId", linkedCategoryId); put("description", description); put("status", status)
-    put("isArchived", isArchived)
+    put("isArchived", isArchived); putNullable("counterpartyId", counterpartyId)
 }
 private fun JSONObject.toReceivable() = ReceivableEntity(
     id = getString("id"), clientName = getString("clientName"), originalAmountCentavos = getLong("originalAmountCentavos"),
     outstandingAmountCentavos = getLong("outstandingAmountCentavos"), recognitionDate = getLong("recognitionDate"),
     dueDate = getLong("dueDate"), linkedCategoryId = stringOrNull("linkedCategoryId"),
-    description = getString("description"), status = getString("status"), isArchived = optBoolean("isArchived", false)
+    description = getString("description"), status = getString("status"), isArchived = optBoolean("isArchived", false),
+    counterpartyId = stringOrNull("counterpartyId")
 )
 
 private fun ReceivablePaymentEntity.toJson() = JSONObject().apply {

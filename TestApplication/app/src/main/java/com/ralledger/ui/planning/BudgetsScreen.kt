@@ -1,4 +1,5 @@
 package com.ralledger.ui.planning
+import com.ralledger.ui.settings.displayMoney
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -234,7 +235,7 @@ private fun BudgetSummary(label: String, amount: Money, emphasize: Boolean = fal
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer)
         Text(
-            amount.format(),
+            displayMoney(amount),
             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
             color = if (emphasize) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onPrimaryContainer
         )
@@ -278,8 +279,8 @@ private fun BudgetCard(budget: Budget, onEdit: () -> Unit, onArchive: () -> Unit
             }
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Spent ${budget.spent.format()}")
-                Text("Limit ${budget.limit.format()}")
+                Text("Spent ${displayMoney(budget.spent)}")
+                Text("Limit ${displayMoney(budget.limit)}")
             }
             Box(
                 modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.surfaceVariant)
@@ -290,7 +291,7 @@ private fun BudgetCard(budget: Budget, onEdit: () -> Unit, onArchive: () -> Unit
                 )
             }
             Text(
-                text = if (overBudget) "Over budget by ${budget.overspent.format()}" else "${budget.remaining.format()} remaining",
+                text = if (overBudget) "Over budget by ${displayMoney(budget.overspent)}" else "${displayMoney(budget.remaining)} remaining",
                 color = if (overBudget) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
             )

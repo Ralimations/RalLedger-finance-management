@@ -1,4 +1,5 @@
 package com.ralledger.ui.categories
+import com.ralledger.ui.settings.displayMoney
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -72,6 +73,7 @@ import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Transaction
 import java.text.SimpleDateFormat
+import com.ralledger.ui.settings.displayDate
 import java.util.Date
 import java.util.Locale
 
@@ -480,10 +482,10 @@ private fun CategoryHistoryDialog(category: Category, transactions: List<Transac
                         Column(modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(transaction.description.ifBlank { transaction.transactionType.displayName }, modifier = Modifier.weight(1f))
-                                Text(transaction.amount.format())
+                                Text(displayMoney(transaction.amount))
                             }
                             Text(
-                                "${SimpleDateFormat("MMM d, yyyy · h:mm a", Locale.getDefault()).format(Date(transaction.timestamp))} · ${transaction.transactionType.displayName}",
+                                "${displayDate(transaction.timestamp, includeTime = true)} · ${transaction.transactionType.displayName}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

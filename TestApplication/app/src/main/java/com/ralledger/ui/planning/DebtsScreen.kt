@@ -1,4 +1,5 @@
 package com.ralledger.ui.planning
+import com.ralledger.ui.settings.displayMoney
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -58,10 +59,10 @@ import com.ralledger.domain.model.Debt
 import com.ralledger.domain.model.DebtKind
 import com.ralledger.domain.model.DebtStatus
 import com.ralledger.domain.model.Money
-import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import com.ralledger.ui.settings.displayDate
 
 private enum class DebtAction { CANCEL, ARCHIVE, RESTORE, REVERSE_PAYMENT }
 private data class PendingDebtAction(val debt: Debt, val action: DebtAction, val paymentJournalId: String? = null)
@@ -107,8 +108,8 @@ fun DebtsScreen(viewModel: DebtsViewModel) {
             item {
                 Card(Modifier.fillMaxWidth()) {
                     Row(Modifier.fillMaxWidth().padding(14.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Column { Text("Bills due", style = MaterialTheme.typography.labelMedium); Text(openBills.format(), fontWeight = FontWeight.Bold) }
-                        Column(horizontalAlignment = Alignment.End) { Text("Loans outstanding", style = MaterialTheme.typography.labelMedium); Text(openLoans.format(), fontWeight = FontWeight.Bold) }
+                        Column { Text("Bills due", style = MaterialTheme.typography.labelMedium); Text(displayMoney(openBills), fontWeight = FontWeight.Bold) }
+                        Column(horizontalAlignment = Alignment.End) { Text("Loans outstanding", style = MaterialTheme.typography.labelMedium); Text(displayMoney(openLoans), fontWeight = FontWeight.Bold) }
                     }
                 }
             }
@@ -242,7 +243,7 @@ private fun DebtCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column {
                     Text("Outstanding", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text(debt.outstandingAmount.format(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(displayMoney(debt.outstandingAmount), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
                 Spacer(Modifier.weight(1f))
                 Column(horizontalAlignment = Alignment.End) {
@@ -256,7 +257,7 @@ private fun DebtCard(
                 Text("Payment history", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.labelLarge)
                 debt.payments.take(3).forEach { payment ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${formatDebtDate(payment.paymentDate)} · Principal ${payment.principal.format()} · Interest ${payment.interest.format()}", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        Text("${formatDebtDate(payment.paymentDate)} · Principal ${displayMoney(payment.principal)} · Interest ${displayMoney(payment.interest)}", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
                         if (payment.reversedAt != null) Text("Reversed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
                         else if (!debt.isArchived) TextButton(onClick = { onReverse(payment) }) { Text("Undo") }
                     }
@@ -378,7 +379,7 @@ private fun DebtPaymentDialog(
         title = { Text("Payment · ${debt.title}") },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Outstanding principal: ${debt.outstandingAmount.format()}", fontWeight = FontWeight.SemiBold)
+                Text("Outstanding principal: ${displayMoney(debt.outstandingAmount)}", fontWeight = FontWeight.SemiBold)
                 SelectDebtValue("Pay from account", assetAccounts.firstOrNull { it.id == accountId }?.name ?: "Choose account", accountExpanded, { accountExpanded = it }) {
                     assetAccounts.forEach { item -> DropdownMenuItem(text = { Text(item.name) }, onClick = { accountId = item.id; accountExpanded = false }) }
                 }
@@ -418,7 +419,8 @@ private fun DebtPaymentDialog(
     }
 }
 
-private fun formatDebtDate(timestamp: Long): String = SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(timestamp))
+@Composable
+private fun formatDebtDate(timestamp: Long): String = displayDate(timestamp)
 
 private fun isBeforeToday(timestamp: Long): Boolean {
     val target = Calendar.getInstance().apply { timeInMillis = timestamp; set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0) }

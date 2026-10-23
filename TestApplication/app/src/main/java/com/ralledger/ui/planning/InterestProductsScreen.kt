@@ -1,4 +1,5 @@
 package com.ralledger.ui.planning
+import com.ralledger.ui.settings.displayMoney
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,7 @@ import com.ralledger.domain.model.InterestProduct
 import com.ralledger.domain.model.InterestProductType
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.usecase.InterestCalculator
+import com.ralledger.ui.settings.displayDate
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
@@ -250,17 +252,17 @@ private fun InterestProductCard(
                     DropdownMenuItem(text = { Text("Delete unused profile") }, onClick = { menuExpanded = false; onDelete() })
                 }
             }
-            Text("Account balance · ${product.accountBalance.format()}", style = MaterialTheme.typography.bodyMedium)
+            Text("Account balance · ${displayMoney(product.accountBalance)}", style = MaterialTheme.typography.bodyMedium)
             if (product.type == InterestProductType.TIME_DEPOSIT) {
-                val maturity = product.maturityDate?.let(::formatInterestDate) ?: "Not set"
+                val maturity = product.maturityDate?.let { displayDate(it) } ?: "Not set"
                 val daysLeft = product.maturityDate?.let { ((it - today) / 86_400_000L).toInt() }
                 Text("Maturity · $maturity${daysLeft?.let { if (it >= 0) " · $it days left" else " · matured" } ?: ""}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Original principal · ${product.principal?.format() ?: "—"}", style = MaterialTheme.typography.bodySmall)
+                Text("Original principal · ${product.principal?.let { displayMoney(it) } ?: "—"}", style = MaterialTheme.typography.bodySmall)
             }
             if (estimate != null) {
                 Text(
-                    if (product.type == InterestProductType.TIME_DEPOSIT) "Full-term estimate · gross ${estimate.gross.format()} · net ${estimate.net.format()}"
-                    else "Next-year estimate · gross ${estimate.gross.format()} · net ${estimate.net.format()}",
+                    if (product.type == InterestProductType.TIME_DEPOSIT) "Full-term estimate · gross ${displayMoney(estimate.gross)} · net ${displayMoney(estimate.net)}"
+                    else "Next-year estimate · gross ${displayMoney(estimate.gross)} · net ${displayMoney(estimate.net)}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.secondary
                 )
@@ -275,8 +277,8 @@ private fun InterestProductCard(
                 product.credits.forEach { credit ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("${formatInterestDate(credit.creditedAt)} · gross ${credit.gross.format()}", style = MaterialTheme.typography.bodySmall)
-                            Text("Tax ${credit.tax.format()} · net ${credit.net.format()}${if (credit.reversedAt != null) " · reversed" else ""}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${displayDate(credit.creditedAt)} · gross ${displayMoney(credit.gross)}", style = MaterialTheme.typography.bodySmall)
+                            Text("Tax ${displayMoney(credit.tax)} · net ${displayMoney(credit.net)}${if (credit.reversedAt != null) " · reversed" else ""}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (credit.reversedAt == null) TextButton(onClick = { onReverse(credit) }) { Text("Reverse") }
                     }
@@ -322,7 +324,7 @@ private fun InterestProductEditor(
                         InterestProductType.entries.forEach { option -> DropdownMenuItem(text = { Text(option.label) }, onClick = { type = option; typeMenu = false; accountId = "" }) }
                     }
                     SelectText("Account", eligibleAccounts.firstOrNull { it.id == accountId }?.name ?: "Choose account", accountMenu, { accountMenu = it }) {
-                        eligibleAccounts.forEach { account -> DropdownMenuItem(text = { Text("${account.name} · ${account.currentLedgerBalance.format()}") }, onClick = { accountId = account.id; accountMenu = false }) }
+                        eligibleAccounts.forEach { account -> DropdownMenuItem(text = { Text("${account.name} · ${displayMoney(account.currentLedgerBalance)}") }, onClick = { accountId = account.id; accountMenu = false }) }
                     }
                     if (eligibleAccounts.isEmpty()) Text(
                         if (type == InterestProductType.TIME_DEPOSIT) "Add a Time Deposit account with its opening principal in Accounts first."
@@ -403,7 +405,7 @@ private fun InterestCreditEditor(
         title = { Text("Record interest · ${product.accountName}") },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(max = 450.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                estimate?.let { Text("Estimate · gross ${it.gross.format()} · tax ${it.tax.format()} · net ${it.net.format()}", style = MaterialTheme.typography.bodySmall) }
+                estimate?.let { Text("Estimate · gross ${displayMoney(it.gross)} · tax ${displayMoney(it.tax)} · net ${displayMoney(it.net)}", style = MaterialTheme.typography.bodySmall) }
                 OutlinedTextField(gross, { gross = it; error = null }, label = { Text("Actual gross interest (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(tax, { tax = it; error = null }, label = { Text("Tax withheld (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
                 SelectText("Income category", incomeCategories.firstOrNull { it.id == incomeCategoryId }?.name ?: "Choose category", incomeMenu, { incomeMenu = it }) {

@@ -1,4 +1,5 @@
 package com.ralledger.ui.receivables
+import com.ralledger.ui.settings.displayMoney
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -61,6 +62,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import com.ralledger.ui.settings.displayDate
 
 @Composable
 fun ReceivablesScreen(viewModel: ReceivablesViewModel) {
@@ -287,11 +289,11 @@ private fun ReceivableCard(
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text("Outstanding", style = MaterialTheme.typography.labelSmall)
-                    Text(receivable.outstandingAmount.format(), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    Text(displayMoney(receivable.outstandingAmount), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Original", style = MaterialTheme.typography.labelSmall)
-                    Text(receivable.originalAmount.format(), style = MaterialTheme.typography.bodyMedium)
+                    Text(displayMoney(receivable.originalAmount), style = MaterialTheme.typography.bodyMedium)
                 }
             }
             Text("Due ${formatDate(receivable.dueDate)}", style = MaterialTheme.typography.bodySmall)
@@ -344,7 +346,7 @@ private fun HistoryRow(
             if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Column(horizontalAlignment = Alignment.End) {
-            Text(amount.format(), style = MaterialTheme.typography.labelLarge)
+            Text(displayMoney(amount), style = MaterialTheme.typography.labelLarge)
             if (reversed) Text("Reversed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             else if (canReverse) TextButton(onClick = onReverse) { Text("Reverse") }
             else Text("Restore to reverse", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -452,7 +454,7 @@ private fun CollectPaymentDialog(
         title = { Text("Record collection") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("${receivable.clientName} · up to ${receivable.outstandingAmount.format()}")
+                Text("${receivable.clientName} · up to ${displayMoney(receivable.outstandingAmount)}")
                 ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
                     OutlinedTextField(
                         value = selectedName, onValueChange = {}, readOnly = true,
@@ -510,7 +512,7 @@ private fun WriteOffDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("This records an expense and reduces this receivable. The original income recognition stays unchanged.")
-                Text("Outstanding: ${receivable.outstandingAmount.format()}")
+                Text("Outstanding: ${displayMoney(receivable.outstandingAmount)}")
                 ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
                     OutlinedTextField(
                         value = categoryName, onValueChange = {}, readOnly = true,
@@ -550,6 +552,5 @@ private fun WriteOffDialog(
 
 private fun moneyInput(centavos: Long): String = "${centavos / 100}.${(centavos % 100).toString().padStart(2, '0')}"
 
-private fun formatDate(timestamp: Long): String = DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault())
-    .withZone(ZoneOffset.UTC)
-    .format(Instant.ofEpochMilli(timestamp))
+@Composable
+private fun formatDate(timestamp: Long): String = displayDate(timestamp)

@@ -1,4 +1,5 @@
 package com.ralledger.ui.subscriptions
+import com.ralledger.ui.settings.displayMoney
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,9 +59,8 @@ import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.SubscriptionPayment
 import com.ralledger.domain.model.SubscriptionStatus
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
+import com.ralledger.ui.settings.displayDate
 
 @Composable
 fun SubscriptionsScreen(viewModel: SubscriptionsViewModel) {
@@ -277,7 +277,7 @@ private fun SubscriptionCard(
                     )
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(subscription.billingAmount.format(), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+                    Text(displayMoney(subscription.billingAmount), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
                     Text(subscription.billingFrequency.displayName, style = MaterialTheme.typography.labelSmall)
                     Box {
                         IconButton(onClick = { menuExpanded = true }) {
@@ -347,7 +347,7 @@ private fun SubscriptionCard(
                                 if (payment.notes.isNotBlank()) Text(payment.notes, style = MaterialTheme.typography.bodySmall)
                             }
                             Column(horizontalAlignment = Alignment.End) {
-                                Text(payment.amount.format(), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
+                                Text(displayMoney(payment.amount), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
                                 if (payment.reversedAt == null && payment.id == latestActivePayment?.id) {
                                     TextButton(onClick = { onReversePayment(payment) }) { Text("Reverse") }
                                 }
@@ -546,4 +546,5 @@ private fun SubscriptionEditorDialog(
 
 private fun moneyInput(centavos: Long): String = "${centavos / 100}.${(centavos % 100).toString().padStart(2, '0')}"
 
-private fun formatDate(timestamp: Long): String = SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(timestamp))
+@Composable
+private fun formatDate(timestamp: Long): String = displayDate(timestamp)

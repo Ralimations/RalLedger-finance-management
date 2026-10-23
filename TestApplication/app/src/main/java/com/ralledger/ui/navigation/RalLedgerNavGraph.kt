@@ -81,6 +81,7 @@ import com.ralledger.ui.receivables.ReceivablesViewModel
 import com.ralledger.ui.settings.SettingsScreen
 import com.ralledger.ui.settings.SettingsViewModel
 import com.ralledger.ui.settings.FinancialSettings
+import com.ralledger.ui.settings.ProvideDateDisplayFormat
 import com.ralledger.ui.theme.ThemeMode
 import com.ralledger.ui.theme.ThemePalette
 import com.ralledger.ui.theme.ThemeSettings
@@ -192,11 +193,15 @@ fun RalLedgerMainScreen(
             }
         },
     ) { innerPadding ->
-        NavHost(
-            navController = navController,
-            startDestination = Screen.Dashboard.route,
-            modifier = Modifier.padding(innerPadding)
+        ProvideDateDisplayFormat(
+            format = financialSettings.dateDisplayFormat,
+            currencyFormat = financialSettings.currencyDisplayFormat
         ) {
+            NavHost(
+                navController = navController,
+                startDestination = Screen.Dashboard.route,
+                modifier = Modifier.padding(innerPadding)
+            ) {
             composable(Screen.Dashboard.route) {
                 val vm: DashboardViewModel = viewModel(factory = DashboardViewModel.Factory(appContainer.repository))
                 DashboardScreen(viewModel = vm, settings = dashboardSettings)
@@ -206,7 +211,11 @@ fun RalLedgerMainScreen(
             }
             composable(Screen.Transactions.route) {
                 val vm: TransactionsViewModel = viewModel(factory = TransactionsViewModel.Factory(appContainer.repository))
-                TransactionsScreen(viewModel = vm, onManageCategories = { navController.navigate(Screen.Categories.route) })
+                TransactionsScreen(
+                    viewModel = vm,
+                    onManageCategories = { navController.navigate(Screen.Categories.route) },
+                    listDensity = financialSettings.transactionListDensity
+                )
             }
             composable(Screen.Planning.route) {
                 val budgetsVm: BudgetsViewModel = viewModel(factory = BudgetsViewModel.Factory(appContainer.repository))
@@ -259,6 +268,15 @@ fun RalLedgerMainScreen(
                     onDefaultInsightsPeriodChange = { period ->
                         scope.launch { appContainer.financialPreferences.setDefaultInsightsPeriod(period) }
                     },
+                    onDateDisplayFormatChange = { format ->
+                        scope.launch { appContainer.financialPreferences.setDateDisplayFormat(format) }
+                    },
+                    onCurrencyDisplayFormatChange = { format ->
+                        scope.launch { appContainer.financialPreferences.setCurrencyDisplayFormat(format) }
+                    },
+                    onTransactionListDensityChange = { density ->
+                        scope.launch { appContainer.financialPreferences.setTransactionListDensity(density) }
+                    },
                     onManageCategories = { navController.navigate(Screen.Categories.route) }
                 )
             }
@@ -268,12 +286,13 @@ fun RalLedgerMainScreen(
             }
         }
 
-        if (showAddDialog) {
-            QuickAddTransactionDialog(
-                appContainer = appContainer,
-                defaultTransactionAccountId = financialSettings.defaultTransactionAccountId,
-                onDismiss = { showAddDialog = false }
-            )
+            if (showAddDialog) {
+                QuickAddTransactionDialog(
+                    appContainer = appContainer,
+                    defaultTransactionAccountId = financialSettings.defaultTransactionAccountId,
+                    onDismiss = { showAddDialog = false }
+                )
+            }
         }
     }
 }

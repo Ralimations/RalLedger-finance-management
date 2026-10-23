@@ -1,4 +1,5 @@
 package com.ralledger.ui.accounts
+import com.ralledger.ui.settings.displayMoney
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -70,6 +71,7 @@ import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Transaction
 import java.text.SimpleDateFormat
+import com.ralledger.ui.settings.displayDate
 import java.util.Date
 import java.util.Locale
 
@@ -269,7 +271,7 @@ private fun AccountItemCard(
             }
             Column(horizontalAlignment = Alignment.End) {
                 Text(
-                    account.currentLedgerBalance.format(),
+                    displayMoney(account.currentLedgerBalance),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = accent
                 )
@@ -313,7 +315,7 @@ private fun AccountReconciliationDialog(
         title = { Text("Reconcile ${account.name}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Recorded balance: ${account.currentLedgerBalance.format()}")
+                Text("Recorded balance: ${displayMoney(account.currentLedgerBalance)}")
                 OutlinedTextField(
                     value = actualBalanceText,
                     onValueChange = { actualBalanceText = it; error = null },
@@ -322,7 +324,7 @@ private fun AccountReconciliationDialog(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
-                difference?.let { Text("Adjustment: ${it.format()}", style = MaterialTheme.typography.labelLarge) }
+                difference?.let { Text("Adjustment: ${displayMoney(it)}", style = MaterialTheme.typography.labelLarge) }
                 OutlinedTextField(
                     value = reason,
                     onValueChange = { reason = it; error = null },
@@ -416,7 +418,7 @@ private fun AccountFormDialog(
                     )
                 } else {
                     Text(
-                        "${account.accountType.displayName} · Opening balance ${account.openingBalance.format()}",
+                        "${account.accountType.displayName} · Opening balance ${displayMoney(account.openingBalance)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -501,7 +503,7 @@ private fun AccountHistoryDialog(account: Account, transactions: List<Transactio
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "${account.accountType.displayName} · ${account.currentLedgerBalance.format()}",
+                    "${account.accountType.displayName} · ${displayMoney(account.currentLedgerBalance)}",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -529,10 +531,10 @@ private fun TransactionHistoryRow(transaction: Transaction) {
     ) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(transaction.description.ifBlank { transaction.transactionType.displayName }, modifier = Modifier.weight(1f))
-            Text(transaction.amount.format(), fontWeight = FontWeight.Medium)
+            Text(displayMoney(transaction.amount), fontWeight = FontWeight.Medium)
         }
         Text(
-            "${SimpleDateFormat("MMM d, yyyy · h:mm a", Locale.getDefault()).format(Date(transaction.timestamp))} · ${transaction.transactionType.displayName}",
+            "${displayDate(transaction.timestamp, includeTime = true)} · ${transaction.transactionType.displayName}",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

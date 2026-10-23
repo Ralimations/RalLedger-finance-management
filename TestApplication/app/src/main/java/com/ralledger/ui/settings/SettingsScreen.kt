@@ -73,6 +73,9 @@ fun SettingsScreen(
     onMoveDashboardWidget: (DashboardWidget, Int) -> Unit,
     onDefaultTransactionAccountChange: (String?) -> Unit,
     onDefaultInsightsPeriodChange: (InsightsPeriodType) -> Unit,
+    onDateDisplayFormatChange: (DateDisplayFormat) -> Unit,
+    onCurrencyDisplayFormatChange: (CurrencyDisplayFormat) -> Unit,
+    onTransactionListDensityChange: (TransactionListDensity) -> Unit,
     onEnableAppLock: () -> Unit,
     onDisableAppLock: () -> Unit,
     onOpenSecuritySettings: () -> Unit,
@@ -218,8 +221,7 @@ fun SettingsScreen(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("Transaction and report defaults", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                Text("Choose what RalLedger selects when you start a new transaction or open Insights.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Preferences", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 Text("Default transaction account", style = MaterialTheme.typography.labelLarge)
                 Box(modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = { defaultAccountMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
@@ -263,6 +265,45 @@ fun SettingsScreen(
                             selected = financialSettings.defaultInsightsPeriod == period,
                             onClick = { onDefaultInsightsPeriodChange(period) },
                             label = { Text(period.label) }
+                        )
+                    }
+                }
+                Text("Date format", style = MaterialTheme.typography.labelLarge)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    DateDisplayFormat.entries.forEach { format ->
+                        FilterChip(
+                            selected = financialSettings.dateDisplayFormat == format,
+                            onClick = { onDateDisplayFormatChange(format) },
+                            label = { Text(format.label) }
+                        )
+                    }
+                }
+                Text("Currency display", style = MaterialTheme.typography.labelLarge)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CurrencyDisplayFormat.entries.forEach { format ->
+                        FilterChip(
+                            selected = financialSettings.currencyDisplayFormat == format,
+                            onClick = { onCurrencyDisplayFormatChange(format) },
+                            label = { Text(format.label) }
+                        )
+                    }
+                }
+                Text("Activity list spacing", style = MaterialTheme.typography.labelLarge)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    TransactionListDensity.entries.forEach { density ->
+                        FilterChip(
+                            selected = financialSettings.transactionListDensity == density,
+                            onClick = { onTransactionListDensityChange(density) },
+                            label = { Text(density.label) }
                         )
                     }
                 }
@@ -401,7 +442,7 @@ fun SettingsScreen(
             title = { Text("Review Backup") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text("Created ${SimpleDateFormat("MMM d, yyyy HH:mm", Locale.getDefault()).format(Date(preview.createdAt))}")
+                    Text("Created ${displayDate(preview.createdAt, includeTime = true)}")
                     Text("${preview.accounts} accounts · ${preview.categories} categories")
                     Text("${preview.budgets} budgets")
                     Text("${preview.expectedIncome} expected-income records")

@@ -1,4 +1,5 @@
 package com.ralledger.ui.transactions
+import com.ralledger.ui.settings.displayMoney
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -73,9 +74,9 @@ import com.ralledger.domain.model.TransactionType
 import com.ralledger.domain.model.TransactionTag
 import com.ralledger.domain.model.SavedTransactionFilter
 import com.ralledger.domain.model.TransactionFilter
+import com.ralledger.ui.settings.TransactionListDensity
+import com.ralledger.ui.settings.displayDate
 import java.math.BigDecimal
-import java.text.SimpleDateFormat
-import java.util.Date
 import java.util.Calendar
 import java.util.Locale
 import java.util.TimeZone
@@ -86,7 +87,8 @@ private enum class FilterDateTarget { FROM, TO }
 @OptIn(ExperimentalMaterial3Api::class)
 fun TransactionsScreen(
     viewModel: TransactionsViewModel,
-    onManageCategories: () -> Unit
+    onManageCategories: () -> Unit,
+    listDensity: TransactionListDensity = TransactionListDensity.COMFORTABLE
 ) {
     val transactions by viewModel.filteredTransactions.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
@@ -203,10 +205,10 @@ fun TransactionsScreen(
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = { filterDateTarget = FilterDateTarget.FROM }) {
-                            Text("From: ${dateRange.first?.let(::formatLocalDate) ?: "Any date"}")
+                            Text("From: ${dateRange.first?.let { displayDate(it) } ?: "Any date"}")
                         }
                         TextButton(onClick = { filterDateTarget = FilterDateTarget.TO }) {
-                            Text("To: ${dateRange.second?.let { formatLocalDate(it - 1L) } ?: "Any date"}")
+                            Text("To: ${dateRange.second?.let { displayDate(it - 1L) } ?: "Any date"}")
                         }
                         Spacer(Modifier.weight(1f))
                         TextButton(onClick = viewModel::clearFilters) { Text("Clear") }
@@ -228,10 +230,11 @@ fun TransactionsScreen(
             if (transactions.isEmpty()) {
                 Text("No transactions found.")
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyColumn(verticalArrangement = Arrangement.spacedBy(if (listDensity == TransactionListDensity.COMPACT) 4.dp else 8.dp)) {
                     items(transactions) { tx ->
                         TransactionRow(
                             transaction = tx,
+                            compact = listDensity == TransactionListDensity.COMPACT,
                             onCorrect = { correctCandidate = tx },
                             onDuplicate = { duplicateCandidate = tx },
                             onReverse = { reverseCandidate = tx },
@@ -492,9 +495,6 @@ private fun FilterDropdownChip(
     }
 }
 
-private fun formatLocalDate(timestamp: Long): String =
-    SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(timestamp))
-
 private fun savedFilterSummary(filter: TransactionFilter): String = buildList {
     if (filter.query.isNotBlank()) add("Search: ${filter.query}")
     if (filter.type != TransactionTypeFilter.ALL) add(filter.type.name.lowercase(Locale.getDefault()).replaceFirstChar { it.uppercase() })
@@ -540,12 +540,12 @@ private fun nextLocalDay(dayStart: Long): Long = Calendar.getInstance().apply {
 @Composable
 private fun TransactionRow(
     transaction: Transaction,
+    compact: Boolean,
     onCorrect: () -> Unit,
     onDuplicate: () -> Unit,
     onReverse: () -> Unit,
     onManageTags: () -> Unit
 ) {
-    val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()) }
     val isPositive = transaction.transactionType == TransactionType.INCOME ||
         transaction.transactionType == TransactionType.INTEREST_CREDIT ||
         transaction.transactionType == TransactionType.RECEIVABLE_COLLECTION ||
@@ -570,7 +570,7 @@ private fun TransactionRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(if (compact) 8.dp else 12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -586,13 +586,13 @@ private fun TransactionRow(
                 )
                 if (transaction.transactionType == TransactionType.INTEREST_CREDIT) {
                     Text(
-                        text = "Gross ${transaction.amount.format()} · tax withheld ${transaction.fee.format()}",
+                        text = "Gross ${displayMoney(transaction.amount)} · tax withheld ${displayMoney(transaction.fee)}",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Text(
-                    text = dateFormat.format(Date(transaction.timestamp)),
+                    text = displayDate(transaction.timestamp, includeTime = true),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                 )
@@ -612,7 +612,7 @@ private fun TransactionRow(
                         TransactionType.OPENING_BALANCE, TransactionType.REVERSAL, TransactionType.TRANSFER,
                         TransactionType.BALANCE_ADJUSTMENT, TransactionType.RECEIVABLE_RECOGNITION,
                         TransactionType.PAYABLE_RECOGNITION -> ""
-                    }}${if (transaction.transactionType == TransactionType.INTEREST_CREDIT) (transaction.amount - transaction.fee).format() else transaction.amount.format()}",
+                    }}${if (transaction.transactionType == TransactionType.INTEREST_CREDIT) displayMoney(transaction.amount - transaction.fee) else displayMoney(transaction.amount)}",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = amountColor
                 )
@@ -701,7 +701,6 @@ private fun RecordTransactionDialog(
         category.type.name == "EXPENSE" &&
             (!category.isArchived || (isCorrection && category.id == initialTransaction?.categoryId))
     }
-    val dateFormatter = remember { SimpleDateFormat("MMM dd, yyyy", Locale.getDefault()) }
 
     LaunchedEffect(eligibleAccounts) {
         if (eligibleAccounts.none { it.id == selectedAccountId }) selectedAccountId = eligibleAccounts.firstOrNull()?.id.orEmpty()
@@ -822,7 +821,7 @@ private fun RecordTransactionDialog(
                     maxLines = 3
                 )
                 TextButton(onClick = { showDatePicker = true }) {
-                    Text("Date: ${dateFormatter.format(Date(selectedTimestamp))}")
+                    Text("Date: ${displayDate(selectedTimestamp)}")
                 }
                 inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }

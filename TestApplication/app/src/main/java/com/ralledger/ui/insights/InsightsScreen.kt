@@ -1,4 +1,5 @@
 package com.ralledger.ui.insights
+import com.ralledger.ui.settings.displayMoney
 
 import android.graphics.Color as AndroidColor
 import androidx.compose.foundation.Canvas
@@ -65,6 +66,7 @@ import com.ralledger.domain.usecase.InsightsBucket
 import com.ralledger.domain.usecase.InsightsDateRange
 import com.ralledger.domain.usecase.InsightsPeriod
 import com.ralledger.domain.usecase.InsightsPeriodType
+import com.ralledger.ui.settings.displayDate
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -184,8 +186,8 @@ fun InsightsScreen(
                     }
                     if (selectedType == InsightsPeriodType.CUSTOM) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            TextButton(onClick = { pickerTarget = DatePickerTarget.START }) { Text("From · ${customStart.format(DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault()))}") }
-                            TextButton(onClick = { pickerTarget = DatePickerTarget.END }) { Text("To · ${customEnd.format(DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault()))}") }
+                            TextButton(onClick = { pickerTarget = DatePickerTarget.START }) { Text("From · ${displayDate(customStart)}") }
+                            TextButton(onClick = { pickerTarget = DatePickerTarget.END }) { Text("To · ${displayDate(customEnd)}") }
                         }
                     }
                 }
@@ -213,9 +215,9 @@ fun InsightsScreen(
                 ) {
                     Text("Interest earnings", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
                     Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Gross · ${calculation.grossInterest.format()}", style = MaterialTheme.typography.bodySmall)
-                        Text("Tax withheld · ${calculation.interestTax.format()}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                        Text("Net · ${calculation.netInterest.format()}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
+                        Text("Gross · ${displayMoney(calculation.grossInterest)}", style = MaterialTheme.typography.bodySmall)
+                        Text("Tax withheld · ${displayMoney(calculation.interestTax)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        Text("Net · ${displayMoney(calculation.netInterest)}", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
                     }
                 }
             }
@@ -290,24 +292,24 @@ fun InsightsScreen(
                     Text("Commitments", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Subscriptions · monthly", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                        Text(state.activeSubscriptionTotal.format(), style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Text(displayMoney(state.activeSubscriptionTotal), style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onTertiaryContainer)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Subscriptions paid", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                        Text(calculation.subscriptionPayments.format(), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Text(displayMoney(calculation.subscriptionPayments), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Collected this period · net of reversals", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                        Text(calculation.receivablesCollected.format(), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Text(displayMoney(calculation.receivablesCollected), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text("Outstanding", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                        Text(totalOutstandingReceivables.format(), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Text(displayMoney(totalOutstandingReceivables), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
                     }
                     receivablesAging.filter { it.amount.isPositive }.forEach { bucket ->
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Text("${bucket.band.label} · ${bucket.receivableCount}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                            Text(bucket.amount.format(), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
+                            Text(displayMoney(bucket.amount), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
                         }
                     }
                 }
@@ -377,11 +379,12 @@ private fun CashFlowChart(buckets: List<InsightsBucket>) {
                     verticalAlignment = Alignment.Bottom
                 ) {
                     buckets.forEach { bucket ->
+                        val bucketDescription = "${bucket.label}: income ${displayMoney(bucket.income)}, expenses ${displayMoney(bucket.expenses)}"
                         Column(
                             modifier = Modifier.width(46.dp)
                                 .clickable(role = Role.Button) { selectedStart = bucket.start }
                                 .semantics {
-                                    contentDescription = "${bucket.label}: income ${bucket.income.format()}, expenses ${bucket.expenses.format()}"
+                                    contentDescription = bucketDescription
                                 }
                                 .background(
                                     if (bucket.start == selectedStart) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f) else Color.Transparent,
@@ -404,11 +407,11 @@ private fun CashFlowChart(buckets: List<InsightsBucket>) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(bucket.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("Income", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-                            Text(bucket.income.format(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                            Text(displayMoney(bucket.income), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         }
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text("Expenses", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
-                            Text(bucket.expenses.format(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                            Text(displayMoney(bucket.expenses), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }
@@ -498,18 +501,18 @@ private fun BalanceHistoryChart(points: List<com.ralledger.domain.usecase.NetWor
                 }
                 latest?.let { snapshot ->
                     Text(
-                        "Period end · ${snapshot.date.format(DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault()))}",
+                        "Period end · ${displayDate(snapshot.date)}",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Column {
                             Text("Net worth", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(snapshot.netWorth.format(), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = netWorthColor)
+                            Text(displayMoney(snapshot.netWorth), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = netWorthColor)
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text("Liquid assets", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(snapshot.liquidAssets.format(), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = liquidAssetsColor)
+                            Text(displayMoney(snapshot.liquidAssets), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = liquidAssetsColor)
                         }
                     }
                 }
@@ -556,7 +559,7 @@ private fun PeriodSummaryCard(income: Money, expenses: Money, net: Money) {
 private fun SummaryAmount(label: String, amount: Money, tint: Color) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f))
-        Text(amount.format(), style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = tint)
+        Text(displayMoney(amount), style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = tint)
     }
 }
 
@@ -614,7 +617,7 @@ private fun SpendingDonut(
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(slices.firstOrNull { it.id == selectedId }?.name ?: "Expenses", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            Text(selectedAmount.format(), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
+            Text(displayMoney(selectedAmount), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), maxLines = 1)
         }
     }
 }
@@ -638,7 +641,7 @@ private fun CategoryBreakdownRow(
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(12.dp).background(slice.color, CircleShape))
             Text(slice.name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1)
-            Text(slice.amount.format(), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+            Text(displayMoney(slice.amount), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
             Text("$share%", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Box(modifier = Modifier.fillMaxWidth().height(6.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)) {
@@ -661,7 +664,7 @@ private fun OverviewCard(title: String, subtitle: String, values: List<Pair<Stri
                 values.forEach { (name, amount) ->
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                         Text(name, style = MaterialTheme.typography.bodyMedium)
-                        Text(amount.format(), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
+                        Text(displayMoney(amount), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold))
                     }
                 }
             }

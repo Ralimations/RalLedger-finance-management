@@ -1,4 +1,5 @@
 package com.ralledger.ui.planning
+import com.ralledger.ui.settings.displayMoney
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -50,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.SavingsGoal
 import com.ralledger.domain.model.SavingsGoalEventType
+import com.ralledger.ui.settings.displayDate
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -201,8 +203,8 @@ private fun SavingsGoalCard(
             }
             if (goal.notes.isNotBlank()) Text(goal.notes, style = MaterialTheme.typography.bodySmall)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("${goal.allocatedAmount.format()} reserved", fontWeight = FontWeight.SemiBold)
-                Text("of ${goal.targetAmount.format()}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${displayMoney(goal.allocatedAmount)} reserved", fontWeight = FontWeight.SemiBold)
+                Text("of ${displayMoney(goal.targetAmount)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             LinearProgressIndicator(progress = { goal.progress }, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -217,7 +219,7 @@ private fun SavingsGoalCard(
                     goal.events.forEach { event ->
                         val label = if (event.type == SavingsGoalEventType.ALLOCATE) "Reserved" else "Released"
                         Text(
-                            "$label ${event.amount.format()} · ${formatGoalDate(event.date)}${if (event.note.isBlank()) "" else " · ${event.note}"}",
+                            "$label ${displayMoney(event.amount)} · ${formatGoalDate(event.date)}${if (event.note.isBlank()) "" else " · ${event.note}"}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -277,7 +279,7 @@ private fun GoalAllocationDialog(goal: SavingsGoal, type: SavingsGoalEventType, 
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (type == SavingsGoalEventType.ALLOCATE) "This earmarks existing available cash; it does not move or create money." else "Released money becomes available to spend again.")
-                if (type == SavingsGoalEventType.RELEASE) Text("Reserved balance: ${goal.allocatedAmount.format()}")
+                if (type == SavingsGoalEventType.RELEASE) Text("Reserved balance: ${displayMoney(goal.allocatedAmount)}")
                 OutlinedTextField(amountText, { amountText = it; error = null }, label = { Text("Amount (PHP)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -294,10 +296,8 @@ private fun GoalAllocationDialog(goal: SavingsGoal, type: SavingsGoalEventType, 
     )
 }
 
-private fun formatGoalDate(epochMillis: Long): String =
-    DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.getDefault()).format(
-        Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate()
-    )
+@Composable
+private fun formatGoalDate(epochMillis: Long): String = displayDate(epochMillis)
 
 private fun formatGoalDateInput(epochMillis: Long): String =
     DateTimeFormatter.ISO_LOCAL_DATE.format(Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate())

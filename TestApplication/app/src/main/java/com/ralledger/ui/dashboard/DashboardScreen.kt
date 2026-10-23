@@ -1,4 +1,5 @@
 package com.ralledger.ui.dashboard
+import com.ralledger.ui.settings.displayMoney
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -91,7 +92,7 @@ private fun AvailableMoneyCard(availableMoney: Money) {
         Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("AVAILABLE MONEY", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.76f))
             Text(
-                availableMoney.format(),
+                displayMoney(availableMoney),
                 style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
@@ -110,7 +111,7 @@ private fun NetWorthCard(summary: DashboardSummary) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("NET WORTH", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
-                summary.netWorth.format(),
+                displayMoney(summary.netWorth),
                 style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
             )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
@@ -125,7 +126,7 @@ private fun NetWorthCard(summary: DashboardSummary) {
 private fun AmountLabel(label: String, amount: Money) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
-        Text(amount.format(), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onPrimaryContainer)
+        Text(displayMoney(amount), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onPrimaryContainer)
     }
 }
 
@@ -151,7 +152,7 @@ private fun MetricCard(modifier: Modifier, title: String, value: Money, detail: 
             verticalArrangement = Arrangement.spacedBy(5.dp)
         ) {
             Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value.format(), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+            Text(displayMoney(value), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
             Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
@@ -182,7 +183,7 @@ private fun CashFlowCard(summary: DashboardSummary) {
 private fun FlowAmount(label: String, amount: Money, tint: androidx.compose.ui.graphics.Color) {
     Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(amount.format(), style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = tint)
+        Text(displayMoney(amount), style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = tint)
     }
 }
 
@@ -202,7 +203,7 @@ private fun SubscriptionCard(monthlyTotal: Money) {
                 Text("Recurring subscriptions", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
                 Text("Estimated monthly total", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.75f))
             }
-            Text(monthlyTotal.format(), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onTertiaryContainer)
+            Text(displayMoney(monthlyTotal), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onTertiaryContainer)
         }
     }
 }

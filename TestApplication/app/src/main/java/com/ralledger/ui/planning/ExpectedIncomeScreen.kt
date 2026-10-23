@@ -1,4 +1,5 @@
 package com.ralledger.ui.planning
+import com.ralledger.ui.settings.displayMoney
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,9 +60,8 @@ import com.ralledger.domain.model.ExpectedIncome
 import com.ralledger.domain.model.ExpectedIncomeStatus
 import com.ralledger.domain.model.Money
 import java.util.Calendar
-import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
+import com.ralledger.ui.settings.displayDate
 
 private enum class ExpectedIncomeAction { CONVERT, CANCEL, DELETE }
 private data class PendingExpectedIncomeAction(val item: ExpectedIncome, val action: ExpectedIncomeAction)
@@ -180,7 +180,7 @@ fun ExpectedIncomeScreen(
         when (pending.action) {
             ExpectedIncomeAction.CONVERT -> {
                 title = "Convert to receivable?"
-                details = "This creates a receivable and recognizes ${pending.item.amount.format()} as income now. The forecast and receivable will stay linked."
+                details = "This creates a receivable and recognizes ${displayMoney(pending.item.amount)} as income now. The forecast and receivable will stay linked."
                 actionLabel = "Convert"
             }
             ExpectedIncomeAction.CANCEL -> {
@@ -237,7 +237,7 @@ private fun ExpectedIncomeCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Text(item.amount.format(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(displayMoney(item.amount), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Box {
                     IconButton(onClick = { menuExpanded = true }) {
                         Icon(Icons.Default.MoreVert, contentDescription = "Manage expected income")
@@ -356,8 +356,8 @@ private fun ExpectedIncomeEditorDialog(
     }
 }
 
-private fun formatExpectedDate(timestamp: Long): String =
-    SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(timestamp))
+@Composable
+private fun formatExpectedDate(timestamp: Long): String = displayDate(timestamp)
 
 private fun isBeforeToday(timestamp: Long): Boolean {
     val expectedDate = Calendar.getInstance().apply {

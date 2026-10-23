@@ -1,4 +1,5 @@
 package com.ralledger.ui.reconciliation
+import com.ralledger.ui.settings.displayMoney
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -108,7 +109,7 @@ fun ReconciliationScreen(
                         ) {
                             reconcilableAccounts.forEach { acc ->
                                 DropdownMenuItem(
-                                    text = { Text("${acc.name} (${acc.currentLedgerBalance.format()})") },
+                                    text = { Text("${acc.name} (${displayMoney(acc.currentLedgerBalance)})") },
                                     onClick = {
                                         selectedAccountId = acc.id
                                         expanded = false
@@ -124,12 +125,12 @@ fun ReconciliationScreen(
                     ) {
                         Column {
                             Text("Recorded Balance", style = MaterialTheme.typography.labelSmall)
-                            Text(recordedBalance.format(), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                            Text(displayMoney(recordedBalance), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                         }
                         Column {
                             Text("Discrepancy / Difference", style = MaterialTheme.typography.labelSmall)
                             Text(
-                                difference?.format() ?: "—",
+                                difference?.let { displayMoney(it) } ?: "—",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                 color = if (difference?.isZero == true) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
                             )

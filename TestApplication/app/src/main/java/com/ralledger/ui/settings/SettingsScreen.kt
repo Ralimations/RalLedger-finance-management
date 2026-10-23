@@ -12,12 +12,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDownward
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import com.ralledger.ui.theme.ThemeMode
 import com.ralledger.ui.theme.ThemePalette
 import com.ralledger.ui.theme.ThemeSettings
+import com.ralledger.ui.dashboard.DashboardSettings
+import com.ralledger.ui.dashboard.DashboardWidget
 import java.io.IOException
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
@@ -45,8 +53,11 @@ import java.util.Locale
 fun SettingsScreen(
     viewModel: SettingsViewModel,
     appearance: ThemeSettings,
+    dashboardSettings: DashboardSettings,
     onThemeModeChange: (ThemeMode) -> Unit,
     onThemePaletteChange: (ThemePalette) -> Unit,
+    onDashboardWidgetVisibilityChange: (DashboardWidget, Boolean) -> Unit,
+    onMoveDashboardWidget: (DashboardWidget, Int) -> Unit,
     onManageCategories: () -> Unit
 ) {
     val context = LocalContext.current
@@ -148,6 +159,37 @@ fun SettingsScreen(
                             onClick = { onThemePaletteChange(palette) },
                             label = { Text(palette.label) }
                         )
+                    }
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text("Dashboard widgets", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text("Show, hide and reorder the summaries on Home.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                dashboardSettings.order.forEachIndexed { index, widget ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(widget.title, style = MaterialTheme.typography.bodyMedium)
+                            Text(widget.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        Switch(
+                            checked = widget in dashboardSettings.visible,
+                            onCheckedChange = { onDashboardWidgetVisibilityChange(widget, it) }
+                        )
+                        IconButton(onClick = { onMoveDashboardWidget(widget, -1) }, enabled = index > 0) {
+                            Icon(Icons.Default.ArrowUpward, contentDescription = "Move ${widget.title} up")
+                        }
+                        IconButton(onClick = { onMoveDashboardWidget(widget, 1) }, enabled = index < dashboardSettings.order.lastIndex) {
+                            Icon(Icons.Default.ArrowDownward, contentDescription = "Move ${widget.title} down")
+                        }
                     }
                 }
             }

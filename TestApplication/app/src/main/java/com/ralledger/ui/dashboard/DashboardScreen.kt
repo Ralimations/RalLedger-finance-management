@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -26,7 +27,7 @@ import com.ralledger.domain.model.DashboardSummary
 import com.ralledger.domain.model.Money
 
 @Composable
-fun DashboardScreen(viewModel: DashboardViewModel) {
+fun DashboardScreen(viewModel: DashboardViewModel, settings: DashboardSettings) {
     val summary by viewModel.dashboardSummary.collectAsState()
 
     LazyColumn(
@@ -40,40 +41,43 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
             }
         }
 
-        item { AvailableMoneyCard(summary.liquidCashAndBankBalances) }
-
-        item { NetWorthCard(summary) }
-
-        item {
-            MetricCard(
-                modifier = Modifier.fillMaxWidth(),
-                title = "Reserved savings",
-                value = summary.reservedSavings,
-                detail = "Kept for later"
-            )
-        }
-
-        item {
-            SectionHeading(title = "Money owed")
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard(
-                    modifier = Modifier.weight(1f),
-                    title = "To you",
-                    value = summary.accountsReceivableTotal,
-                    detail = "Uncollected"
+        items(settings.visibleInOrder, key = { it.name }) { widget ->
+            when (widget) {
+                DashboardWidget.AVAILABLE_MONEY -> AvailableMoneyCard(summary.liquidCashAndBankBalances)
+                DashboardWidget.NET_WORTH -> NetWorthCard(summary)
+                DashboardWidget.RESERVED_SAVINGS -> MetricCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    title = "Reserved savings",
+                    value = summary.reservedSavings,
+                    detail = "Kept for later"
                 )
-                MetricCard(
-                    modifier = Modifier.weight(1f),
-                    title = "You owe",
-                    value = summary.accountsPayableTotal,
-                    detail = "Liabilities"
-                )
+                DashboardWidget.MONEY_OWED -> MoneyOwedCard(summary)
+                DashboardWidget.MONTHLY_FLOW -> CashFlowCard(summary)
+                DashboardWidget.SUBSCRIPTIONS -> SubscriptionCard(summary.activeSubscriptionsMonthlyTotal)
             }
         }
+    }
+}
 
-        item { CashFlowCard(summary) }
-        item { SubscriptionCard(summary.activeSubscriptionsMonthlyTotal) }
+@Composable
+private fun MoneyOwedCard(summary: DashboardSummary) {
+    Column {
+        SectionHeading(title = "Money owed")
+        Spacer(Modifier.height(8.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            MetricCard(
+                modifier = Modifier.weight(1f),
+                title = "To you",
+                value = summary.accountsReceivableTotal,
+                detail = "Uncollected"
+            )
+            MetricCard(
+                modifier = Modifier.weight(1f),
+                title = "You owe",
+                value = summary.accountsPayableTotal,
+                detail = "Liabilities"
+            )
+        }
     }
 }
 

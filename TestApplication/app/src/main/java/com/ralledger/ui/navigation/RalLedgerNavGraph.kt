@@ -63,6 +63,8 @@ import com.ralledger.ui.categories.CategoriesScreen
 import com.ralledger.ui.categories.CategoriesViewModel
 import com.ralledger.ui.dashboard.DashboardScreen
 import com.ralledger.ui.dashboard.DashboardViewModel
+import com.ralledger.ui.dashboard.DashboardSettings
+import com.ralledger.ui.dashboard.DashboardWidget
 import com.ralledger.ui.insights.InsightsScreen
 import com.ralledger.ui.insights.InsightsViewModel
 import com.ralledger.ui.planning.PlanningScreen
@@ -111,6 +113,7 @@ fun RalLedgerMainScreen(
 
     var showAddDialog by remember { mutableStateOf(false) }
     val themeSettings by appContainer.themePreferences.settings.collectAsState(initial = ThemeSettings())
+    val dashboardSettings by appContainer.dashboardPreferences.settings.collectAsState(initial = DashboardSettings())
     val scope = rememberCoroutineScope()
 
     val accountsVm: AccountsViewModel = viewModel(factory = AccountsViewModel.Factory(appContainer.repository))
@@ -159,7 +162,7 @@ fun RalLedgerMainScreen(
         ) {
             composable(Screen.Dashboard.route) {
                 val vm: DashboardViewModel = viewModel(factory = DashboardViewModel.Factory(appContainer.repository))
-                DashboardScreen(viewModel = vm)
+                DashboardScreen(viewModel = vm, settings = dashboardSettings)
             }
             composable(Screen.Accounts.route) {
                 AccountsScreen(viewModel = accountsVm)
@@ -197,8 +200,15 @@ fun RalLedgerMainScreen(
                 SettingsScreen(
                     viewModel = vm,
                     appearance = themeSettings,
+                    dashboardSettings = dashboardSettings,
                     onThemeModeChange = { mode -> scope.launch { appContainer.themePreferences.setMode(mode) } },
                     onThemePaletteChange = { palette -> scope.launch { appContainer.themePreferences.setPalette(palette) } },
+                    onDashboardWidgetVisibilityChange = { widget, visible ->
+                        scope.launch { appContainer.dashboardPreferences.setVisible(widget, visible) }
+                    },
+                    onMoveDashboardWidget = { widget, offset ->
+                        scope.launch { appContainer.dashboardPreferences.move(widget, offset) }
+                    },
                     onManageCategories = { navController.navigate(Screen.Categories.route) }
                 )
             }

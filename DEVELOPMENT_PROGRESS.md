@@ -98,6 +98,16 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Account reconciliation UI smoke passed on `emulator-5554`: created synthetic `UI_Test_Wallet`, opened Reconcile balance, entered a verified balance and reason, and confirmed the posted balance update and success message. This synthetic account and adjustment remain on the development emulator; no real financial data was used.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (22,241,983 bytes). The unrelated `TestApplication/.idea/deploymentTargetSelector.xml` modification is user-local and remains outside the feature work.
 
+## Schema 10 — Savings goals and reserved funds
+
+- Added `savings_goals` and `savings_goal_events` with migration 9→10. Existing schema-1 and schema-2 synthetic migration fixtures now traverse the full chain through schema 10.
+- Added Planning → Savings goals with target and optional target date, metadata editing, reserve/release actions, dated allocation history, archive/restore, and deletion restricted to goals with no allocation history.
+- Reserves earmark existing dashboard-included liquid cash; they do not transfer money or create journal entries. Reserved funds reduce Available Money, but cash balances, total assets and net worth remain unchanged. Allocation is rejected if available cash is insufficient; releases cannot exceed the goal's reserved amount.
+- Encrypted backups now include goal metadata and allocation events. Restore checks goal references, event types and dates, positive amounts, and event-derived reserved balances before atomic replacement.
+- The full schema-10 verification on `Medium_Phone(AVD) - 17` passed before the final searchable-list UI edit: debug build, 21 unit tests, lint (0 errors; 23 warnings), Android-test Kotlin compilation and all 16 connected instrumentation tests. Coverage included schema-1→10/schema-2→10 migration chains and savings-goal lifecycle, over-allocation rejection, no-double-count accounting, and encrypted backup/restore.
+- After the searchable-list edit, the source passed debug assembly, all 21 unit tests, lint (0 errors; 23 warnings), and Android-test Kotlin compilation at the prior checkpoint. A fresh rerun in this session could not reach project tasks: Gradle failed to resolve the configured `org.gradle.toolchains.foojay-resolver-convention:1.0.0` plugin, including in offline mode. The earlier connected rerun also could not start because ADB had no online emulator (`emulator-5562` remained offline and no AVDs were listed). The screen/editor compiled at the prior checkpoint; hands-on goal interaction and restart persistence remain for Android Studio validation.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (22,225,331 bytes). Automated tests used synthetic records; the previously documented `UI_Test_Wallet` remains on the development emulator if it reconnects.
+
 ## Module readiness
 
 | Module | Status | Limits |
@@ -112,15 +122,16 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 | Reconciliation | Atomic adjustments for asset/liability accounts implemented and unit-tested | Screen accessibility is limited; unmatched-transaction workflow is incomplete |
 | Budgets | Monthly expense-category budgets; create/edit/archive/restore/confirmed delete; live spend, remaining amount and overspend indicators; safe category references and merge handling; encrypted backup support | Connected budget lifecycle and merge tests pass. No carry-forward, fund allocation, or multi-period budget rules |
 | Subscriptions | Metadata create/edit; pause/resume/cancel/reactivate; archive/restore; guarded delete; monthly normalization; backup state | Connected lifecycle and backup tests pass. Linked payment posting/history and due notifications remain incomplete |
-| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, budgets, expected income, bills/loans/payment audit trail, subscription archive state, receivable archive state, and write-off history | Connected round-trip validates current record types; savings goals, interest/time deposits, preferences and future modules are not covered |
+| Savings goals | Create/edit target, date and notes; searchable list; reserve/release existing liquid cash with dated history; archive/restore; delete only before use | Connected lifecycle and encrypted backup/restore passed before the final search-field edit; final source build/unit/lint/test compilation pass; screen interaction and restart persistence remain |
+| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, budgets, expected income, savings goals and allocation history, bills/loans/payment audit trail, subscription archive state, receivable archive state, and write-off history | Connected round-trip validates implemented record types; interest/time deposits, preferences and future modules are not covered |
 | Dashboard | Available Money is primary; Net Worth is separate; debt liabilities, payable totals, loan proceeds and reversal-aware month cash flow flow from the ledger | User-specific account flags cannot be inspected without a device database |
 | Appearance and insights UI | Saved theme mode/palette options; monthly interactive spending chart and clearer money summaries | Must be checked on device for motion, contrast, and small-screen layout; native home-screen widgets are still incomplete |
-| Savings goals, time deposits, CSV/XLSX import, reports export, app lock, widgets, advanced charts | Incomplete | No end-to-end implementation in this checkpoint |
+| Time deposits, CSV/XLSX import, reports export, app lock, widgets, advanced charts | Incomplete | No end-to-end implementation in this checkpoint |
 
 ## Known audit findings and disposition
 
 - The prior dashboard discrepancy is reproduced as a regression test under the stated account assumptions: liquid cash is ₱2,111; total assets and net worth are ₱17,111 when liabilities are zero and receivables are ₱15,000. The actual historical database flags were not available, so its specific cause is not claimed as proven.
-- No existing user database was loaded, reset, or migrated. Populated synthetic schema-1/schema-2 databases were migrated through schema 9 on the emulator; user-specific historical database contents and flags remain uninspected.
+- No existing user database was reset. Populated synthetic schema-1/schema-2 databases were migrated through schema 10 on the emulator; user-specific historical database contents and flags remain uninspected.
 - The Android UI describes backup coverage accurately for the records that exist today. This is not a complete RalLedger v2 backup of the broader requested future modules.
 
 ## Android Studio validation checklist
@@ -132,7 +143,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - [ ] Manage income/expense categories: create, edit, reorganize, archive/restore, merge, view history and delete unused; confirm used history remains intact.
 - [ ] Record an income, expense, transfer with fee, and reversal; inspect ledger and month totals.
 - [ ] Create a receivable, edit client/details/due date, collect partially, attempt overcollection, reverse a collection, partially/full write it off, reverse a write-off, cancel, archive/restore, and verify journal and payment/write-off history.
-- [x] Run the connected suite on an online emulator; populated schema-1/schema-2 migration chains through schema 9, debt/receivable/expected-income lifecycle, and encrypted backup round-trip passed.
+- [x] Run the connected suite on an online emulator; populated schema-1/schema-2 migration chains through schema 10, debt/receivable/expected-income/savings-goal lifecycle, and encrypted backup round-trip passed before the final savings-goal search-field edit. Connected rerun after that edit was blocked because no emulator was online.
 - [x] Verify repository reconciliation corrections for asset and liability accounts with positive and negative differences while preserving original opening journal entries.
 - [x] Smoke-check account-menu reconciliation on emulator; verified adjustment text, reason entry, saved balance and success feedback.
 - [ ] Add subscriptions with weekly, monthly, quarterly, and annual billing; edit a schedule, pause/resume, cancel/reactivate, archive/restore, and verify normalized dashboard total.
@@ -145,12 +156,13 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - [x] Smoke-check expected-income tab and editor; create, cancel, and delete a synthetic forecast and verify the list returns to empty.
 - [x] Verify Bills & loans, Add bill/Add loan forms, and Subscriptions tab routing after the final mapping correction.
 - [ ] Complete hands-on Bills & loans payment entry, reversal, restart persistence, and small-screen checks.
+- [ ] Smoke-check Savings goals create/edit, reserve/release, archive/restore, and persistence after restart in Android Studio.
 - [ ] Finish hands-on account/category/receivable/subscription workflows, settings persistence, charts, smaller-screen sizing, and SAF export/restore UI checks.
 
 ## Next development steps
 
 1. Finish hands-on account/category/receivable/subscription CRUD, settings persistence, chart interaction, smaller-screen layout, and SAF export/restore checks.
 2. Finish hands-on Bills & loans payment, reversal, restart persistence and small-screen checks.
-3. Implement savings goals and non-double-counting allocations, then interest-bearing accounts and time deposits with gross/net interest, tax, maturity and manual credits.
+3. Implement interest-bearing accounts and time deposits with gross/net interest, tax, maturity and manual credits.
 4. Add linked subscription payment posting/history and due notifications; add CSV/MyMoney CSV import, spreadsheet export and expanded date-range reports.
 5. Add remaining customizable preferences, optional PIN/biometric lock, export privacy controls, saved filters/reports and home-screen widgets; verify each persisted workflow and backup state.

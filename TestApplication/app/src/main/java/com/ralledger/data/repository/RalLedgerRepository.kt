@@ -15,6 +15,10 @@ import com.ralledger.data.local.entity.ReceivableEntity
 import com.ralledger.data.local.entity.ReceivablePaymentEntity
 import com.ralledger.data.local.entity.ReceivableWriteOffEntity
 import com.ralledger.data.local.entity.ReconciliationEntity
+import com.ralledger.data.local.entity.SavingsGoalEntity
+import com.ralledger.data.local.entity.SavingsGoalEventEntity
+import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalDomainModel
+import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalEventDomainModel
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.AccountCategory
@@ -34,6 +38,8 @@ import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Receivable
 import com.ralledger.domain.model.ReceivableStatus
 import com.ralledger.domain.model.Reconciliation
+import com.ralledger.domain.model.SavingsGoal
+import com.ralledger.domain.model.SavingsGoalEventType
 import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.SubscriptionStatus
 import com.ralledger.domain.model.Transaction
@@ -61,6 +67,7 @@ class RalLedgerRepository(
     private val receivableDao = database.receivableDao()
     private val subscriptionDao = database.subscriptionDao()
     private val reconciliationDao = database.reconciliationDao()
+    private val savingsGoalDao = database.savingsGoalDao()
 
     // Dynamically calculate ledger balances for all accounts from journal line aggregates
     val accountsFlow: Flow<List<Account>> = combine(
@@ -491,6 +498,113 @@ class RalLedgerRepository(
                 payments = paymentsByDebt[debt.id].orEmpty().map { it.toDomainModel() }
             )
         }
+    }
+
+    val savingsGoalsFlow: Flow<List<SavingsGoal>> = combine(
+        savingsGoalDao.getGoalsFlow(),
+        savingsGoalDao.getEventsFlow()
+    ) { goals, events ->
+        val eventsByGoal = events.groupBy { it.goalId }
+        goals.map { goal ->
+            goal.toSavingsGoalDomainModel(eventsByGoal[goal.id].orEmpty().map { it.toSavingsGoalEventDomainModel() })
+        }
+    }
+
+    suspend fun createSavingsGoal(name: String, target: Money, targetDate: Long?, notes: String): String {
+        validateSavingsGoalFields(name, target, targetDate)
+        val id = UUID.randomUUID().toString()
+        savingsGoalDao.insertGoal(
+            SavingsGoalEntity(id, name.trim(), target.centavos, targetDate, notes.trim(), 0L, false, System.currentTimeMillis())
+        )
+        return id
+    }
+
+    suspend fun updateSavingsGoal(id: String, name: String, target: Money, targetDate: Long?, notes: String) {
+        validateSavingsGoalFields(name, target, targetDate)
+        database.withTransaction {
+            val goal = savingsGoalDao.getGoalById(id) ?: throw IllegalArgumentException("This savings goal no longer exists")
+            savingsGoalDao.updateGoal(
+                goal.copy(name = name.trim(), targetAmountCentavos = target.centavos, targetDate = targetDate, notes = notes.trim())
+            )
+        }
+    }
+
+    suspend fun allocateToSavingsGoal(id: String, amount: Money, date: Long = System.currentTimeMillis(), note: String = "") =
+        updateSavingsGoalAllocation(id, amount, SavingsGoalEventType.ALLOCATE, date, note)
+
+    suspend fun releaseFromSavingsGoal(id: String, amount: Money, date: Long = System.currentTimeMillis(), note: String = "") =
+        updateSavingsGoalAllocation(id, amount, SavingsGoalEventType.RELEASE, date, note)
+
+    private suspend fun updateSavingsGoalAllocation(
+        id: String,
+        amount: Money,
+        type: SavingsGoalEventType,
+        date: Long,
+        note: String
+    ) {
+        require(amount.isPositive) { "Enter an amount greater than zero" }
+        require(date > 0L) { "Choose a valid date" }
+        database.withTransaction {
+            val goal = savingsGoalDao.getGoalById(id) ?: throw IllegalArgumentException("This savings goal no longer exists")
+            if (type == SavingsGoalEventType.ALLOCATE) {
+                require(!goal.isArchived) { "Restore this goal before adding reserved money" }
+                val availableCentavos = Math.subtractExact(currentLiquidCashForGoals().centavos, savingsGoalDao.getTotalAllocatedCentavos())
+                require(availableCentavos >= amount.centavos) {
+                    "There is not enough available cash to reserve this amount. Release another goal allocation or add funds first."
+                }
+            } else {
+                require(goal.allocatedAmountCentavos >= amount.centavos) { "Release amount exceeds this goal's reserved balance" }
+            }
+            val updatedAmount = if (type == SavingsGoalEventType.ALLOCATE) {
+                Math.addExact(goal.allocatedAmountCentavos, amount.centavos)
+            } else {
+                Math.subtractExact(goal.allocatedAmountCentavos, amount.centavos)
+            }
+            savingsGoalDao.updateGoal(goal.copy(allocatedAmountCentavos = updatedAmount))
+            savingsGoalDao.insertEvent(
+                SavingsGoalEventEntity(UUID.randomUUID().toString(), id, type.name, amount.centavos, date, note.trim())
+            )
+        }
+    }
+
+    suspend fun setSavingsGoalArchived(id: String, isArchived: Boolean) {
+        database.withTransaction {
+            val goal = savingsGoalDao.getGoalById(id) ?: throw IllegalArgumentException("This savings goal no longer exists")
+            savingsGoalDao.updateGoal(goal.copy(isArchived = isArchived))
+        }
+    }
+
+    suspend fun deleteUnusedSavingsGoal(id: String) {
+        database.withTransaction {
+            val goal = savingsGoalDao.getGoalById(id) ?: throw IllegalArgumentException("This savings goal no longer exists")
+            require(goal.allocatedAmountCentavos == 0L && savingsGoalDao.countEvents(id) == 0L) {
+                "This goal has allocation history. Archive it to preserve its records."
+            }
+            savingsGoalDao.deleteGoal(id)
+        }
+    }
+
+    private fun validateSavingsGoalFields(name: String, target: Money, targetDate: Long?) {
+        require(name.isNotBlank()) { "Enter a savings goal name" }
+        require(target.isPositive) { "Enter a target amount greater than zero" }
+        require(targetDate == null || targetDate > 0L) { "Choose a valid target date" }
+    }
+
+    private suspend fun currentLiquidCashForGoals(): Money {
+        val eligibleAccounts = accountDao.getAllAccounts().filter {
+            val type = runCatching { AccountType.valueOf(it.accountType) }.getOrNull()
+            !it.isArchived && it.includeInDashboardTotals && type?.isLiquid == true
+        }
+        var total = 0L
+        eligibleAccounts.forEach { account ->
+            val aggregates = journalDao.getBalanceAggregateForAccount(account.id)
+            val debits = aggregates.filter { it.lineType == LineType.DEBIT.name }
+                .fold(0L) { sum, row -> Math.addExact(sum, row.totalCentavos) }
+            val credits = aggregates.filter { it.lineType == LineType.CREDIT.name }
+                .fold(0L) { sum, row -> Math.addExact(sum, row.totalCentavos) }
+            total = Math.addExact(total, Math.subtractExact(debits, credits))
+        }
+        return Money(total)
     }
 
     // Transactions
@@ -1581,20 +1695,22 @@ class RalLedgerRepository(
     }
 
     // Dashboard Summary Calculation
+    private val accountsAndSavingsGoalsFlow = combine(accountsFlow, savingsGoalsFlow) { accounts, goals -> accounts to goals }
     val dashboardSummaryFlow: Flow<DashboardSummary> = combine(
-        accountsFlow,
+        accountsAndSavingsGoalsFlow,
         receivablesFlow,
         subscriptionsFlow,
         transactionsFlow,
         debtsFlow
-    ) { accounts, receivables, subscriptions, transactions, debts ->
+    ) { accountData, receivables, subscriptions, transactions, debts ->
         DashboardSummaryCalculator.calculate(
-            accounts = accounts,
+            accounts = accountData.first,
             receivables = receivables,
             subscriptions = subscriptions,
             transactions = transactions,
             startOfMonthTimestamp = getStartOfMonthTimestamp(),
-            debts = debts
+            debts = debts,
+            savingsGoals = accountData.second
         )
     }
 

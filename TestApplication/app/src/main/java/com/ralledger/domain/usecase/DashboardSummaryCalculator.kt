@@ -10,6 +10,7 @@ import com.ralledger.domain.model.Receivable
 import com.ralledger.domain.model.ReceivableStatus
 import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.SubscriptionStatus
+import com.ralledger.domain.model.SavingsGoal
 import com.ralledger.domain.model.Transaction
 import com.ralledger.domain.model.TransactionType
 
@@ -21,15 +22,19 @@ object DashboardSummaryCalculator {
         subscriptions: List<Subscription>,
         transactions: List<Transaction>,
         startOfMonthTimestamp: Long,
-        debts: List<Debt> = emptyList()
+        debts: List<Debt> = emptyList(),
+        savingsGoals: List<SavingsGoal> = emptyList()
     ): DashboardSummary {
         val includedAccounts = accounts.filter { it.includeInDashboardTotals && !it.isArchived }
         val liquidCash = includedAccounts
             .filter { it.accountType.isLiquid }
             .fold(Money.ZERO) { total, account -> total + account.currentLedgerBalance }
-        val reservedSavings = includedAccounts
+        val accountSavings = includedAccounts
             .filter { it.accountType == AccountType.PHYSICAL_SAVINGS }
             .fold(Money.ZERO) { total, account -> total + account.currentLedgerBalance }
+        // Goal allocations reserve a subset of liquid cash. They never add assets or ledger balance.
+        val goalReserves = savingsGoals.fold(Money.ZERO) { total, goal -> total + goal.allocatedAmount }
+        val reservedSavings = accountSavings + goalReserves
         val totalReceivables = receivables
             .filter {
                 it.status == ReceivableStatus.CONFIRMED ||
@@ -80,7 +85,7 @@ object DashboardSummaryCalculator {
 
         return DashboardSummary(
             liquidCashAndBankBalances = liquidCash,
-            availableToSpendFunds = liquidCash,
+            availableToSpendFunds = liquidCash - goalReserves,
             reservedSavings = reservedSavings,
             accountsReceivableTotal = totalReceivables,
             accountsPayableTotal = accountLiabilities + totalPayables,

@@ -16,6 +16,7 @@ import com.ralledger.data.local.dao.JournalDao
 import com.ralledger.data.local.dao.ReceivableDao
 import com.ralledger.data.local.dao.ReconciliationDao
 import com.ralledger.data.local.dao.SubscriptionDao
+import com.ralledger.data.local.dao.SavingsGoalDao
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
@@ -29,6 +30,8 @@ import com.ralledger.data.local.entity.ReceivablePaymentEntity
 import com.ralledger.data.local.entity.ReceivableWriteOffEntity
 import com.ralledger.data.local.entity.ReconciliationEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
+import com.ralledger.data.local.entity.SavingsGoalEntity
+import com.ralledger.data.local.entity.SavingsGoalEventEntity
 import com.ralledger.domain.model.AccountCategory
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.CategoryType
@@ -50,9 +53,11 @@ import kotlinx.coroutines.launch
         DebtEntity::class,
         DebtPaymentEntity::class,
         SubscriptionEntity::class,
-        ReconciliationEntity::class
+        ReconciliationEntity::class,
+        SavingsGoalEntity::class,
+        SavingsGoalEventEntity::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -66,9 +71,10 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun receivableDao(): ReceivableDao
     abstract fun subscriptionDao(): SubscriptionDao
     abstract fun reconciliationDao(): ReconciliationDao
+    abstract fun savingsGoalDao(): SavingsGoalDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 9
+        const val CURRENT_SCHEMA_VERSION = 10
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -227,6 +233,40 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS savings_goals (
+                        id TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        targetAmountCentavos INTEGER NOT NULL,
+                        targetDate INTEGER,
+                        notes TEXT NOT NULL,
+                        allocatedAmountCentavos INTEGER NOT NULL,
+                        isArchived INTEGER NOT NULL DEFAULT 0,
+                        createdAt INTEGER NOT NULL,
+                        PRIMARY KEY(id)
+                    )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_savings_goals_targetDate ON savings_goals(targetDate)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_savings_goals_isArchived ON savings_goals(isArchived)")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS savings_goal_events (
+                        id TEXT NOT NULL,
+                        goalId TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        amountCentavos INTEGER NOT NULL,
+                        date INTEGER NOT NULL,
+                        note TEXT NOT NULL,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(goalId) REFERENCES savings_goals(id) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_savings_goal_events_goalId ON savings_goal_events(goalId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_savings_goal_events_date ON savings_goal_events(date)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
 
@@ -237,7 +277,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

@@ -14,6 +14,8 @@ import com.ralledger.data.local.entity.ReceivableEntity
 import com.ralledger.data.local.entity.ReceivablePaymentEntity
 import com.ralledger.data.local.entity.ReceivableWriteOffEntity
 import com.ralledger.data.local.entity.ReconciliationEntity
+import com.ralledger.data.local.entity.SavingsGoalEntity
+import com.ralledger.data.local.entity.SavingsGoalEventEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.LineType
 import kotlinx.coroutines.Dispatchers
@@ -39,6 +41,8 @@ data class BackupPreview(
     val expectedIncome: Int,
     val debts: Int,
     val debtPayments: Int,
+    val savingsGoals: Int = 0,
+    val savingsGoalEvents: Int = 0,
     val journalEntries: Int,
     val journalLines: Int,
     val receivables: Int,
@@ -91,6 +95,7 @@ class BackupRepository(
             val categories = database.categoryDao()
             val expectedIncome = database.expectedIncomeDao()
             val debts = database.debtDao()
+            val savingsGoals = database.savingsGoalDao()
             val journals = database.journalDao()
             val receivables = database.receivableDao()
             val subscriptions = database.subscriptionDao()
@@ -103,6 +108,8 @@ class BackupRepository(
             expectedIncome.clear()
             debts.clearPayments()
             debts.clearDebts()
+            savingsGoals.clearEvents()
+            savingsGoals.clearGoals()
             journals.clearJournalLines()
             journals.clearJournalEntries()
             receivables.clearReceivables()
@@ -121,6 +128,8 @@ class BackupRepository(
             if (snapshot.expectedIncome.isNotEmpty()) expectedIncome.insertAll(snapshot.expectedIncome)
             if (snapshot.debts.isNotEmpty()) debts.insertDebts(snapshot.debts)
             if (snapshot.debtPayments.isNotEmpty()) debts.insertPayments(snapshot.debtPayments)
+            if (snapshot.savingsGoals.isNotEmpty()) savingsGoals.insertGoals(snapshot.savingsGoals)
+            if (snapshot.savingsGoalEvents.isNotEmpty()) savingsGoals.insertEvents(snapshot.savingsGoalEvents)
             if (snapshot.payments.isNotEmpty()) receivables.insertPayments(snapshot.payments)
             if (snapshot.writeOffs.isNotEmpty()) receivables.insertWriteOffs(snapshot.writeOffs)
             if (snapshot.subscriptions.isNotEmpty()) subscriptions.insertSubscriptions(snapshot.subscriptions)
@@ -159,6 +168,8 @@ class BackupRepository(
         expectedIncome = database.expectedIncomeDao().getAllExpectedIncome(),
         debts = database.debtDao().getAllDebts(),
         debtPayments = database.debtDao().getAllPayments(),
+        savingsGoals = database.savingsGoalDao().getAllGoals(),
+        savingsGoalEvents = database.savingsGoalDao().getAllEvents(),
         entries = database.journalDao().getAllJournalEntries(),
         lines = database.journalDao().getAllJournalLines(),
         receivables = database.receivableDao().getAllReceivables(),
@@ -244,6 +255,8 @@ class BackupRepository(
         val expectedIncome: List<ExpectedIncomeEntity>,
         val debts: List<DebtEntity>,
         val debtPayments: List<DebtPaymentEntity>,
+        val savingsGoals: List<SavingsGoalEntity>,
+        val savingsGoalEvents: List<SavingsGoalEventEntity>,
         val entries: List<JournalEntryEntity>,
         val lines: List<JournalLineEntity>,
         val receivables: List<ReceivableEntity>,
@@ -263,6 +276,8 @@ class BackupRepository(
             put("expectedIncome", JSONArray().also { array -> expectedIncome.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("debts", JSONArray().also { array -> debts.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("debtPayments", JSONArray().also { array -> debtPayments.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("savingsGoals", JSONArray().also { array -> savingsGoals.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("savingsGoalEvents", JSONArray().also { array -> savingsGoalEvents.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalEntries", JSONArray().also { array -> entries.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalLines", JSONArray().also { array -> lines.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("receivables", JSONArray().also { array -> receivables.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
@@ -283,6 +298,8 @@ class BackupRepository(
             checkUnique("expected income", expectedIncome) { it.id }
             checkUnique("debt", debts) { it.id }
             checkUnique("debt payment", debtPayments) { it.id }
+            checkUnique("savings goal", savingsGoals) { it.id }
+            checkUnique("savings goal event", savingsGoalEvents) { it.id }
             checkUnique("journal entry", entries) { it.id }
             checkUnique("journal line", lines) { it.id }
             checkUnique("receivable", receivables) { it.id }
@@ -290,6 +307,25 @@ class BackupRepository(
             checkUnique("receivable write-off", writeOffs) { it.id }
             checkUnique("subscription", subscriptions) { it.id }
             checkUnique("reconciliation", reconciliations) { it.id }
+
+            val goalsById = savingsGoals.associateBy { it.id }
+            if (savingsGoals.any { it.name.isBlank() || it.targetAmountCentavos <= 0L || it.allocatedAmountCentavos < 0L || (it.targetDate != null && it.targetDate <= 0L) || it.createdAt <= 0L }) {
+                errors += "Savings goal has an invalid name, target, date, or allocation"
+            }
+            if (savingsGoalEvents.any { it.goalId !in goalsById || it.amountCentavos <= 0L || it.date <= 0L ||
+                    runCatching { com.ralledger.domain.model.SavingsGoalEventType.valueOf(it.type) }.isFailure }) {
+                errors += "Savings goal allocation history has a missing goal, invalid type, amount, or date"
+            }
+            savingsGoals.forEach { goal ->
+                val events = savingsGoalEvents.filter { it.goalId == goal.id }
+                val eventBalance = events.fold(java.math.BigInteger.ZERO) { sum, event ->
+                    val amount = java.math.BigInteger.valueOf(event.amountCentavos)
+                    if (event.type == "ALLOCATE") sum + amount else sum - amount
+                }
+                if (eventBalance.signum() < 0 || eventBalance != java.math.BigInteger.valueOf(goal.allocatedAmountCentavos)) {
+                    errors += "Savings goal ${goal.id} does not match its allocation history"
+                }
+            }
 
             val entryIds = entries.map { it.id }.toSet()
             val entryById = entries.associateBy { it.id }
@@ -518,6 +554,8 @@ class BackupRepository(
                 expectedIncome = expectedIncome.size,
                 debts = debts.size,
                 debtPayments = debtPayments.size,
+                savingsGoals = savingsGoals.size,
+                savingsGoalEvents = savingsGoalEvents.size,
                 journalEntries = entries.size,
                 journalLines = lines.size,
                 receivables = receivables.size,
@@ -545,6 +583,8 @@ class BackupRepository(
                     expectedIncome = json.optJSONArray("expectedIncome")?.objects()?.map { it.toExpectedIncome() }.orEmpty(),
                     debts = json.optJSONArray("debts")?.objects()?.map { it.toDebt() }.orEmpty(),
                     debtPayments = json.optJSONArray("debtPayments")?.objects()?.map { it.toDebtPayment() }.orEmpty(),
+                    savingsGoals = json.optJSONArray("savingsGoals")?.objects()?.map { it.toSavingsGoal() }.orEmpty(),
+                    savingsGoalEvents = json.optJSONArray("savingsGoalEvents")?.objects()?.map { it.toSavingsGoalEvent() }.orEmpty(),
                     entries = json.getJSONArray("journalEntries").objects().map { it.toJournalEntry() },
                     lines = json.getJSONArray("journalLines").objects().map { it.toJournalLine() },
                     receivables = json.getJSONArray("receivables").objects().map { it.toReceivable() },
@@ -654,6 +694,26 @@ private fun JSONObject.toDebtPayment() = DebtPaymentEntity(
     paymentAccountId = getString("paymentAccountId"), principalCentavos = getLong("principalCentavos"),
     interestCentavos = getLong("interestCentavos"), interestCategoryId = stringOrNull("interestCategoryId"),
     paymentDate = getLong("paymentDate"), notes = optString("notes", ""), reversedAt = longOrNull("reversedAt")
+)
+
+private fun SavingsGoalEntity.toJson() = JSONObject().apply {
+    put("id", id); put("name", name); put("targetAmountCentavos", targetAmountCentavos)
+    putNullable("targetDate", targetDate); put("notes", notes); put("allocatedAmountCentavos", allocatedAmountCentavos)
+    put("isArchived", isArchived); put("createdAt", createdAt)
+}
+private fun JSONObject.toSavingsGoal() = SavingsGoalEntity(
+    id = getString("id"), name = getString("name"), targetAmountCentavos = getLong("targetAmountCentavos"),
+    targetDate = longOrNull("targetDate"), notes = optString("notes", ""),
+    allocatedAmountCentavos = getLong("allocatedAmountCentavos"), isArchived = optBoolean("isArchived", false),
+    createdAt = getLong("createdAt")
+)
+private fun SavingsGoalEventEntity.toJson() = JSONObject().apply {
+    put("id", id); put("goalId", goalId); put("type", type); put("amountCentavos", amountCentavos)
+    put("date", date); put("note", note)
+}
+private fun JSONObject.toSavingsGoalEvent() = SavingsGoalEventEntity(
+    id = getString("id"), goalId = getString("goalId"), type = getString("type"),
+    amountCentavos = getLong("amountCentavos"), date = getLong("date"), note = optString("note", "")
 )
 
 private fun JournalEntryEntity.toJson() = JSONObject().apply {

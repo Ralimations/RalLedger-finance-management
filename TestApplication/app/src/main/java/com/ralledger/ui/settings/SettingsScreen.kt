@@ -141,7 +141,7 @@ fun SettingsScreen(
             ) {
                 Text("Encrypted Backup & Restore", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 Text(
-                    "The backup contains your current accounts, categories, budgets, journal, receivables, payment history, subscriptions, and reconciliations. It is encrypted with a password you choose. Keep that password separately; it cannot be recovered.",
+                    "The backup contains your current accounts, categories, budgets, savings goals and allocation history, journal, receivables, payment history, bills and loans, subscriptions, and reconciliations. It is encrypted with a password you choose. Keep that password separately; it cannot be recovered.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 OutlinedTextField(
@@ -202,6 +202,7 @@ fun SettingsScreen(
                     Text("${preview.budgets} budgets")
                     Text("${preview.expectedIncome} expected-income records")
                     Text("${preview.debts} bills and loans · ${preview.debtPayments} debt payments")
+                    Text("${preview.savingsGoals} savings goals · ${preview.savingsGoalEvents} allocations")
                     Text("${preview.journalEntries} journal entries · ${preview.journalLines} journal lines")
                     Text("${preview.receivables} receivables · ${preview.payments} payments")
                     Text("${preview.writeOffs} receivable write-offs")

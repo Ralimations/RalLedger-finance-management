@@ -31,7 +31,8 @@ data class Subscription(
     val cancellationDate: Long? = null,
     val notes: String = "",
     val isArchived: Boolean = false,
-    val payments: List<SubscriptionPayment> = emptyList()
+    val payments: List<SubscriptionPayment> = emptyList(),
+    val counterpartyId: String? = null
 ) {
     /** Average monthly commitment using 365 days or 52 weeks per year and centavo rounding. */
     fun normalizedMonthlyCost(): Money {

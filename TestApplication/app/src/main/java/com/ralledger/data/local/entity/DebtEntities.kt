@@ -14,11 +14,12 @@ import com.ralledger.domain.model.Money
 @Entity(
     tableName = "debts",
     foreignKeys = [
+        ForeignKey(entity = CounterpartyEntity::class, parentColumns = ["id"], childColumns = ["counterpartyId"], onDelete = ForeignKey.RESTRICT),
         ForeignKey(entity = JournalEntryEntity::class, parentColumns = ["id"], childColumns = ["recognitionJournalEntryId"], onDelete = ForeignKey.RESTRICT),
         ForeignKey(entity = CategoryEntity::class, parentColumns = ["id"], childColumns = ["categoryId"], onDelete = ForeignKey.RESTRICT),
         ForeignKey(entity = AccountEntity::class, parentColumns = ["id"], childColumns = ["fundingAccountId"], onDelete = ForeignKey.RESTRICT)
     ],
-    indices = [Index(value = ["recognitionJournalEntryId"], unique = true), Index(value = ["categoryId"]), Index(value = ["fundingAccountId"]), Index(value = ["dueDate"]), Index(value = ["kind", "status"])]
+    indices = [Index(value = ["recognitionJournalEntryId"], unique = true), Index(value = ["categoryId"]), Index(value = ["fundingAccountId"]), Index(value = ["counterpartyId"]), Index(value = ["dueDate"]), Index(value = ["kind", "status"])]
 )
 data class DebtEntity(
     @PrimaryKey val id: String,
@@ -33,7 +34,8 @@ data class DebtEntity(
     val recognitionJournalEntryId: String,
     val status: String,
     @ColumnInfo(defaultValue = "0") val isArchived: Boolean = false,
-    val createdAt: Long
+    val createdAt: Long,
+    val counterpartyId: String? = null
 )
 
 @Entity(
@@ -82,5 +84,6 @@ fun DebtEntity.toDomainModel(
     status = DebtStatus.valueOf(status),
     isArchived = isArchived,
     createdAt = createdAt,
-    payments = payments
+    payments = payments,
+    counterpartyId = counterpartyId
 )

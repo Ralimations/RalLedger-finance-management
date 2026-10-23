@@ -2,13 +2,19 @@ package com.ralledger.data.local.entity
 
 import androidx.room.Entity
 import androidx.room.ColumnInfo
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.ralledger.domain.model.BillingFrequency
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.SubscriptionStatus
 
-@Entity(tableName = "subscriptions")
+@Entity(
+    tableName = "subscriptions",
+    foreignKeys = [ForeignKey(entity = CounterpartyEntity::class, parentColumns = ["id"], childColumns = ["counterpartyId"], onDelete = ForeignKey.RESTRICT)],
+    indices = [Index(value = ["counterpartyId"])]
+)
 data class SubscriptionEntity(
     @PrimaryKey val id: String,
     val name: String,
@@ -21,7 +27,8 @@ data class SubscriptionEntity(
     val status: String, // SubscriptionStatus.name
     val cancellationDate: Long?,
     val notes: String,
-    @ColumnInfo(defaultValue = "0") val isArchived: Boolean = false
+    @ColumnInfo(defaultValue = "0") val isArchived: Boolean = false,
+    val counterpartyId: String? = null
 ) {
     fun toDomainModel(assignedAccountName: String): Subscription {
         return Subscription(
@@ -37,7 +44,8 @@ data class SubscriptionEntity(
             status = SubscriptionStatus.valueOf(status),
             cancellationDate = cancellationDate,
             notes = notes,
-            isArchived = isArchived
+            isArchived = isArchived,
+            counterpartyId = counterpartyId
         )
     }
 
@@ -55,7 +63,8 @@ data class SubscriptionEntity(
                 status = sub.status.name,
                 cancellationDate = sub.cancellationDate,
                 notes = sub.notes,
-                isArchived = sub.isArchived
+                isArchived = sub.isArchived,
+                counterpartyId = sub.counterpartyId
             )
         }
     }

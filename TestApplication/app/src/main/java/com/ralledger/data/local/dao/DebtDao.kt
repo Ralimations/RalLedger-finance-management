@@ -47,6 +47,9 @@ interface DebtDao {
     @Query("UPDATE debts SET categoryId = :targetId WHERE categoryId = :sourceId")
     suspend fun reassignDebtCategory(sourceId: String, targetId: String)
 
+    @Query("UPDATE debts SET counterparty = :targetName, counterpartyId = :targetId WHERE counterpartyId = :sourceId")
+    suspend fun reassignCounterparty(sourceId: String, targetId: String, targetName: String)
+
     @Query("UPDATE debt_payments SET interestCategoryId = :targetId WHERE interestCategoryId = :sourceId")
     suspend fun reassignPaymentCategory(sourceId: String, targetId: String)
 

@@ -20,6 +20,10 @@ class CounterpartiesViewModel(private val repository: RalLedgerRepository) : Vie
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val expectedIncome = repository.expectedIncomeFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val debts = repository.debtsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val subscriptions = repository.subscriptionsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()

@@ -4,10 +4,14 @@ import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ralledger.data.local.RalLedgerDatabase
+import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.CategoryEntity
+import com.ralledger.domain.model.AccountType
+import com.ralledger.domain.model.BillingFrequency
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.CounterpartyKind
 import com.ralledger.domain.model.Money
+import com.ralledger.domain.model.Subscription
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -32,6 +36,22 @@ class CounterpartyManagementInstrumentedTest {
                     CategoryEntity("expense_counterparty", "Fees", CategoryType.EXPENSE.name, "receipt", "#C62828", false)
                 )
             )
+            source.accountDao().insertAccount(
+                AccountEntity(
+                    id = "counterparty_test_wallet",
+                    name = "Test wallet",
+                    institution = "",
+                    accountType = AccountType.TRADITIONAL_BANK.name,
+                    currency = "PHP",
+                    openingBalanceCentavos = 0L,
+                    iconName = "account_balance",
+                    colorHex = "#1565C0",
+                    createdAt = 1L,
+                    isArchived = false,
+                    includeInDashboardTotals = true,
+                    lastReconciledAt = null
+                )
+            )
             val repository = RalLedgerRepository(source)
             val clientId = repository.createCounterparty("  Acme   Media ", CounterpartyKind.CLIENT, "Original notes")
             val client = source.counterpartyDao().getById(clientId)!!
@@ -48,14 +68,49 @@ class CounterpartyManagementInstrumentedTest {
             val standaloneReceivable = repository.createReceivable(
                 "Acme Media", Money(80_000L), expectedDate, "income_counterparty", "Invoice A", clientId
             )
+            val billId = repository.createBill(
+                "Studio supplies", "Acme Media", Money(12_500L), expectedDate,
+                "expense_counterparty", clientId
+            )
+            val loanId = repository.createLoan(
+                "Equipment loan", "Acme Media", Money(250_000L), expectedDate,
+                "counterparty_test_wallet", clientId
+            )
+            val subscriptionId = "counterparty_test_subscription"
+            repository.createSubscription(
+                Subscription(
+                    id = subscriptionId,
+                    name = "Studio internet",
+                    merchant = "Acme Media",
+                    billingAmount = Money(4_500L),
+                    billingFrequency = BillingFrequency.MONTHLY,
+                    assignedAccountId = "counterparty_test_wallet",
+                    nextBillingDate = expectedDate,
+                    notes = "Business plan",
+                    counterpartyId = clientId
+                )
+            )
             val convertedReceivableId = repository.convertExpectedIncomeToReceivable(forecastId)
             assertEquals(clientId, source.expectedIncomeDao().getById(forecastId)?.counterpartyId)
             assertEquals(clientId, source.receivableDao().getReceivableById(convertedReceivableId)?.counterpartyId)
+            assertEquals(clientId, source.debtDao().getDebtById(billId)?.counterpartyId)
+            assertEquals(clientId, source.debtDao().getDebtById(loanId)?.counterpartyId)
+            assertEquals(clientId, source.subscriptionDao().getSubscriptionById(subscriptionId)?.counterpartyId)
+            assertEquals(
+                "Acme Media",
+                repository.subscriptionsFlow.first { rows -> rows.any { it.id == subscriptionId } }
+                    .first { it.id == subscriptionId }.merchant
+            )
 
             val originalJournal = source.journalDao().getAllJournalEntries().sortedBy { it.id }
             repository.updateCounterparty(clientId, "Acme Media LLC", CounterpartyKind.BOTH, "Updated notes")
             assertEquals("Acme Media LLC", source.counterpartyDao().getById(clientId)?.name)
             assertEquals("Updated notes", source.counterpartyDao().getById(clientId)?.notes)
+            assertEquals(
+                "Acme Media LLC",
+                repository.subscriptionsFlow.first { rows -> rows.any { it.id == subscriptionId } }
+                    .first { it.id == subscriptionId }.merchant
+            )
             assertEquals(
                 "Acme Media LLC",
                 repository.receivablesFlow.first { rows -> rows.any { it.id == standaloneReceivable.id } }
@@ -79,8 +134,13 @@ class CounterpartyManagementInstrumentedTest {
             assertEquals(targetId, source.expectedIncomeDao().getById(forecastId)?.counterpartyId)
             assertEquals(targetId, source.receivableDao().getReceivableById(standaloneReceivable.id)?.counterpartyId)
             assertEquals(targetId, source.receivableDao().getReceivableById(convertedReceivableId)?.counterpartyId)
+            assertEquals(targetId, source.debtDao().getDebtById(billId)?.counterpartyId)
+            assertEquals("Acme Group", source.debtDao().getDebtById(billId)?.counterparty)
+            assertEquals(targetId, source.debtDao().getDebtById(loanId)?.counterpartyId)
+            assertEquals(targetId, source.subscriptionDao().getSubscriptionById(subscriptionId)?.counterpartyId)
+            assertEquals("Acme Group", source.subscriptionDao().getSubscriptionById(subscriptionId)?.merchant)
             assertEquals(originalJournal, source.journalDao().getAllJournalEntries().sortedBy { it.id })
-            assertEquals(3L, repository.getCounterpartyReferenceCount(targetId))
+            assertEquals(6L, repository.getCounterpartyReferenceCount(targetId))
             assertTrue(runCatching { repository.deleteCounterparty(targetId) }.isFailure)
 
             repository.setCounterpartyArchived(targetId, true)
@@ -96,11 +156,15 @@ class CounterpartyManagementInstrumentedTest {
             assertEquals(1, preview.counterparties)
             assertEquals(1, preview.expectedIncome)
             assertEquals(2, preview.receivables)
+            assertEquals(2, preview.debts)
+            assertEquals(1, preview.subscriptions)
             destinationBackup.restorePreparedBackup()
 
             assertEquals(source.counterpartyDao().getAll(), destination.counterpartyDao().getAll())
             assertEquals(source.expectedIncomeDao().getAllExpectedIncome(), destination.expectedIncomeDao().getAllExpectedIncome())
             assertEquals(source.receivableDao().getAllReceivables(), destination.receivableDao().getAllReceivables())
+            assertEquals(source.debtDao().getAllDebts(), destination.debtDao().getAllDebts())
+            assertEquals(source.subscriptionDao().getAllSubscriptions(), destination.subscriptionDao().getAllSubscriptions())
             assertEquals(originalJournal, destination.journalDao().getAllJournalEntries().sortedBy { it.id })
         } finally {
             backupBytes?.fill(0)

@@ -635,6 +635,7 @@ class BackupRepository(
                     val recognitionReversed = reversals.any { it.reversesEntryId == debt.recognitionJournalEntryId }
                     kind == null || status == null || debt.originalAmountCentavos <= 0L || debt.outstandingAmountCentavos < 0L ||
                         debt.dueDate <= 0L || debt.createdAt <= 0L || debt.title.isBlank() || recognition == null ||
+                        (debt.counterpartyId != null && debt.counterpartyId !in counterpartiesById) ||
                         recognition.amountCentavos != debt.originalAmountCentavos ||
                         (status == com.ralledger.domain.model.DebtStatus.CANCELLED) != recognitionReversed ||
                         (kind == com.ralledger.domain.model.DebtKind.BILL &&
@@ -716,7 +717,8 @@ class BackupRepository(
                 receivables.any { runCatching { com.ralledger.domain.model.ReceivableStatus.valueOf(it.status) }.isFailure } ||
                 subscriptions.any {
                     runCatching { com.ralledger.domain.model.BillingFrequency.valueOf(it.billingFrequency) }.isFailure ||
-                        runCatching { com.ralledger.domain.model.SubscriptionStatus.valueOf(it.status) }.isFailure
+                        runCatching { com.ralledger.domain.model.SubscriptionStatus.valueOf(it.status) }.isFailure ||
+                        (it.counterpartyId != null && it.counterpartyId !in counterpartiesById)
                 } ||
                 entries.any { runCatching { com.ralledger.domain.model.TransactionType.valueOf(it.transactionType) }.isFailure }
             ) errors += "Backup contains an unsupported financial record type"
@@ -952,14 +954,14 @@ private fun DebtEntity.toJson() = JSONObject().apply {
     put("originalAmountCentavos", originalAmountCentavos); put("outstandingAmountCentavos", outstandingAmountCentavos)
     put("dueDate", dueDate); putNullable("categoryId", categoryId); putNullable("fundingAccountId", fundingAccountId)
     put("recognitionJournalEntryId", recognitionJournalEntryId); put("status", status)
-    put("isArchived", isArchived); put("createdAt", createdAt)
+    put("isArchived", isArchived); put("createdAt", createdAt); putNullable("counterpartyId", counterpartyId)
 }
 private fun JSONObject.toDebt() = DebtEntity(
     id = getString("id"), title = getString("title"), counterparty = getString("counterparty"), kind = getString("kind"),
     originalAmountCentavos = getLong("originalAmountCentavos"), outstandingAmountCentavos = getLong("outstandingAmountCentavos"),
     dueDate = getLong("dueDate"), categoryId = stringOrNull("categoryId"), fundingAccountId = stringOrNull("fundingAccountId"),
     recognitionJournalEntryId = getString("recognitionJournalEntryId"), status = getString("status"),
-    isArchived = optBoolean("isArchived", false), createdAt = getLong("createdAt")
+    isArchived = optBoolean("isArchived", false), createdAt = getLong("createdAt"), counterpartyId = stringOrNull("counterpartyId")
 )
 
 private fun DebtPaymentEntity.toJson() = JSONObject().apply {
@@ -1130,14 +1132,15 @@ private fun SubscriptionEntity.toJson() = JSONObject().apply {
     put("id", id); put("name", name); put("merchant", merchant); put("billingAmountCentavos", billingAmountCentavos)
     put("billingFrequency", billingFrequency); put("assignedAccountId", assignedAccountId); put("nextBillingDate", nextBillingDate)
     putNullable("lastPaymentDate", lastPaymentDate); put("status", status); putNullable("cancellationDate", cancellationDate)
-    put("notes", notes); put("isArchived", isArchived)
+    put("notes", notes); put("isArchived", isArchived); putNullable("counterpartyId", counterpartyId)
 }
 private fun JSONObject.toSubscription() = SubscriptionEntity(
     id = getString("id"), name = getString("name"), merchant = getString("merchant"),
     billingAmountCentavos = getLong("billingAmountCentavos"), billingFrequency = getString("billingFrequency"),
     assignedAccountId = getString("assignedAccountId"), nextBillingDate = getLong("nextBillingDate"),
     lastPaymentDate = longOrNull("lastPaymentDate"), status = getString("status"),
-    cancellationDate = longOrNull("cancellationDate"), notes = getString("notes"), isArchived = optBoolean("isArchived", false)
+    cancellationDate = longOrNull("cancellationDate"), notes = getString("notes"), isArchived = optBoolean("isArchived", false),
+    counterpartyId = stringOrNull("counterpartyId")
 )
 
 private fun ReconciliationEntity.toJson() = JSONObject().apply {

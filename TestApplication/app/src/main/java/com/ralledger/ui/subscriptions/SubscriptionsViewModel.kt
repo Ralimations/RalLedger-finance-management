@@ -7,6 +7,7 @@ import com.ralledger.data.repository.RalLedgerRepository
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.BillingFrequency
 import com.ralledger.domain.model.Category
+import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.SubscriptionStatus
@@ -32,6 +33,8 @@ class SubscriptionsViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val categories: StateFlow<List<Category>> = repository.categoriesFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val counterparties: StateFlow<List<Counterparty>> = repository.counterpartiesFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun createSubscription(
         name: String,
@@ -40,7 +43,8 @@ class SubscriptionsViewModel(
         frequency: BillingFrequency,
         assignedAccountId: String,
         nextBillingDate: Long,
-        notes: String
+        notes: String,
+        counterpartyId: String? = null
     ) {
         viewModelScope.launch {
             try {
@@ -54,7 +58,8 @@ class SubscriptionsViewModel(
                     billingFrequency = frequency,
                     assignedAccountId = assignedAccountId,
                     nextBillingDate = nextBillingDate,
-                    notes = notes
+                    notes = notes,
+                    counterpartyId = counterpartyId
                 )
                 repository.createSubscription(sub)
                 _operationMessage.value = "Subscription saved."

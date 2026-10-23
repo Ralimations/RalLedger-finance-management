@@ -9,28 +9,30 @@ import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.Debt
 import com.ralledger.domain.model.DebtKind
 import com.ralledger.domain.model.Money
+import com.ralledger.domain.model.Counterparty
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class DebtsViewModel(private val repository: RalLedgerRepository) : ViewModel() {
     val debts: StateFlow<List<Debt>> = repository.debtsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val accounts: StateFlow<List<Account>> = repository.accountsFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val categories: StateFlow<List<Category>> = repository.categoriesFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val counterparties: StateFlow<List<Counterparty>> = repository.counterpartiesFlow.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
 
-    fun create(kind: DebtKind, title: String, counterparty: String, amount: Money, dueDate: Long, categoryId: String?, accountId: String?) =
+    fun create(kind: DebtKind, title: String, counterparty: String, amount: Money, dueDate: Long, categoryId: String?, accountId: String?, counterpartyId: String?) =
         runAction(if (kind == DebtKind.BILL) "Bill recorded" else "Loan recorded") {
-            if (kind == DebtKind.BILL) repository.createBill(title, counterparty, amount, dueDate, categoryId.orEmpty())
-            else repository.createLoan(title, counterparty, amount, dueDate, accountId.orEmpty())
+            if (kind == DebtKind.BILL) repository.createBill(title, counterparty, amount, dueDate, categoryId.orEmpty(), counterpartyId)
+            else repository.createLoan(title, counterparty, amount, dueDate, accountId.orEmpty(), counterpartyId)
         }
 
-    fun update(item: Debt, title: String, counterparty: String, dueDate: Long) = runAction("Changes saved") {
-        repository.updateDebtMetadata(item.id, title, counterparty, dueDate)
+    fun update(item: Debt, title: String, counterparty: String, dueDate: Long, counterpartyId: String?) = runAction("Changes saved") {
+        repository.updateDebtMetadata(item.id, title, counterparty, dueDate, counterpartyId)
     }
 
     fun pay(item: Debt, accountId: String, principal: Money, interest: Money, categoryId: String?, date: Long, notes: String) =

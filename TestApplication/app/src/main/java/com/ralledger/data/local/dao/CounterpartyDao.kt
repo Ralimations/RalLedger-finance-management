@@ -28,6 +28,12 @@ interface CounterpartyDao {
     @Query("SELECT COUNT(*) FROM expected_income WHERE counterpartyId = :id")
     suspend fun countExpectedIncomeReferences(id: String): Long
 
+    @Query("SELECT COUNT(*) FROM debts WHERE counterpartyId = :id")
+    suspend fun countDebtReferences(id: String): Long
+
+    @Query("SELECT COUNT(*) FROM subscriptions WHERE counterpartyId = :id")
+    suspend fun countSubscriptionReferences(id: String): Long
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(item: CounterpartyEntity)
 

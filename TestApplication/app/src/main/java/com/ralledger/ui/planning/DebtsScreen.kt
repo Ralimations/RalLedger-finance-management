@@ -59,6 +59,7 @@ import com.ralledger.domain.model.Debt
 import com.ralledger.domain.model.DebtKind
 import com.ralledger.domain.model.DebtStatus
 import com.ralledger.domain.model.Money
+import com.ralledger.domain.model.Counterparty
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
@@ -72,6 +73,7 @@ fun DebtsScreen(viewModel: DebtsViewModel) {
     val debts by viewModel.debts.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
+    val counterparties by viewModel.counterparties.collectAsState()
     val message by viewModel.message.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var query by remember { mutableStateOf("") }
@@ -161,12 +163,12 @@ fun DebtsScreen(viewModel: DebtsViewModel) {
 
     if (editorOpen) {
         DebtEditorDialog(
-            debt = editing, kind = editorKind, accounts = accounts, categories = categories,
+            debt = editing, kind = editorKind, accounts = accounts, categories = categories, counterparties = counterparties,
             onDismiss = { editorOpen = false },
-            onSave = { title, counterparty, amount, dueDate, categoryId, accountId ->
+            onSave = { title, counterparty, amount, dueDate, categoryId, accountId, counterpartyId ->
                 val existing = editing
-                if (existing == null) viewModel.create(editorKind, title, counterparty, amount, dueDate, categoryId, accountId)
-                else viewModel.update(existing, title, counterparty, dueDate)
+                if (existing == null) viewModel.create(editorKind, title, counterparty, amount, dueDate, categoryId, accountId, counterpartyId)
+                else viewModel.update(existing, title, counterparty, dueDate, counterpartyId)
                 editorOpen = false
             }
         )
@@ -274,11 +276,13 @@ private fun DebtEditorDialog(
     kind: DebtKind,
     accounts: List<Account>,
     categories: List<Category>,
+    counterparties: List<Counterparty>,
     onDismiss: () -> Unit,
-    onSave: (String, String, Money, Long, String?, String?) -> Unit
+    onSave: (String, String, Money, Long, String?, String?, String?) -> Unit
 ) {
     var title by remember(debt?.id) { mutableStateOf(debt?.title.orEmpty()) }
     var counterparty by remember(debt?.id) { mutableStateOf(debt?.counterparty.orEmpty()) }
+    var selectedCounterpartyId by remember(debt?.id) { mutableStateOf(debt?.counterpartyId) }
     var amount by remember(debt?.id) { mutableStateOf(debt?.originalAmount?.format()?.removePrefix("₱")?.replace(",", "").orEmpty()) }
     var dueDate by remember(debt?.id) { mutableStateOf(debt?.dueDate ?: System.currentTimeMillis() + 14L * 86_400_000L) }
     val expenseCategories = categories.filter { it.type == CategoryType.EXPENSE && (!it.isArchived || it.id == debt?.categoryId) }
@@ -287,6 +291,7 @@ private fun DebtEditorDialog(
     var accountId by remember(debt?.id, assetAccounts) { mutableStateOf(debt?.fundingAccountId ?: assetAccounts.firstOrNull()?.id.orEmpty()) }
     var categoryExpanded by remember { mutableStateOf(false) }
     var accountExpanded by remember { mutableStateOf(false) }
+    var counterpartyExpanded by remember { mutableStateOf(false) }
     var dateOpen by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val dateState = if (dateOpen) rememberDatePickerState(initialSelectedDateMillis = dueDate) else null
@@ -297,7 +302,31 @@ private fun DebtEditorDialog(
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(title, { title = it; error = null }, label = { Text("Name or description") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(counterparty, { counterparty = it }, label = { Text(if (kind == DebtKind.BILL) "Payee (optional)" else "Lender (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    counterparty,
+                    { counterparty = it; selectedCounterpartyId = null },
+                    label = { Text(if (kind == DebtKind.BILL) "Payee (optional)" else "Lender (optional)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                SelectDebtValue(
+                    "Saved contact",
+                    counterparties.firstOrNull { it.id == selectedCounterpartyId }?.name ?: "No saved contact",
+                    counterpartyExpanded,
+                    { counterpartyExpanded = it }
+                ) {
+                    DropdownMenuItem(text = { Text("No saved contact") }, onClick = {
+                        selectedCounterpartyId = null
+                        counterpartyExpanded = false
+                    })
+                    counterparties.filter { !it.isArchived || it.id == debt?.counterpartyId }.forEach { item ->
+                        DropdownMenuItem(text = { Text(item.name) }, onClick = {
+                            selectedCounterpartyId = item.id
+                            counterparty = item.name
+                            counterpartyExpanded = false
+                        })
+                    }
+                }
                 if (debt == null) {
                     OutlinedTextField(amount, { amount = it; error = null }, label = { Text("${if (kind == DebtKind.BILL) "Bill" else "Loan"} amount (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
                     if (kind == DebtKind.BILL) {
@@ -326,7 +355,8 @@ private fun DebtEditorDialog(
                     debt == null && kind == DebtKind.LOAN && accountId.isBlank() -> error = "Choose the account that received the funds."
                     else -> onSave(title.trim(), counterparty.trim(), parsed ?: debt!!.originalAmount, dueDate,
                         if (kind == DebtKind.BILL) categoryId else null,
-                        if (kind == DebtKind.LOAN) accountId else null)
+                        if (kind == DebtKind.LOAN) accountId else null,
+                        selectedCounterpartyId)
                 }
             }) { Text(if (debt == null) "Save record" else "Save details") }
         },

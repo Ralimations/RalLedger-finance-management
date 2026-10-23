@@ -157,7 +157,9 @@ class RalLedgerRepository(
                 ?: throw IllegalArgumentException("This counterparty no longer exists")
             val receivableReferences = counterpartyDao.countReceivableReferences(id)
             val expectedIncomeReferences = counterpartyDao.countExpectedIncomeReferences(id)
-            require(receivableReferences == 0L && expectedIncomeReferences == 0L) {
+            val debtReferences = counterpartyDao.countDebtReferences(id)
+            val subscriptionReferences = counterpartyDao.countSubscriptionReferences(id)
+            require(receivableReferences == 0L && expectedIncomeReferences == 0L && debtReferences == 0L && subscriptionReferences == 0L) {
                 "${current.name} is linked to financial records. Merge it or archive it to preserve history."
             }
             counterpartyDao.delete(id)
@@ -174,12 +176,15 @@ class RalLedgerRepository(
             require(!target.isArchived) { "Restore the destination counterparty before merging" }
             receivableDao.reassignCounterparty(source.id, target.id)
             expectedIncomeDao.reassignCounterparty(source.id, target.id)
+            debtDao.reassignCounterparty(source.id, target.id, target.name)
+            subscriptionDao.reassignCounterparty(source.id, target.id, target.name)
             counterpartyDao.delete(source.id)
         }
     }
 
     suspend fun getCounterpartyReferenceCount(id: String): Long = database.withTransaction {
-        counterpartyDao.countReceivableReferences(id) + counterpartyDao.countExpectedIncomeReferences(id)
+        counterpartyDao.countReceivableReferences(id) + counterpartyDao.countExpectedIncomeReferences(id) +
+            counterpartyDao.countDebtReferences(id) + counterpartyDao.countSubscriptionReferences(id)
     }
 
     private suspend fun validateCounterparty(
@@ -676,52 +681,70 @@ class RalLedgerRepository(
 
     private fun normalizeTagName(name: String): String = name.trim().lowercase(java.util.Locale.ROOT)
 
-    suspend fun createBill(title: String, counterparty: String, amount: Money, dueDate: Long, expenseCategoryId: String): String {
+    suspend fun createBill(
+        title: String,
+        counterparty: String,
+        amount: Money,
+        dueDate: Long,
+        expenseCategoryId: String,
+        counterpartyId: String? = null
+    ): String {
         validateDebtFields(title, amount, dueDate)
         val id = UUID.randomUUID().toString()
         database.withTransaction {
+            val savedCounterparty = validateCounterparty(counterpartyId)
+            val counterpartyName = savedCounterparty?.name ?: counterparty.trim()
             validateCategory(expenseCategoryId, CategoryType.EXPENSE)
             val recordedAt = System.currentTimeMillis()
             val entry = AccountingEngine.createPayableRecognitionEntry(id, expenseCategoryId, amount, title.trim(), recordedAt)
             postJournalEntry(
                 entry, TransactionType.PAYABLE_RECOGNITION, amount, primaryAccountId = id,
-                categoryId = expenseCategoryId, counterparty = counterparty.trim(), notes = "Bill recorded"
+                categoryId = expenseCategoryId, counterparty = counterpartyName, notes = "Bill recorded"
             )
             debtDao.insertDebt(DebtEntity(
-                id = id, title = title.trim(), counterparty = counterparty.trim(), kind = DebtKind.BILL.name,
+                id = id, title = title.trim(), counterparty = counterpartyName, kind = DebtKind.BILL.name,
                 originalAmountCentavos = amount.centavos, outstandingAmountCentavos = amount.centavos,
                 dueDate = dueDate, categoryId = expenseCategoryId, fundingAccountId = null,
                 recognitionJournalEntryId = entry.id, status = DebtStatus.OPEN.name,
-                createdAt = recordedAt
+                createdAt = recordedAt, counterpartyId = savedCounterparty?.id
             ))
         }
         return id
     }
 
-    suspend fun createLoan(title: String, lender: String, amount: Money, dueDate: Long, fundingAccountId: String): String {
+    suspend fun createLoan(
+        title: String,
+        lender: String,
+        amount: Money,
+        dueDate: Long,
+        fundingAccountId: String,
+        counterpartyId: String? = null
+    ): String {
         validateDebtFields(title, amount, dueDate)
         val id = UUID.randomUUID().toString()
         database.withTransaction {
+            val savedCounterparty = validateCounterparty(counterpartyId)
+            val lenderName = savedCounterparty?.name ?: lender.trim()
             validateFinancialAccount(fundingAccountId)
             val receivedAt = System.currentTimeMillis()
             val entry = AccountingEngine.createLoanDisbursementEntry(fundingAccountId, id, amount, title.trim(), receivedAt)
             postJournalEntry(
                 entry, TransactionType.LOAN_DISBURSEMENT, amount,
                 primaryAccountId = fundingAccountId, destinationAccountId = id,
-                counterparty = lender.trim(), notes = "Loan funds received"
+                counterparty = lenderName, notes = "Loan funds received"
             )
             debtDao.insertDebt(DebtEntity(
-                id = id, title = title.trim(), counterparty = lender.trim(), kind = DebtKind.LOAN.name,
+                id = id, title = title.trim(), counterparty = lenderName, kind = DebtKind.LOAN.name,
                 originalAmountCentavos = amount.centavos, outstandingAmountCentavos = amount.centavos,
                 dueDate = dueDate, categoryId = null, fundingAccountId = fundingAccountId,
                 recognitionJournalEntryId = entry.id, status = DebtStatus.OPEN.name,
-                createdAt = receivedAt
+                createdAt = receivedAt, counterpartyId = savedCounterparty?.id
             ))
         }
         return id
     }
 
-    suspend fun updateDebtMetadata(id: String, title: String, counterparty: String, dueDate: Long) {
+    suspend fun updateDebtMetadata(id: String, title: String, counterparty: String, dueDate: Long, counterpartyId: String? = null) {
         require(title.isNotBlank()) { "Enter a name or description" }
         require(dueDate > 0L) { "Choose a due date" }
         database.withTransaction {
@@ -729,7 +752,15 @@ class RalLedgerRepository(
             require(!debt.isArchived && debt.status !in setOf(DebtStatus.CANCELLED.name, DebtStatus.PAID.name)) {
                 "Only an active bill or loan can be edited"
             }
-            debtDao.updateDebt(debt.copy(title = title.trim(), counterparty = counterparty.trim(), dueDate = dueDate))
+            val savedCounterparty = validateCounterparty(counterpartyId, allowArchivedId = debt.counterpartyId)
+            debtDao.updateDebt(
+                debt.copy(
+                    title = title.trim(),
+                    counterparty = savedCounterparty?.name ?: counterparty.trim(),
+                    counterpartyId = savedCounterparty?.id,
+                    dueDate = dueDate
+                )
+            )
         }
     }
 
@@ -813,15 +844,17 @@ class RalLedgerRepository(
     val debtsFlow: Flow<List<Debt>> = combine(
         debtDao.getAllDebtsFlow(),
         debtDao.getAllPaymentsFlow(),
-        categoryDao.getAllCategoriesFlow()
-    ) { debts, payments, categories ->
+        categoryDao.getAllCategoriesFlow(),
+        counterpartyDao.getAllFlow()
+    ) { debts, payments, categories, counterparties ->
         val categoryNames = categories.associate { it.id to it.name }
+        val counterpartiesById = counterparties.associateBy { it.id }
         val paymentsByDebt = payments.groupBy { it.debtId }
         debts.map { debt ->
             debt.toDomainModel(
                 categoryName = debt.categoryId?.let(categoryNames::get),
                 payments = paymentsByDebt[debt.id].orEmpty().map { it.toDomainModel() }
-            )
+            ).copy(counterparty = debt.counterpartyId?.let(counterpartiesById::get)?.name ?: debt.counterparty)
         }
     }
 
@@ -2281,14 +2314,17 @@ class RalLedgerRepository(
         subscriptionDao.getAllSubscriptionsFlow(),
         accountDao.getAllAccountsFlow(),
         subscriptionPaymentDao.getPaymentsFlow(),
-        categoryDao.getAllCategoriesFlow()
-    ) { subs, accounts, payments, categories ->
+        categoryDao.getAllCategoriesFlow(),
+        counterpartyDao.getAllFlow()
+    ) { subs, accounts, payments, categories, counterparties ->
         val accountMap = accounts.associateBy { it.id }
         val categoryMap = categories.associateBy { it.id }
+        val counterpartyMap = counterparties.associateBy { it.id }
         val paymentsBySubscription = payments.groupBy { it.subscriptionId }
         subs.map { subEntity ->
             val accountName = accountMap[subEntity.assignedAccountId]?.name ?: "Assigned Account"
             subEntity.toDomainModel(accountName).copy(
+                merchant = subEntity.counterpartyId?.let(counterpartyMap::get)?.name ?: subEntity.merchant,
                 payments = paymentsBySubscription[subEntity.id].orEmpty().map { payment ->
                     payment.toSubscriptionPaymentDomainModel(
                         paymentAccountName = accountMap[payment.paymentAccountId]?.name ?: "Archived account",
@@ -2308,7 +2344,15 @@ class RalLedgerRepository(
             require(AccountType.valueOf(account.accountType).isLiquid && !account.isArchived) {
                 "Choose an active cash, bank, or e-wallet account for this subscription"
             }
-            subscriptionDao.insertSubscription(SubscriptionEntity.fromDomainModel(subscription))
+            val savedCounterparty = validateCounterparty(subscription.counterpartyId)
+            subscriptionDao.insertSubscription(
+                SubscriptionEntity.fromDomainModel(
+                    subscription.copy(
+                        merchant = savedCounterparty?.name ?: subscription.merchant.trim(),
+                        counterpartyId = savedCounterparty?.id
+                    )
+                )
+            )
         }
     }
 
@@ -2323,9 +2367,12 @@ class RalLedgerRepository(
             require(AccountType.valueOf(account.accountType).isLiquid && !account.isArchived) {
                 "Choose an active cash, bank, or e-wallet account for this subscription"
             }
+            val savedCounterparty = validateCounterparty(subscription.counterpartyId, allowArchivedId = current.counterpartyId)
             subscriptionDao.updateSubscription(
                 SubscriptionEntity.fromDomainModel(
                     subscription.copy(
+                        merchant = savedCounterparty?.name ?: subscription.merchant.trim(),
+                        counterpartyId = savedCounterparty?.id,
                         status = SubscriptionStatus.valueOf(current.status),
                         lastPaymentDate = current.lastPaymentDate,
                         cancellationDate = current.cancellationDate,

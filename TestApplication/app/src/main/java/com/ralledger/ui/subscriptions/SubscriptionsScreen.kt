@@ -59,6 +59,7 @@ import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.SubscriptionPayment
 import com.ralledger.domain.model.SubscriptionStatus
+import com.ralledger.domain.model.Counterparty
 import java.util.Date
 import com.ralledger.ui.settings.displayDate
 
@@ -67,6 +68,7 @@ fun SubscriptionsScreen(viewModel: SubscriptionsViewModel) {
     val subscriptions by viewModel.subscriptions.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
+    val counterparties by viewModel.counterparties.collectAsState()
     val operationMessage by viewModel.operationMessage.collectAsState()
     var includeArchived by remember { mutableStateOf(false) }
     var showEditor by remember { mutableStateOf(false) }
@@ -141,12 +143,13 @@ fun SubscriptionsScreen(viewModel: SubscriptionsViewModel) {
     if (showEditor) {
         SubscriptionEditorDialog(
             accounts = accounts.filter { it.accountType.isLiquid && !it.isArchived },
+            counterparties = counterparties,
             subscription = editingSubscription,
             onDismiss = { showEditor = false },
-            onConfirm = { name, merchant, amount, frequency, accountId, nextDate, notes ->
+            onConfirm = { name, merchant, amount, frequency, accountId, nextDate, notes, counterpartyId ->
                 val existing = editingSubscription
                 if (existing == null) {
-                    viewModel.createSubscription(name, merchant, amount, frequency, accountId, nextDate, notes)
+                    viewModel.createSubscription(name, merchant, amount, frequency, accountId, nextDate, notes, counterpartyId)
                 } else {
                     viewModel.updateSubscription(
                         existing.copy(
@@ -156,7 +159,8 @@ fun SubscriptionsScreen(viewModel: SubscriptionsViewModel) {
                             billingFrequency = frequency,
                             assignedAccountId = accountId,
                             nextBillingDate = nextDate,
-                            notes = notes
+                            notes = notes,
+                            counterpartyId = counterpartyId
                         )
                     )
                 }
@@ -450,12 +454,14 @@ private fun SubscriptionPaymentDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 private fun SubscriptionEditorDialog(
     accounts: List<Account>,
+    counterparties: List<Counterparty>,
     subscription: Subscription?,
     onDismiss: () -> Unit,
-    onConfirm: (name: String, merchant: String, amount: Money, frequency: BillingFrequency, accountId: String, nextBillingDate: Long, notes: String) -> Unit
+    onConfirm: (name: String, merchant: String, amount: Money, frequency: BillingFrequency, accountId: String, nextBillingDate: Long, notes: String, counterpartyId: String?) -> Unit
 ) {
     var name by remember(subscription?.id) { mutableStateOf(subscription?.name.orEmpty()) }
     var merchant by remember(subscription?.id) { mutableStateOf(subscription?.merchant.orEmpty()) }
+    var selectedCounterpartyId by remember(subscription?.id) { mutableStateOf(subscription?.counterpartyId) }
     var amountText by remember(subscription?.id) { mutableStateOf(subscription?.billingAmount?.centavos?.let(::moneyInput).orEmpty()) }
     var notes by remember(subscription?.id) { mutableStateOf(subscription?.notes.orEmpty()) }
     var selectedAccountId by remember(subscription?.id) { mutableStateOf(subscription?.assignedAccountId ?: accounts.firstOrNull()?.id.orEmpty()) }
@@ -466,6 +472,7 @@ private fun SubscriptionEditorDialog(
     var datePickerOpen by remember { mutableStateOf(false) }
     var accountExpanded by remember { mutableStateOf(false) }
     var frequencyExpanded by remember { mutableStateOf(false) }
+    var counterpartyExpanded by remember { mutableStateOf(false) }
     var inputError by remember { mutableStateOf<String?>(null) }
 
     val datePickerState = if (datePickerOpen) rememberDatePickerState(initialSelectedDateMillis = nextBillingDate) else null
@@ -478,7 +485,32 @@ private fun SubscriptionEditorDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(name, { name = it; inputError = null }, label = { Text("Subscription name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(merchant, { merchant = it }, label = { Text("Merchant / service") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    merchant,
+                    { merchant = it; selectedCounterpartyId = null },
+                    label = { Text("Merchant / service") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                ExposedDropdownMenuBox(expanded = counterpartyExpanded, onExpandedChange = { counterpartyExpanded = !counterpartyExpanded }) {
+                    OutlinedTextField(
+                        value = counterparties.find { it.id == selectedCounterpartyId }?.name ?: "No saved contact",
+                        onValueChange = {}, readOnly = true, label = { Text("Saved contact") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = counterpartyExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = counterpartyExpanded, onDismissRequest = { counterpartyExpanded = false }) {
+                        DropdownMenuItem(text = { Text("No saved contact") }, onClick = {
+                            selectedCounterpartyId = null
+                            counterpartyExpanded = false
+                        })
+                        counterparties.filter { !it.isArchived || it.id == subscription?.counterpartyId }.forEach { item ->
+                            DropdownMenuItem(text = { Text(item.name) }, onClick = {
+                                selectedCounterpartyId = item.id
+                                merchant = item.name
+                                counterpartyExpanded = false
+                            })
+                        }
+                    }
+                }
 
                 ExposedDropdownMenuBox(expanded = accountExpanded, onExpandedChange = { accountExpanded = !accountExpanded }) {
                     OutlinedTextField(
@@ -523,7 +555,7 @@ private fun SubscriptionEditorDialog(
                     name.isBlank() -> inputError = "Enter a subscription name."
                     selectedAccountId.isBlank() -> inputError = "Choose a payment account."
                     amount == null || !amount.isPositive -> inputError = "Enter a valid billing amount greater than zero."
-                    else -> onConfirm(name.trim(), merchant.trim(), amount, selectedFrequency, selectedAccountId, nextBillingDate, notes.trim())
+                    else -> onConfirm(name.trim(), merchant.trim(), amount, selectedFrequency, selectedAccountId, nextBillingDate, notes.trim(), selectedCounterpartyId)
                 }
             }) { Text(if (subscription == null) "Save subscription" else "Save changes") }
         },

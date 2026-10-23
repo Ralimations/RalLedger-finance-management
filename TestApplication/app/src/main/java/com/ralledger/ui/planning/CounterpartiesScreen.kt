@@ -50,6 +50,8 @@ fun CounterpartiesScreen(viewModel: CounterpartiesViewModel) {
     val counterparties by viewModel.counterparties.collectAsState()
     val receivables by viewModel.receivables.collectAsState()
     val expectedIncome by viewModel.expectedIncome.collectAsState()
+    val debts by viewModel.debts.collectAsState()
+    val subscriptions by viewModel.subscriptions.collectAsState()
     val message by viewModel.message.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var query by remember { mutableStateOf("") }
@@ -106,7 +108,9 @@ fun CounterpartiesScreen(viewModel: CounterpartiesViewModel) {
             }
             items(filtered, key = { it.id }) { item ->
                 val linkedCount = receivables.count { it.counterpartyId == item.id } +
-                    expectedIncome.count { it.counterpartyId == item.id }
+                    expectedIncome.count { it.counterpartyId == item.id } +
+                    debts.count { it.counterpartyId == item.id } +
+                    subscriptions.count { it.counterpartyId == item.id }
                 CounterpartyCard(
                     item = item,
                     linkedCount = linkedCount,
@@ -134,14 +138,16 @@ fun CounterpartiesScreen(viewModel: CounterpartiesViewModel) {
 
     deleting?.let { item ->
         val linkedCount = receivables.count { it.counterpartyId == item.id } +
-            expectedIncome.count { it.counterpartyId == item.id }
+            expectedIncome.count { it.counterpartyId == item.id } +
+            debts.count { it.counterpartyId == item.id } +
+            subscriptions.count { it.counterpartyId == item.id }
         AlertDialog(
             onDismissRequest = { deleting = null },
             title = { Text("Delete ${item.name}?") },
             text = {
                 Text(
-                    if (linkedCount == 0) "This removes the saved counterparty record. No linked receivables or expected-income records will be changed."
-                    else "$linkedCount receivable or expected-income records reference ${item.name}. Linked contacts cannot be deleted; archive or merge this record to keep those relationships safe."
+                    if (linkedCount == 0) "This removes the saved counterparty record."
+                    else "$linkedCount financial records reference ${item.name}. Archive or merge this record to keep those links."
                 )
             },
             confirmButton = {
@@ -166,7 +172,7 @@ fun CounterpartiesScreen(viewModel: CounterpartiesViewModel) {
                     modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text("Linked receivables and expected-income records will move to the selected counterparty. Journal entries keep their original names.")
+                    Text("Linked financial records will move to the selected counterparty. Journal entries keep their original names.")
                     targets.forEach { target ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(selected = selectedId == target.id, onClick = { selectedId = target.id })

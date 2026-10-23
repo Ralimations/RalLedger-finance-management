@@ -27,7 +27,8 @@ data class Debt(
     val status: DebtStatus,
     val isArchived: Boolean,
     val createdAt: Long,
-    val payments: List<DebtPayment> = emptyList()
+    val payments: List<DebtPayment> = emptyList(),
+    val counterpartyId: String? = null
 )
 
 data class DebtPayment(

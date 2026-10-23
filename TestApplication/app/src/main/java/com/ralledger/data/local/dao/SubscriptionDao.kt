@@ -23,6 +23,9 @@ interface SubscriptionDao {
     @Query("SELECT COUNT(*) FROM subscriptions WHERE assignedAccountId = :accountId")
     suspend fun countAccountReferences(accountId: String): Long
 
+    @Query("UPDATE subscriptions SET merchant = :targetName, counterpartyId = :targetId WHERE counterpartyId = :sourceId")
+    suspend fun reassignCounterparty(sourceId: String, targetId: String, targetName: String)
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertSubscription(subscription: SubscriptionEntity)
 

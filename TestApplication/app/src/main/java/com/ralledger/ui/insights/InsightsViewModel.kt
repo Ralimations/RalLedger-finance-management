@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.ralledger.data.repository.RalLedgerRepository
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.Money
+import com.ralledger.domain.model.Receivable
 import com.ralledger.domain.model.Transaction
 import com.ralledger.domain.model.AccountType
 import kotlinx.coroutines.flow.SharingStarted
@@ -15,7 +16,7 @@ import kotlinx.coroutines.flow.stateIn
 
 data class InsightsUiState(
     val accountDistribution: List<Pair<String, Money>> = emptyList(),
-    val totalReceivablesAging: Map<String, Money> = emptyMap(),
+    val receivables: List<Receivable> = emptyList(),
     val activeSubscriptionTotal: Money = Money.ZERO,
     val transactions: List<Transaction> = emptyList(),
     val categories: List<Category> = emptyList(),
@@ -33,10 +34,6 @@ class InsightsViewModel(
         repository.subscriptionsFlow,
         repository.categoriesFlow
     ) { transactions, accounts, receivables, subscriptions, categories ->
-        val receivablesAging = receivables
-            .groupBy { it.status.name }
-            .mapValues { (_, entries) -> entries.fold(Money.ZERO) { total, receivable -> total + receivable.outstandingAmount } }
-
         val activeSubTotal = subscriptions
             .filter { it.status.name == "ACTIVE" && !it.isArchived }
             .fold(Money.ZERO) { total, subscription -> total + subscription.normalizedMonthlyCost() }
@@ -45,7 +42,7 @@ class InsightsViewModel(
             accountDistribution = accounts.filter {
                 !it.isArchived && it.accountType.isAsset && it.accountType != AccountType.ACCOUNTS_RECEIVABLE
             }.map { it.name to it.currentLedgerBalance },
-            totalReceivablesAging = receivablesAging,
+            receivables = receivables,
             activeSubscriptionTotal = activeSubTotal,
             transactions = transactions,
             categories = categories,

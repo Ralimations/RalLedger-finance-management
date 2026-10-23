@@ -58,6 +58,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.usecase.InsightsCalculator
+import com.ralledger.domain.usecase.ReceivablesAgingCalculator
 import com.ralledger.domain.usecase.InsightsBucket
 import com.ralledger.domain.usecase.InsightsDateRange
 import com.ralledger.domain.usecase.InsightsPeriod
@@ -109,6 +110,12 @@ fun InsightsScreen(
     }
     val calculation = remember(state.transactions, state.categories, selectedPeriod) {
         InsightsCalculator.calculate(state.transactions, state.categories, selectedPeriod)
+    }
+    val receivablesAging = remember(state.receivables, today) {
+        ReceivablesAgingCalculator.calculate(state.receivables, today)
+    }
+    val totalOutstandingReceivables = remember(receivablesAging) {
+        receivablesAging.fold(Money.ZERO) { total, bucket -> total + bucket.amount }
     }
     val categoryById = remember(state.categories) { state.categories.associateBy { it.id } }
     val slices = remember(calculation.categoryTotals, categoryById) {
@@ -273,13 +280,17 @@ fun InsightsScreen(
                         Text(calculation.subscriptionPayments.format(), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
                     }
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Receivables collected", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Text("Collected this period · net of reversals", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
                         Text(calculation.receivablesCollected.format(), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
                     }
-                    state.totalReceivablesAging.toList().sortedBy { it.first }.forEach { (status, amount) ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Outstanding", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                        Text(totalOutstandingReceivables.format(), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
+                    }
+                    receivablesAging.filter { it.amount.isPositive }.forEach { bucket ->
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Receivables · ${status.lowercase().replace('_', ' ')}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
-                            Text(amount.format(), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
+                            Text("${bucket.band.label} · ${bucket.receivableCount}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer)
+                            Text(bucket.amount.format(), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
                         }
                     }
                 }

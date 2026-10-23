@@ -86,10 +86,15 @@ private val fallbackChartColors = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InsightsScreen(viewModel: InsightsViewModel) {
+fun InsightsScreen(
+    viewModel: InsightsViewModel,
+    defaultPeriodType: InsightsPeriodType = InsightsPeriodType.MONTH
+) {
     val state by viewModel.uiState.collectAsState()
     val today = remember { LocalDate.now() }
-    var selectedType by remember { mutableStateOf(InsightsPeriodType.MONTH) }
+    var selectedType by remember(defaultPeriodType) {
+        mutableStateOf(defaultPeriodType.takeIf { it != InsightsPeriodType.CUSTOM } ?: InsightsPeriodType.MONTH)
+    }
     var anchorDate by remember { mutableStateOf(today) }
     var customStart by remember { mutableStateOf(today.withDayOfMonth(1)) }
     var customEnd by remember { mutableStateOf(today) }

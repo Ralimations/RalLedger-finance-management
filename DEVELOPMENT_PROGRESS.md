@@ -171,7 +171,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - [x] Smoke-check account-menu reconciliation on emulator; verified adjustment text, reason entry, saved balance and success feedback.
 - [ ] Add subscriptions with daily, weekly, monthly, quarterly, and annual billing; edit a schedule, pause/resume, cancel/reactivate, archive/restore, and verify normalized dashboard total.
 - [x] Subscription lifecycle, payment posting/reversal, archived state, backup, and migration coverage pass in the schema-13/14 connected suite; all five billing frequencies are represented in the current model/UI options.
-- [ ] Export an encrypted backup, restore it into an empty test install, and compare accounts, journal, receivables, payment history, and dashboard balances.
+- [x] Export an encrypted backup and restore it into an empty QA install; integrity validation passed and synthetic account, journal, and dashboard values matched. Broader record combinations, wrong-password/cancel recovery, and smaller-screen behavior remain open.
 - [ ] Confirm user-created financial records survive app restart and inspect UI sizing, insets, dialogs, and navigation on multiple screen sizes. This emulator contains no user ledger records; smaller-screen review remains open.
 - [x] Switch System/Ocean to Dark/Indigo, force-stop and relaunch, and confirm Dark/Indigo remain selected; restore the original System/Ocean settings afterward. Light and Sage combinations and chart-color contrast still need review.
 - [ ] Validate day/week/month/year/custom/all-time Insights, custom date boundaries, reversals, category taps, source totals, and selected-bucket values against the journal.
@@ -181,11 +181,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - [x] Smoke-check Bills & loans payment entry, principal/interest split, over-principal guard, reversal, cancellation, archive/restore and restart persistence on the emulator.
 - [ ] Complete remaining debt date/search/edit, insufficient-funds and small-screen checks.
 - [x] Smoke-check Savings goals create/edit, reserve/release, validation guards, archive/restore with an active reserve, available-cash calculation and reserve-history persistence after restart.
-- [x] Resolve the Foojay plugin using the approved Gradle download; the latest full run passed debug assembly, 51 unit tests, lint (24 warnings, 0 errors), and Android-test source compilation.
+- [x] Resolve the Foojay plugin using the approved Gradle download; the latest run passed debug assembly, 53 unit tests, lint, Android-test source compilation, and 22 connected tests with 0 failures/errors/skips.
 - [x] Run populated schema-11/12 migration, interest, and subscription-payment lifecycle/backup tests on `emulator-5554`; later migration fixtures pass through schema 14.
 - [x] Smoke-check time-deposit profile creation/edit, estimates, actual credit and tax classification, reversal, deletion protection, profile/account archive and separate restore, and relaunch persistence.
 - [ ] Smoke-check interest profile backup/restore UI and smaller-screen sizing.
-- [ ] Finish hands-on account/category/receivable/subscription workflows, settings persistence, charts, smaller-screen sizing, and SAF export/restore UI checks.
+- [ ] Finish hands-on account/category/receivable/subscription workflows, chart validation, and smaller-screen sizing. Theme, dashboard-widget, financial-default persistence, and a basic SAF backup/restore path have been smoke-checked; edge-case coverage remains.
 
 ## Next development steps
 
@@ -193,7 +193,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 2. Finish Bills & loans payment/reversal UI, restart persistence, and smaller-screen checks.
 3. Manually verify the interest/time-deposit profile editor, estimates, actual credit/tax/reversal, archive behavior, and visible history; connected migration/repository/backup tests already pass.
 4. Verify period and chart interactions against synthetic journal data, including custom boundaries, reversals, source totals, and small-screen chart labels.
-5. Complete the encrypted SAF backup/restore walkthrough on an isolated test install, then review data-export privacy, optional app lock, native home-screen widgets, and report gaps against the mission requirements.
+5. Expand SAF restore checks across more record types and wrong-password/cancel recovery, then review data-export privacy, optional app lock, native home-screen widgets, and report gaps against the mission requirements.
 
 ## Insights period analytics — 2026-10-23
 
@@ -355,3 +355,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Latest standard debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 22,591,575 bytes; SHA-256 `8E7CB0C1B80D51F610717EE1681C66FE03B2B26BC15A8B0CDF316DA930A2D3AA`. This is debug-signed, not release-signed.
 - This follow-up ran `:app:assembleDebug` and manual emulator checks only; the 51-unit/22-connected-test suite was not rerun. Wrong-password/cancel/failure recovery, broader backup data combinations and small-screen checks remain open.
 - Publishing is pending because this checkout has no Git remote, and the connected GitHub account has no RalLedger/Ral-ledger repository. No repository was selected or created, so nothing was pushed and the APK was not uploaded.
+
+## Financial default preferences — 2026-10-23
+
+- Added local DataStore settings for the default quick-transaction account and the default Insights period. The account menu offers Automatic (first active asset account) or an active asset account; if a saved account is archived or unavailable, quick entry falls back to the first eligible active account.
+- Insights can open with Day, Week, Month, Year, or All time selected. Custom ranges remain an in-session selection and cannot be saved as a default; invalid persisted values safely fall back to Month.
+- Added two unit tests for supported reporting-period persistence decoding and fallback behavior. The latest Gradle run passed `assembleDebug`, all 53 unit tests, lint, Android-test source compilation, and all 22 connected tests on `emulator-5554` with 0 failures, errors, or skips.
+- Manual emulator QA selected Week and confirmed Insights opened on 19–25 Oct 2026; selected a synthetic wallet and confirmed it appeared in Quick Add after relaunch; then restored Automatic/Month and permanently deleted the unused zero-balance QA wallet. No transaction was posted.
+- The debug APK at `TestApplication/app/build/outputs/apk/debug/app-debug.apk` is 22,842,244 bytes with SHA-256 `F470A8004255125C14EA91C9630419674EF846448D26F7CCC106FDFE9F3D81B0`. It remains debug-signed. Date format, currency display, and transaction-list display preferences remain unimplemented; release readiness is still open.

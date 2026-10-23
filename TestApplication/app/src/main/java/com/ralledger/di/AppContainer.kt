@@ -6,6 +6,7 @@ import com.ralledger.data.repository.BackupRepository
 import com.ralledger.data.repository.RalLedgerRepository
 import com.ralledger.ui.theme.ThemePreferences
 import com.ralledger.ui.dashboard.DashboardPreferences
+import com.ralledger.ui.settings.FinancialPreferences
 
 class AppContainer(context: Context) {
     val database: RalLedgerDatabase = RalLedgerDatabase.getInstance(context)
@@ -13,4 +14,5 @@ class AppContainer(context: Context) {
     val backupRepository: BackupRepository = BackupRepository(database)
     val themePreferences: ThemePreferences = ThemePreferences(context)
     val dashboardPreferences: DashboardPreferences = DashboardPreferences(context)
+    val financialPreferences: FinancialPreferences = FinancialPreferences(context)
 }

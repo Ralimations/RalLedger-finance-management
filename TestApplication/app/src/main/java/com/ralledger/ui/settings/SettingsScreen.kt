@@ -3,6 +3,7 @@ package com.ralledger.ui.settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -21,10 +22,13 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,6 +49,8 @@ import com.ralledger.ui.theme.ThemePalette
 import com.ralledger.ui.theme.ThemeSettings
 import com.ralledger.ui.dashboard.DashboardSettings
 import com.ralledger.ui.dashboard.DashboardWidget
+import com.ralledger.domain.model.Account
+import com.ralledger.domain.usecase.InsightsPeriodType
 import java.io.IOException
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
@@ -55,12 +61,16 @@ import java.util.Locale
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
+    accounts: List<Account>,
     appearance: ThemeSettings,
     dashboardSettings: DashboardSettings,
+    financialSettings: FinancialSettings,
     onThemeModeChange: (ThemeMode) -> Unit,
     onThemePaletteChange: (ThemePalette) -> Unit,
     onDashboardWidgetVisibilityChange: (DashboardWidget, Boolean) -> Unit,
     onMoveDashboardWidget: (DashboardWidget, Int) -> Unit,
+    onDefaultTransactionAccountChange: (String?) -> Unit,
+    onDefaultInsightsPeriodChange: (InsightsPeriodType) -> Unit,
     onManageCategories: () -> Unit
 ) {
     val context = LocalContext.current
@@ -70,6 +80,11 @@ fun SettingsScreen(
     val restorePreview by viewModel.restorePreview.collectAsState()
     var password by remember { mutableStateOf("") }
     var validationError by remember { mutableStateOf<String?>(null) }
+    var defaultAccountMenuExpanded by remember { mutableStateOf(false) }
+    val selectableAccounts = remember(accounts) {
+        accounts.filter { it.accountType.isAsset && !it.isArchived }.sortedBy { it.name.lowercase(Locale.getDefault()) }
+    }
+    val selectedDefaultAccount = selectableAccounts.firstOrNull { it.id == financialSettings.defaultTransactionAccountId }
 
     val saveBackup = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/octet-stream")
@@ -160,6 +175,62 @@ fun SettingsScreen(
                             selected = appearance.palette == palette,
                             onClick = { onThemePaletteChange(palette) },
                             label = { Text(palette.label) }
+                        )
+                    }
+                }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("Transaction and report defaults", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text("Choose what RalLedger selects when you start a new transaction or open Insights.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Default transaction account", style = MaterialTheme.typography.labelLarge)
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { defaultAccountMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            selectedDefaultAccount?.name ?: if (financialSettings.defaultTransactionAccountId == null) {
+                                "Automatic (first active account)"
+                            } else {
+                                "Saved account unavailable · use automatic"
+                            }
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = defaultAccountMenuExpanded,
+                        onDismissRequest = { defaultAccountMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Automatic (first active account)") },
+                            onClick = {
+                                defaultAccountMenuExpanded = false
+                                onDefaultTransactionAccountChange(null)
+                            }
+                        )
+                        selectableAccounts.forEach { account ->
+                            DropdownMenuItem(
+                                text = { Text(account.name) },
+                                onClick = {
+                                    defaultAccountMenuExpanded = false
+                                    onDefaultTransactionAccountChange(account.id)
+                                }
+                            )
+                        }
+                    }
+                }
+                Text("Default reporting period", style = MaterialTheme.typography.labelLarge)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    InsightsPeriodType.entries.filterNot { it == InsightsPeriodType.CUSTOM }.forEach { period ->
+                        FilterChip(
+                            selected = financialSettings.defaultInsightsPeriod == period,
+                            onClick = { onDefaultInsightsPeriodChange(period) },
+                            label = { Text(period.label) }
                         )
                     }
                 }

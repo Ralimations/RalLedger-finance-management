@@ -60,6 +60,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ralledger.di.AppContainer
 import com.ralledger.domain.model.Money
+import com.ralledger.domain.usecase.InsightsPeriodType
 import com.ralledger.ui.accounts.AccountsScreen
 import com.ralledger.ui.accounts.AccountsViewModel
 import com.ralledger.ui.categories.CategoriesScreen
@@ -79,6 +80,7 @@ import com.ralledger.ui.planning.InterestProductsViewModel
 import com.ralledger.ui.receivables.ReceivablesViewModel
 import com.ralledger.ui.settings.SettingsScreen
 import com.ralledger.ui.settings.SettingsViewModel
+import com.ralledger.ui.settings.FinancialSettings
 import com.ralledger.ui.theme.ThemeMode
 import com.ralledger.ui.theme.ThemePalette
 import com.ralledger.ui.theme.ThemeSettings
@@ -118,6 +120,8 @@ fun RalLedgerMainScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     val themeSettings by appContainer.themePreferences.settings.collectAsState(initial = ThemeSettings())
     val dashboardSettings by appContainer.dashboardPreferences.settings.collectAsState(initial = DashboardSettings())
+    val financialSettings by appContainer.financialPreferences.settings.collectAsState(initial = FinancialSettings())
+    val accounts by appContainer.repository.accountsFlow.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
 
     val accountsVm: AccountsViewModel = viewModel(factory = AccountsViewModel.Factory(appContainer.repository))
@@ -219,7 +223,7 @@ fun RalLedgerMainScreen(
             }
             composable(Screen.Insights.route) {
                 val vm: InsightsViewModel = viewModel(factory = InsightsViewModel.Factory(appContainer.repository))
-                InsightsScreen(viewModel = vm)
+                InsightsScreen(viewModel = vm, defaultPeriodType = financialSettings.defaultInsightsPeriod)
             }
             composable(Screen.Settings.route) {
                 val vm: SettingsViewModel = viewModel(
@@ -227,8 +231,10 @@ fun RalLedgerMainScreen(
                 )
                 SettingsScreen(
                     viewModel = vm,
+                    accounts = accounts,
                     appearance = themeSettings,
                     dashboardSettings = dashboardSettings,
+                    financialSettings = financialSettings,
                     onThemeModeChange = { mode -> scope.launch { appContainer.themePreferences.setMode(mode) } },
                     onThemePaletteChange = { palette -> scope.launch { appContainer.themePreferences.setPalette(palette) } },
                     onDashboardWidgetVisibilityChange = { widget, visible ->
@@ -236,6 +242,12 @@ fun RalLedgerMainScreen(
                     },
                     onMoveDashboardWidget = { widget, offset ->
                         scope.launch { appContainer.dashboardPreferences.move(widget, offset) }
+                    },
+                    onDefaultTransactionAccountChange = { accountId ->
+                        scope.launch { appContainer.financialPreferences.setDefaultTransactionAccount(accountId) }
+                    },
+                    onDefaultInsightsPeriodChange = { period ->
+                        scope.launch { appContainer.financialPreferences.setDefaultInsightsPeriod(period) }
                     },
                     onManageCategories = { navController.navigate(Screen.Categories.route) }
                 )
@@ -249,6 +261,7 @@ fun RalLedgerMainScreen(
         if (showAddDialog) {
             QuickAddTransactionDialog(
                 appContainer = appContainer,
+                defaultTransactionAccountId = financialSettings.defaultTransactionAccountId,
                 onDismiss = { showAddDialog = false }
             )
         }
@@ -258,6 +271,7 @@ fun RalLedgerMainScreen(
 @Composable
 fun QuickAddTransactionDialog(
     appContainer: AppContainer,
+    defaultTransactionAccountId: String?,
     onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -278,9 +292,15 @@ fun QuickAddTransactionDialog(
     val eligibleCategories = categories.filter {
         !it.isArchived && it.type.name == if (txType == "INCOME") "INCOME" else "EXPENSE"
     }
-    LaunchedEffect(eligibleAccounts) {
-        if (accountId.isBlank() && eligibleAccounts.isNotEmpty()) accountId = eligibleAccounts.first().id
-        if (destAccountId.isBlank() && eligibleAccounts.size > 1) destAccountId = eligibleAccounts[1].id
+    LaunchedEffect(eligibleAccounts, defaultTransactionAccountId) {
+        val eligibleIds = eligibleAccounts.map { it.id }.toSet()
+        val defaultAccount = defaultTransactionAccountId?.takeIf { it in eligibleIds }
+            ?: eligibleAccounts.firstOrNull()?.id.orEmpty()
+        if (accountId.isBlank() || accountId !in eligibleIds) accountId = defaultAccount
+        val fallbackDestination = eligibleAccounts.firstOrNull { it.id != accountId }?.id.orEmpty()
+        if (destAccountId.isBlank() || destAccountId !in eligibleIds || destAccountId == accountId) {
+            destAccountId = fallbackDestination
+        }
     }
     LaunchedEffect(eligibleCategories, txType) {
         if (categoryId !in eligibleCategories.map { it.id }) categoryId = eligibleCategories.firstOrNull()?.id ?: ""

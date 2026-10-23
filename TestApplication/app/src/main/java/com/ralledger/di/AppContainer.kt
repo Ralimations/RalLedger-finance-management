@@ -7,6 +7,7 @@ import com.ralledger.data.repository.RalLedgerRepository
 import com.ralledger.ui.theme.ThemePreferences
 import com.ralledger.ui.dashboard.DashboardPreferences
 import com.ralledger.ui.settings.FinancialPreferences
+import com.ralledger.ui.settings.AppLockPreferences
 
 class AppContainer(context: Context) {
     val database: RalLedgerDatabase = RalLedgerDatabase.getInstance(context)
@@ -15,4 +16,5 @@ class AppContainer(context: Context) {
     val themePreferences: ThemePreferences = ThemePreferences(context)
     val dashboardPreferences: DashboardPreferences = DashboardPreferences(context)
     val financialPreferences: FinancialPreferences = FinancialPreferences(context)
+    val appLockPreferences: AppLockPreferences = AppLockPreferences(context)
 }

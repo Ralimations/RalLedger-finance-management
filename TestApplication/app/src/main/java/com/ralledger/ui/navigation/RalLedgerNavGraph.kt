@@ -111,7 +111,11 @@ val navScreens = listOf(
 @Composable
 fun RalLedgerMainScreen(
     appContainer: AppContainer,
-    navController: NavHostController = rememberNavController()
+    navController: NavHostController = rememberNavController(),
+    appLockAvailable: Boolean,
+    onEnableAppLock: () -> Unit,
+    onDisableAppLock: () -> Unit,
+    onOpenSecuritySettings: () -> Unit
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
@@ -121,6 +125,7 @@ fun RalLedgerMainScreen(
     val themeSettings by appContainer.themePreferences.settings.collectAsState(initial = ThemeSettings())
     val dashboardSettings by appContainer.dashboardPreferences.settings.collectAsState(initial = DashboardSettings())
     val financialSettings by appContainer.financialPreferences.settings.collectAsState(initial = FinancialSettings())
+    val appLockEnabled by appContainer.appLockPreferences.enabled.collectAsState(initial = false)
     val accounts by appContainer.repository.accountsFlow.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
 
@@ -235,6 +240,11 @@ fun RalLedgerMainScreen(
                     appearance = themeSettings,
                     dashboardSettings = dashboardSettings,
                     financialSettings = financialSettings,
+                    appLockEnabled = appLockEnabled,
+                    appLockAvailable = appLockAvailable,
+                    onEnableAppLock = onEnableAppLock,
+                    onDisableAppLock = onDisableAppLock,
+                    onOpenSecuritySettings = onOpenSecuritySettings,
                     onThemeModeChange = { mode -> scope.launch { appContainer.themePreferences.setMode(mode) } },
                     onThemePaletteChange = { palette -> scope.launch { appContainer.themePreferences.setPalette(palette) } },
                     onDashboardWidgetVisibilityChange = { widget, visible ->

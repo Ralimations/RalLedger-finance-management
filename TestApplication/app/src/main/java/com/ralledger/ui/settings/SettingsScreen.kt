@@ -65,12 +65,17 @@ fun SettingsScreen(
     appearance: ThemeSettings,
     dashboardSettings: DashboardSettings,
     financialSettings: FinancialSettings,
+    appLockEnabled: Boolean,
+    appLockAvailable: Boolean,
     onThemeModeChange: (ThemeMode) -> Unit,
     onThemePaletteChange: (ThemePalette) -> Unit,
     onDashboardWidgetVisibilityChange: (DashboardWidget, Boolean) -> Unit,
     onMoveDashboardWidget: (DashboardWidget, Int) -> Unit,
     onDefaultTransactionAccountChange: (String?) -> Unit,
     onDefaultInsightsPeriodChange: (InsightsPeriodType) -> Unit,
+    onEnableAppLock: () -> Unit,
+    onDisableAppLock: () -> Unit,
+    onOpenSecuritySettings: () -> Unit,
     onManageCategories: () -> Unit
 ) {
     val context = LocalContext.current
@@ -178,6 +183,33 @@ fun SettingsScreen(
                         )
                     }
                 }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("App lock", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    Text(
+                        if (appLockAvailable) "Require your device fingerprint or screen lock to reopen RalLedger."
+                        else "Set up a secure screen lock in Android Settings to enable this feature.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = appLockEnabled,
+                    onCheckedChange = { enabled ->
+                        if (enabled) {
+                            if (appLockAvailable) onEnableAppLock() else onOpenSecuritySettings()
+                        } else {
+                            onDisableAppLock()
+                        }
+                    }
+                )
             }
         }
 

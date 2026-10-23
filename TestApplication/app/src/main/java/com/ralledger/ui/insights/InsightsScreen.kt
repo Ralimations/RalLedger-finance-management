@@ -49,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
@@ -58,6 +59,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.usecase.InsightsCalculator
+import com.ralledger.domain.usecase.NetWorthHistoryCalculator
 import com.ralledger.domain.usecase.ReceivablesAgingCalculator
 import com.ralledger.domain.usecase.InsightsBucket
 import com.ralledger.domain.usecase.InsightsDateRange
@@ -116,6 +118,15 @@ fun InsightsScreen(
     }
     val totalOutstandingReceivables = remember(receivablesAging) {
         receivablesAging.fold(Money.ZERO) { total, bucket -> total + bucket.amount }
+    }
+    val balanceHistory = remember(state.journalEntries, state.accounts, state.receivables, state.debts, calculation.buckets) {
+        NetWorthHistoryCalculator.calculate(
+            journalEntries = state.journalEntries,
+            accounts = state.accounts,
+            receivableAccountIds = state.receivables.mapTo(mutableSetOf()) { it.id },
+            debtAccountIds = state.debts.mapTo(mutableSetOf()) { it.id },
+            buckets = calculation.buckets
+        )
     }
     val categoryById = remember(state.categories) { state.categories.associateBy { it.id } }
     val slices = remember(calculation.categoryTotals, categoryById) {
@@ -186,6 +197,8 @@ fun InsightsScreen(
         item {
             CashFlowChart(calculation.buckets)
         }
+
+        item { BalanceHistoryChart(balanceHistory) }
 
         item {
             Card(
@@ -405,6 +418,99 @@ private fun ChartLegend(label: String, tint: Color) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(Modifier.size(9.dp).background(tint, CircleShape))
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun BalanceHistoryChart(points: List<com.ralledger.domain.usecase.NetWorthSnapshot>) {
+    val latest = points.lastOrNull()
+    val chartWidth = (points.size * 54).coerceAtLeast(280).dp
+    val netWorthColor = MaterialTheme.colorScheme.primary
+    val liquidAssetsColor = MaterialTheme.colorScheme.tertiary
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Net worth & liquid assets", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                ChartLegend("Net worth", netWorthColor)
+                ChartLegend("Liquid assets", liquidAssetsColor)
+            }
+            if (points.isEmpty()) {
+                Text("No balance history in this period.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Column(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    Canvas(Modifier.width(chartWidth).height(150.dp)) {
+                        val horizontalInset = 8.dp.toPx()
+                        val verticalInset = 12.dp.toPx()
+                        val allValues = points.flatMap { listOf(it.netWorth.centavos.toDouble(), it.liquidAssets.centavos.toDouble()) }
+                        val rawMin = allValues.minOrNull() ?: 0.0
+                        val rawMax = allValues.maxOrNull() ?: 0.0
+                        val span = (rawMax - rawMin).takeIf { it > 0.0 } ?: 1.0
+                        val minValue = rawMin - span * 0.08
+                        val maxValue = rawMax + span * 0.08
+                        val range = maxValue - minValue
+                        val chartHeight = size.height - verticalInset * 2
+                        val chartSpan = size.width - horizontalInset * 2
+
+                        fun point(index: Int, value: Long): Offset {
+                            val x = if (points.size == 1) size.width / 2f
+                            else horizontalInset + chartSpan * index / (points.size - 1)
+                            val y = size.height - verticalInset - ((value.toDouble() - minValue) / range * chartHeight).toFloat()
+                            return Offset(x, y)
+                        }
+
+                        val netPath = Path()
+                        val liquidPath = Path()
+                        points.forEachIndexed { index, snapshot ->
+                            val netPoint = point(index, snapshot.netWorth.centavos)
+                            val liquidPoint = point(index, snapshot.liquidAssets.centavos)
+                            if (index == 0) {
+                                netPath.moveTo(netPoint.x, netPoint.y)
+                                liquidPath.moveTo(liquidPoint.x, liquidPoint.y)
+                            } else {
+                                netPath.lineTo(netPoint.x, netPoint.y)
+                                liquidPath.lineTo(liquidPoint.x, liquidPoint.y)
+                            }
+                            drawCircle(netWorthColor, radius = 3.dp.toPx(), center = netPoint)
+                            drawCircle(liquidAssetsColor, radius = 3.dp.toPx(), center = liquidPoint)
+                        }
+                        drawPath(netPath, netWorthColor, style = Stroke(width = 2.5.dp.toPx()))
+                        drawPath(liquidPath, liquidAssetsColor, style = Stroke(width = 2.5.dp.toPx()))
+                    }
+                    Row {
+                        points.forEach { snapshot ->
+                            Text(
+                                snapshot.label,
+                                modifier = Modifier.width((chartWidth.value / points.size).coerceAtLeast(44f).dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+                latest?.let { snapshot ->
+                    Text(
+                        "Period end · ${snapshot.date.format(DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault()))}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column {
+                            Text("Net worth", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(snapshot.netWorth.format(), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = netWorthColor)
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Liquid assets", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(snapshot.liquidAssets.format(), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = liquidAssetsColor)
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

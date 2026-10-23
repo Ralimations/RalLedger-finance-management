@@ -94,6 +94,21 @@ class RalLedgerRepository(
     private val transactionTagDao = database.transactionTagDao()
     private val savedTransactionFilterDao = database.savedTransactionFilterDao()
 
+    val journalHistoryFlow: Flow<List<JournalEntry>> = combine(
+        journalDao.getAllJournalEntriesFlow(),
+        journalDao.getAllJournalLinesFlow()
+    ) { entries, lines ->
+        val linesByEntryId = lines.groupBy { it.journalEntryId }
+        entries.map { entry ->
+            JournalEntry(
+                id = entry.id,
+                timestamp = entry.timestamp,
+                description = entry.description,
+                lines = linesByEntryId[entry.id].orEmpty().map { it.toDomainModel() }
+            )
+        }
+    }
+
     // Dynamically calculate ledger balances for all accounts from journal line aggregates
     val accountsFlow: Flow<List<Account>> = combine(
         accountDao.getAllAccountsFlow(),

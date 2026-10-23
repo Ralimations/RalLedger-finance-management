@@ -280,7 +280,7 @@ fun SettingsScreen(
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Transaction CSV export", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 Text(
-                    "Export posted journal entries for spreadsheet use. CSV files are not encrypted; save them in a private location.",
+                    "CSV exports include transaction details and are not encrypted. Save them privately; use Encrypted Backup for password-protected storage.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Text(

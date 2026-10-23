@@ -1,7 +1,7 @@
 # RalLedger CRUD and lifecycle matrix
 
 Updated: 2026-10-23
-Branch: `feature/ralledger-v2-live-ready`
+Branch: `main` (published snapshot `5409dd2`)
 
 This matrix distinguishes a working lifecycle from a create-only screen or repository primitive. “Partial” means one or more requested operations remain unavailable in the app UI or lack verified persistence. A button or repository method alone is not counted as complete.
 

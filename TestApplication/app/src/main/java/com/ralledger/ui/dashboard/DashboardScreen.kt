@@ -1,8 +1,8 @@
 package com.ralledger.ui.dashboard
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,222 +20,179 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.ralledger.domain.model.DashboardSummary
 import com.ralledger.domain.model.Money
 
 @Composable
-fun DashboardScreen(
-    viewModel: DashboardViewModel
-) {
+fun DashboardScreen(viewModel: DashboardViewModel) {
     val summary by viewModel.dashboardSummary.collectAsState()
 
     LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Text(
-                text = "Financial Dashboard",
-                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text = "RalLedger: Know your money. Own your data.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
-            )
-        }
-
-        // Net Worth Card
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp)
-                ) {
-                    Text(
-                        text = "Net Worth",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = summary.netWorth.format(),
-                        style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        SummaryColumn("Total Assets", summary.totalAssets.format())
-                        SummaryColumn("Total Liabilities", summary.totalLiabilities.format())
-                    }
-                }
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Your money, in focus", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+                Text("A clear view of where you stand today.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
-        // Cash & Savings Row
+        item { NetWorthCard(summary) }
+
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            SectionHeading(title = "Everyday money", subtitle = "What is available and set aside")
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricCard(
                     modifier = Modifier.weight(1f),
-                    title = "Liquid Cash & Banks",
+                    title = "Cash & banks",
                     value = summary.liquidCashAndBankBalances,
-                    backgroundColor = Color(0xFFE3F2FD),
-                    contentColor = Color(0xFF0D47A1)
+                    detail = "Available to spend"
                 )
                 MetricCard(
                     modifier = Modifier.weight(1f),
-                    title = "Reserved Savings",
+                    title = "Reserved savings",
                     value = summary.reservedSavings,
-                    backgroundColor = Color(0xFFE8F5E9),
-                    contentColor = Color(0xFF1B5E20)
+                    detail = "Kept for later"
                 )
             }
         }
 
-        // Accounts Receivable & Payable Row
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            SectionHeading(title = "Money owed", subtitle = "Keep incoming and outgoing amounts visible")
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricCard(
                     modifier = Modifier.weight(1f),
-                    title = "Accounts Receivable",
-                    subtitle = "Uncollected (Not Cash)",
+                    title = "To you",
                     value = summary.accountsReceivableTotal,
-                    backgroundColor = Color(0xFFFFF3E0),
-                    contentColor = Color(0xFFE65100)
+                    detail = "Uncollected"
                 )
                 MetricCard(
                     modifier = Modifier.weight(1f),
-                    title = "Accounts Payable",
-                    subtitle = "Debts / Liabilities",
+                    title = "You owe",
                     value = summary.accountsPayableTotal,
-                    backgroundColor = Color(0xFFFFEBEE),
-                    contentColor = Color(0xFFB71C1C)
+                    detail = "Liabilities"
                 )
             }
         }
 
-        // Monthly Cash Flow
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = "Monthly Performance",
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        CashFlowItem("Income Received", summary.monthlyIncomeReceived.format(), Color(0xFF2E7D32))
-                        CashFlowItem("Expenses Paid", summary.monthlyExpensesPaid.format(), Color(0xFFC62828))
-                        CashFlowItem("Net Flow", summary.netCashFlow.format(), if (summary.netCashFlow.isNegative) Color(0xFFC62828) else Color(0xFF1565C0))
-                    }
-                }
-            }
-        }
+        item { CashFlowCard(summary) }
+        item { SubscriptionCard(summary.activeSubscriptionsMonthlyTotal) }
+    }
+}
 
-        // Subscriptions Summary
-        item {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5))
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "Recurring Subscriptions",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = Color(0xFF4A148C)
-                        )
-                        Text(
-                            text = "Monthly Commitment",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color(0xFF7B1FA2)
-                        )
-                    }
-                    Text(
-                        text = summary.activeSubscriptionsMonthlyTotal.format(),
-                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = Color(0xFF4A148C)
-                    )
-                }
+@Composable
+private fun NetWorthCard(summary: DashboardSummary) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
+    ) {
+        Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text("NET WORTH", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.76f))
+            Text(
+                summary.netWorth.format(),
+                style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onPrimaryContainer
+            )
+            Text("Assets minus liabilities", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f))
+            Spacer(Modifier.height(4.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                AmountLabel("Assets", summary.totalAssets)
+                AmountLabel("Liabilities", summary.totalLiabilities)
             }
         }
     }
 }
 
 @Composable
-private fun SummaryColumn(label: String, amount: String) {
-    Column {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f))
-        Text(text = amount, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onPrimaryContainer)
+private fun AmountLabel(label: String, amount: Money) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f))
+        Text(amount.format(), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onPrimaryContainer)
     }
 }
 
 @Composable
-private fun MetricCard(
-    modifier: Modifier = Modifier,
-    title: String,
-    subtitle: String? = null,
-    value: Money,
-    backgroundColor: Color,
-    contentColor: Color
-) {
+private fun SectionHeading(title: String, subtitle: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun MetricCard(modifier: Modifier, title: String, value: Money, detail: String) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = backgroundColor)
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Text(text = title, style = MaterialTheme.typography.labelMedium, color = contentColor)
-            if (subtitle != null) {
-                Text(text = subtitle, style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp), color = contentColor.copy(alpha = 0.7f))
-            }
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = value.format(),
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                color = contentColor
-            )
+        Column(
+            modifier = Modifier.padding(horizontal = 15.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(value.format(), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
-private fun CashFlowItem(label: String, value: String, color: Color) {
-    Column {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(text = value, style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = color)
+private fun CashFlowCard(summary: DashboardSummary) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("This month", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                Text("Income and spending at a glance", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                FlowAmount("Income", summary.monthlyIncomeReceived, MaterialTheme.colorScheme.primary)
+                FlowAmount("Expenses", summary.monthlyExpensesPaid, MaterialTheme.colorScheme.error)
+                FlowAmount(
+                    "Net flow", summary.netCashFlow,
+                    if (summary.netCashFlow.isNegative) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FlowAmount(label: String, amount: Money, tint: androidx.compose.ui.graphics.Color) {
+    Column(horizontalAlignment = Alignment.Start, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(amount.format(), style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold), color = tint)
+    }
+}
+
+@Composable
+private fun SubscriptionCard(monthlyTotal: Money) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Recurring subscriptions", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onTertiaryContainer)
+                Text("Estimated monthly total", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.75f))
+            }
+            Text(monthlyTotal.format(), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onTertiaryContainer)
+        }
     }
 }

@@ -30,7 +30,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Account
@@ -132,7 +131,7 @@ fun ReconciliationScreen(
                             Text(
                                 difference?.format() ?: "—",
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                color = if (difference?.isZero == true) Color(0xFF2E7D32) else Color(0xFFC62828)
+                                color = if (difference?.isZero == true) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.error
                             )
                         }
                     }

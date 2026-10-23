@@ -39,7 +39,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Account
@@ -140,8 +139,8 @@ private fun ReceivableCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0))
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -150,8 +149,8 @@ private fun ReceivableCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column {
-                    Text(text = receivable.clientName, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color(0xFFE65100))
-                    Text(text = "Status: ${receivable.status.displayName}", style = MaterialTheme.typography.labelSmall, color = Color(0xFFEF6C00))
+                    Text(text = receivable.clientName, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = MaterialTheme.colorScheme.onTertiaryContainer)
+                    Text(text = "Status: ${receivable.status.displayName}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.76f))
                 }
                 IconButton(
                     onClick = onCollect,
@@ -161,7 +160,7 @@ private fun ReceivableCard(
                         ReceivableStatus.OVERDUE
                     )
                 ) {
-                    Icon(imageVector = Icons.Default.Payments, contentDescription = "Collect", tint = Color(0xFFE65100))
+                    Icon(imageVector = Icons.Default.Payments, contentDescription = "Collect", tint = MaterialTheme.colorScheme.onTertiaryContainer)
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))

@@ -20,11 +20,14 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Corrected dashboard asset aggregation and moved it into a unit-testable calculator. Reversal postings are included as contra income/expense on the reversal date. Subscription commitments are normalized to monthly amounts.
 - Added synthetic instrumentation coverage for concurrent receivable collection, payment reversal, and encrypted backup/restore equivalence. The test source compiles; it has not run on a device.
 - Added custom unit tests for centavo parsing, reconciliation, journal reversals, monthly subscription conversion, dashboard totals, and reversal effects on current-month totals.
+- Applied a cohesive visual pass to the existing app: saved System/Light/Dark appearance plus Ocean/Indigo/Sage palettes; rounded shared surfaces; a money-first dashboard; numeric-first transaction entry; and a month-switchable, tappable category-spending chart.
+- Insights now total only income and expense activity for the selected month, omit reversed entries from the original period, and show category shares and normalized subscription commitments.
 
 ## Verification
 
 - Environment: JDK 25.0.4.1 Temurin was downloaded from the official Adoptium API, SHA-256 checked against its official metadata, and placed in ignored `.ralledger-local/jdk25` so no project Java/Gradle versions needed changing. The installed SDK already includes API 35/37, build-tools 36.0.0, platform-tools, emulator, and an API 37 x86_64 system image.
 - Passed: `:app:assembleDebug`
+- Passed after the visual redesign: fresh `:app:assembleDebug --rerun-tasks` (all 38 tasks executed; no test tasks run in this UI pass).
 - Passed: `:app:testDebugUnitTest` — 14 tests, 0 failures, 0 errors.
 - Passed: `:app:lintDebug` — task succeeds; lint reports 20 guidance findings, mostly available SDK/dependency updates and target API guidance.
 - Passed: `:app:compileDebugAndroidTestKotlin` — the new database/backup instrumentation test source compiles.
@@ -44,6 +47,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 | Subscriptions | CRUD foundation and monthly normalization implemented | Periods remain weekly/monthly/quarterly/annual; notifications, charge confirmation, and richer lifecycle controls are incomplete |
 | Backup and restore | Encrypted SAF flow, validation, atomic replacement, and test source implemented | Runtime export/restore equivalence remains unverified until Android instrumentation runs. Current schema has no payables, budgets, savings goals, preferences, or time deposits to export |
 | Dashboard | Totals and reversal-aware month summary implemented and unit-tested | User-specific account flags cannot be inspected without a device database |
+| Appearance and insights UI | Saved theme mode/palette options; monthly interactive spending chart and clearer money summaries | Must be checked on device for motion, contrast, and small-screen layout; native home-screen widgets are still incomplete |
 | Budgets, payables/debt, savings goals, expected income, time deposits, CSV/XLSX import, reports export, app lock, widgets, advanced charts | Incomplete | No end-to-end implementation in this checkpoint |
 
 ## Known audit findings and disposition
@@ -63,6 +67,8 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - [ ] Add subscriptions with weekly, monthly, quarterly, and annual billing; verify normalized dashboard total.
 - [ ] Export an encrypted backup, restore it into an empty test install, and compare accounts, journal, receivables, payment history, and dashboard balances.
 - [ ] Restart the app and verify records persist; inspect UI sizing, insets, dialogs, and navigation on multiple screen sizes.
+- [ ] Switch System/Light/Dark and Ocean/Indigo/Sage in Settings; confirm selection persists after relaunch and chart colors remain readable.
+- [ ] Change insight months and tap chart segments/category rows; verify monthly totals match the transaction journal.
 - [ ] Run `connectedDebugAndroidTest` and confirm the backup/concurrency test passes on-device.
 
 ## Next development steps
@@ -71,5 +77,5 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 2. Add idempotency tokens for user-submitted financial actions and expand repository-level failure/concurrency tests.
 3. Complete account/category editing, budget CRUD, payables/debts, savings goals, expected income, and time deposits.
 4. Implement transaction filters/editing, CSV import/export, richer reports, and complete statistics.
-5. Rework navigation and screen polish against the requested five-destination consumer-finance layout.
+5. Continue the remaining screen polish and implement real home-screen widgets after the relevant data actions and widget scope are defined.
 6. Re-run build, unit tests, lint, and instrumentation after each milestone; update this file before continuing.

@@ -38,7 +38,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Account
@@ -122,8 +121,8 @@ private fun SubscriptionCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5))
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
     ) {
         Row(
             modifier = Modifier
@@ -136,28 +135,28 @@ private fun SubscriptionCard(
                 Text(
                     text = subscription.name,
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                    color = Color(0xFF4A148C)
+                    color = MaterialTheme.colorScheme.onTertiaryContainer
                 )
                 if (subscription.merchant.isNotBlank()) {
-                    Text(text = "Merchant: ${subscription.merchant}", style = MaterialTheme.typography.bodySmall, color = Color(0xFF6A1B9A))
+                    Text(text = "Merchant: ${subscription.merchant}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f))
                 }
-                Text(text = "Assigned: ${subscription.assignedAccountName}", style = MaterialTheme.typography.labelSmall, color = Color(0xFF7B1FA2))
+                Text(text = "Assigned: ${subscription.assignedAccountName}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.72f))
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = subscription.billingAmount.format(),
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                        color = Color(0xFF4A148C)
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
                     )
                     Text(
                         text = subscription.billingFrequency.displayName,
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color(0xFF7B1FA2)
+                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.72f)
                     )
                 }
                 IconButton(onClick = onDelete) {
-                    Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFF8E24AA))
+                    Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
                 }
             }
         }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
@@ -24,6 +25,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -44,6 +46,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -64,6 +67,9 @@ import com.ralledger.ui.planning.PlanningScreen
 import com.ralledger.ui.receivables.ReceivablesViewModel
 import com.ralledger.ui.settings.SettingsScreen
 import com.ralledger.ui.settings.SettingsViewModel
+import com.ralledger.ui.theme.ThemeMode
+import com.ralledger.ui.theme.ThemePalette
+import com.ralledger.ui.theme.ThemeSettings
 import com.ralledger.ui.subscriptions.SubscriptionsViewModel
 import com.ralledger.ui.transactions.TransactionsScreen
 import com.ralledger.ui.transactions.TransactionsViewModel
@@ -96,13 +102,15 @@ fun RalLedgerMainScreen(
     val currentRoute = navBackStackEntry?.destination?.route
 
     var showAddDialog by remember { mutableStateOf(false) }
+    val themeSettings by appContainer.themePreferences.settings.collectAsState(initial = ThemeSettings())
+    val scope = rememberCoroutineScope()
 
     val accountsVm: AccountsViewModel = viewModel(factory = AccountsViewModel.Factory(appContainer.repository))
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("RalLedger v1.2") },
+                title = { Text("RalLedger") },
                 actions = {
                     IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
@@ -131,8 +139,10 @@ fun RalLedgerMainScreen(
             }
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showAddDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = "Add Transaction")
+            if (currentRoute != Screen.Transactions.route && currentRoute != Screen.Settings.route) {
+                FloatingActionButton(onClick = { showAddDialog = true }) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Transaction")
+                }
             }
         }
     ) { innerPadding ->
@@ -163,7 +173,12 @@ fun RalLedgerMainScreen(
             }
             composable(Screen.Settings.route) {
                 val vm: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory(appContainer.backupRepository))
-                SettingsScreen(viewModel = vm)
+                SettingsScreen(
+                    viewModel = vm,
+                    appearance = themeSettings,
+                    onThemeModeChange = { mode -> scope.launch { appContainer.themePreferences.setMode(mode) } },
+                    onThemePaletteChange = { palette -> scope.launch { appContainer.themePreferences.setPalette(palette) } }
+                )
             }
         }
 
@@ -217,28 +232,23 @@ fun QuickAddTransactionDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    Button(
-                        onClick = { txType = "EXPENSE"; inputError = null },
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Expense") }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Button(
-                        onClick = { txType = "INCOME"; inputError = null },
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Income") }
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Button(
-                        onClick = { txType = "TRANSFER"; inputError = null },
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Transfer") }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("EXPENSE" to "Expense", "INCOME" to "Income", "TRANSFER" to "Transfer").forEach { (type, label) ->
+                        FilterChip(
+                            selected = txType == type,
+                            onClick = { txType = type; inputError = null },
+                            label = { Text(label) }
+                        )
+                    }
                 }
 
                 OutlinedTextField(
                     value = amountStr,
                     onValueChange = { amountStr = it; inputError = null },
                     label = { Text("Amount (PHP)") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                 )
 
                 OutlinedTextField(

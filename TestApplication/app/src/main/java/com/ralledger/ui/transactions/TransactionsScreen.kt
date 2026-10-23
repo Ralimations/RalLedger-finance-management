@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -40,9 +42,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.Money
@@ -165,16 +168,16 @@ private fun TransactionRow(
         transaction.transactionType == TransactionType.RECEIVABLE_COLLECTION ||
         transaction.transactionType == TransactionType.OPENING_BALANCE
     val amountColor = when {
-        isPositive -> Color(0xFF2E7D32)
-        transaction.transactionType == TransactionType.TRANSFER || transaction.transactionType == TransactionType.REVERSAL -> Color(0xFF1565C0)
-        transaction.transactionType == TransactionType.BALANCE_ADJUSTMENT -> Color(0xFF6A1B9A)
-        else -> Color(0xFFC62828)
+        isPositive -> MaterialTheme.colorScheme.secondary
+        transaction.transactionType == TransactionType.TRANSFER || transaction.transactionType == TransactionType.REVERSAL -> MaterialTheme.colorScheme.primary
+        transaction.transactionType == TransactionType.BALANCE_ADJUSTMENT -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.error
     }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
         Row(
             modifier = Modifier
@@ -191,12 +194,12 @@ private fun TransactionRow(
                 Text(
                     text = "${transaction.accountName}${transaction.destinationAccountName?.let { " ➔ $it" } ?: ""} | ${transaction.categoryName ?: transaction.transactionType.displayName}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     text = dateFormat.format(Date(transaction.timestamp)),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -246,7 +249,10 @@ private fun RecordTransactionDialog(
         onDismissRequest = onDismiss,
         title = { Text("Record Transaction") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 TabRow(selectedTabIndex = selectedTab) {
                     Tab(selected = selectedTab == 0, onClick = {
                         selectedTab = 0
@@ -296,6 +302,7 @@ private fun RecordTransactionDialog(
                     onValueChange = { amountText = it; inputError = null },
                     label = { Text("Amount (e.g. 250.00)") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -305,6 +312,7 @@ private fun RecordTransactionDialog(
                         onValueChange = { feeText = it; inputError = null },
                         label = { Text("Transfer Fee (optional, e.g. 15.00)") },
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

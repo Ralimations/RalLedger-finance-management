@@ -4,11 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ralledger.data.repository.RalLedgerRepository
-import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.Money
-import com.ralledger.domain.model.Receivable
-import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.Transaction
 import com.ralledger.domain.model.TransactionType
 import kotlinx.coroutines.flow.SharingStarted
@@ -24,11 +21,13 @@ data class InsightsUiState(
     val accountDistribution: List<Pair<String, Money>> = emptyList(),
     val totalReceivablesAging: Map<String, Money> = emptyMap(),
     val activeSubscriptionTotal: Money = Money.ZERO,
+    val transactions: List<Transaction> = emptyList(),
+    val categories: List<Category> = emptyList(),
     val isLoading: Boolean = false
 )
 
 class InsightsViewModel(
-    private val repository: RalLedgerRepository
+    repository: RalLedgerRepository
 ) : ViewModel() {
 
     val uiState: StateFlow<InsightsUiState> = combine(
@@ -38,59 +37,45 @@ class InsightsViewModel(
         repository.subscriptionsFlow,
         repository.categoriesFlow
     ) { transactions, accounts, receivables, subscriptions, categories ->
-        
-        // Exclude opening balances and internal transfers from income/expense stats
-        val validTransactions = transactions.filter { 
-            it.transactionType != TransactionType.OPENING_BALANCE && 
-            it.transactionType != TransactionType.TRANSFER &&
-            it.transactionType != TransactionType.BALANCE_ADJUSTMENT
+        val reversedJournalIds = transactions.mapNotNull { it.reversesEntryId }.toSet()
+        val validTransactions = transactions.filter {
+            it.journalEntryId !in reversedJournalIds &&
+                it.transactionType in setOf(TransactionType.INCOME, TransactionType.EXPENSE)
         }
 
         val totalIncome = validTransactions
             .filter { it.transactionType == TransactionType.INCOME }
-            .fold(Money.ZERO) { acc, t -> acc + t.amount }
-
+            .fold(Money.ZERO) { total, transaction -> total + transaction.amount }
         val totalExpenses = validTransactions
             .filter { it.transactionType == TransactionType.EXPENSE }
-            .fold(Money.ZERO) { acc, t -> acc + t.amount }
-
-        val netSavings = totalIncome - totalExpenses
+            .fold(Money.ZERO) { total, transaction -> total + transaction.amount }
 
         val categoryMap = categories.associateBy { it.id }
-        val spendingByCat = mutableMapOf<String, Long>()
-        validTransactions
+        val spendingByCategory = validTransactions
             .filter { it.transactionType == TransactionType.EXPENSE }
-            .forEach { t ->
-                val catName = t.categoryId?.let { categoryMap[it]?.name } ?: t.categoryName ?: "Uncategorized"
-                val current = spendingByCat.getOrDefault(catName, 0L)
-                spendingByCat[catName] = current + t.amount.centavos
+            .groupBy { transaction ->
+                transaction.categoryId?.let { categoryMap[it]?.name } ?: transaction.categoryName ?: "Uncategorized"
             }
-        val spendingByCategory = spendingByCat.mapValues { Money(it.value) }
+            .mapValues { (_, entries) -> entries.fold(Money.ZERO) { total, transaction -> total + transaction.amount } }
 
-        val accountDistribution = accounts
-            .filter { !it.isArchived }
-            .map { it.name to it.currentLedgerBalance }
-
-        val receivablesAging = mutableMapOf<String, Long>()
-        receivables.forEach { r ->
-            val status = r.status.name
-            val current = receivablesAging.getOrDefault(status, 0L)
-            receivablesAging[status] = current + r.outstandingAmount.centavos
-        }
-        val totalReceivablesAging = receivablesAging.mapValues { Money(it.value) }
+        val receivablesAging = receivables
+            .groupBy { it.status.name }
+            .mapValues { (_, entries) -> entries.fold(Money.ZERO) { total, receivable -> total + receivable.outstandingAmount } }
 
         val activeSubTotal = subscriptions
             .filter { it.status.name == "ACTIVE" }
-            .fold(Money.ZERO) { acc, s -> acc + s.billingAmount }
+            .fold(Money.ZERO) { total, subscription -> total + subscription.normalizedMonthlyCost() }
 
         InsightsUiState(
             totalIncome = totalIncome,
             totalExpenses = totalExpenses,
-            netSavings = netSavings,
+            netSavings = totalIncome - totalExpenses,
             spendingByCategory = spendingByCategory,
-            accountDistribution = accountDistribution,
-            totalReceivablesAging = totalReceivablesAging,
+            accountDistribution = accounts.filter { !it.isArchived }.map { it.name to it.currentLedgerBalance },
+            totalReceivablesAging = receivablesAging,
             activeSubscriptionTotal = activeSubTotal,
+            transactions = transactions,
+            categories = categories,
             isLoading = false
         )
     }.stateIn(

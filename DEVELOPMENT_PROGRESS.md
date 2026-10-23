@@ -449,6 +449,6 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Latest GitHub publication — 2026-10-24
 
-- Merged the saved-client update into `main` and pushed commit `1b502a353f57ba7afbc0c20021ea51632206d968` to `Ralimations/RalLedger-finance-management`.
-- The pushed repository tree contains `releases/RalLedger-debug.apk` at 23,485,819 bytes; its Git blob matches that publication's APK. The APK is a debug build, not production-signed.
-- At that publication point, 67 unit tests, lint, APK assembly, Android-test compilation and the focused schema-16 counterparty Room/backup test passed. A full connected-suite attempt stopped before the runner launched, so broader device and migration coverage remained.
+- Published commit `685ea292e0b157f5e624b2260f11a523ac8d71a4` to `main` in `Ralimations/RalLedger-finance-management`, extending saved-counterparty links to bills, loans and subscriptions.
+- Updated `releases/RalLedger-debug.apk` to the schema-17 build: 23,492,390 bytes; SHA-256 `25ABBB7432F46873DC330FF02C514B273BB057A2A58C33188879AB833C26EADE`; Git blob `c211ee06e9142cfae7efa244cf408a7951daf936`. The APK is debug-signed, not production-signed.
+- Verification: 67 unit tests pass; `assembleDebug`, lint (0 errors, 28 warnings), and Android-test Kotlin compilation pass. The expanded connected test's first run reached the runner but hit a test assertion-order mistake; after correcting it, emulator targets went offline before the rerun, so the corrected test and schema-1/schema-2 migration fixtures remain unverified on device.

@@ -116,7 +116,6 @@ fun InsightsScreen(viewModel: InsightsViewModel) {
         item {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("Your insights", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
-                Text("Small patterns can make money feel easier to manage.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 

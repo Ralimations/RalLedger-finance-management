@@ -43,8 +43,6 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
         item { NetWorthCard(summary) }
 
         item {
-            SectionHeading(title = "Everyday money", subtitle = "What is available and set aside")
-            Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricCard(
                     modifier = Modifier.weight(1f),
@@ -62,7 +60,7 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
         }
 
         item {
-            SectionHeading(title = "Money owed", subtitle = "Keep incoming and outgoing amounts visible")
+            SectionHeading(title = "Money owed")
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricCard(
@@ -118,10 +116,12 @@ private fun AmountLabel(label: String, amount: Money) {
 }
 
 @Composable
-private fun SectionHeading(title: String, subtitle: String) {
+private fun SectionHeading(title: String, subtitle: String? = null) {
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
-        Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        subtitle?.let {
+            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

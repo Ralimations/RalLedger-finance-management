@@ -121,6 +121,24 @@ class InsightsCalculatorTest {
         assertEquals(InsightsDateRange(firstDay.plusDays(3), lastDay.plusDays(3)), moved.customRange)
     }
 
+    @Test
+    fun subscriptionPaymentsAndReceivableCollectionsAreReportedWithoutDoubleCountingIncome() {
+        val date = LocalDate.of(2026, 8, 14)
+        val subscriptionPayment = transaction("subscription", date, TransactionType.SUBSCRIPTION_PAYMENT, 1_299)
+        val collection = transaction("collection", date, TransactionType.RECEIVABLE_COLLECTION, 5_000)
+        val result = InsightsCalculator.calculate(
+            listOf(subscriptionPayment, collection),
+            emptyList(),
+            period(InsightsPeriodType.DAY, date),
+            zone
+        )
+
+        assertEquals(Money.ZERO, result.income)
+        assertEquals(Money(1_299), result.expenses)
+        assertEquals(Money(1_299), result.subscriptionPayments)
+        assertEquals(Money(5_000), result.receivablesCollected)
+    }
+
     private fun period(type: InsightsPeriodType, date: LocalDate) = InsightsPeriod(type, date)
 
     private fun transaction(

@@ -194,13 +194,13 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 ## Insights period analytics — 2026-10-23
 
 - Added a pure domain calculator for day, Monday-based week, month, year, custom inclusive date range, and all-time reporting. Charts bucket daily periods by day, yearly periods by month, and longer custom/all-time ranges by week, month or year to keep the display usable.
-- Replaced the prior month-only screen calculations with a period selector, previous/next navigation, custom start/end date pickers, an interactive income-versus-expense bar chart, selected-bucket amounts, category spending donut, and income-source totals based on the user's income categories.
+- Replaced the prior month-only screen calculations with a period selector, previous/next navigation, custom start/end date pickers, an interactive income-versus-expense bar chart, selected-bucket amounts, category spending donut, and income-source totals based on the user's income categories. Insights also shows subscription payments and receivable collections made during the selected period.
 - Period totals read the persisted journal transaction projection. Original entries stay attributed to their posting dates; reversal entries reduce the appropriate income/expense/category/source in the reversal period. Receivable recognition is counted once as income, later collections are excluded from income, and transfer fees plus debt interest are expenses. Loan proceeds and principal repayments are not reported as income/expense.
 - Corrected account distribution to include active asset accounts only and to show receivables in their separate section rather than mixing liabilities into assets.
-- Added six pure-domain unit tests for calendar period boundaries, leap-year/month ranges, custom inclusive dates/navigation, reversal date attribution, category reversal totals, income-source totals, transfer fees, buckets and empty all-time data.
-- Focused verification: the calculator and six tests compile with the already cached Kotlin 2.2.10 compiler/JUnit artifacts and pass in a local JVM run. This is not an Android/Compose build.
+- Added seven pure-domain unit tests for calendar period boundaries, leap-year/month ranges, custom inclusive dates/navigation, reversal date attribution, category reversal totals, income-source totals, transfer fees, subscription payments, receivable collections, buckets and empty all-time data.
+- Focused verification: the calculator and seven tests compile with the already cached Kotlin 2.2.10 compiler/JUnit artifacts and pass in a local JVM run. This is not an Android/Compose build.
 - Android Gradle verification was attempted with `--offline` and stopped during settings configuration because `org.gradle.toolchains.foojay-resolver-convention:1.0.0` is not cached. No Android app tasks ran and no dependencies were downloaded. The schema-11/12 Android integration and this Insights UI still require a Gradle-capable Android Studio environment.
-- Not completed in this analytics slice: historical net-worth/liquid-assets reconstruction, savings-growth charts, subscription payment trends, receivables collection/aging analytics, personal/business reports, CSV/XLSX flows, and device/UI smoke checks.
+- Not completed in this analytics slice: historical net-worth/liquid-assets reconstruction, savings-growth charts, subscription cost trends, receivables aging trends, personal/business reports, CSV/XLSX flows, and device/UI smoke checks.
 
 ## Daily subscription billing — 2026-10-23
 

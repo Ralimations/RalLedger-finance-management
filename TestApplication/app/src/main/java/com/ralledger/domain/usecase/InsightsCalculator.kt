@@ -98,6 +98,8 @@ data class InsightsResult(
     val expenses: Money,
     val net: Money,
     val netInterest: Money,
+    val subscriptionPayments: Money,
+    val receivablesCollected: Money,
     val categoryTotals: List<InsightsNamedAmount>,
     val incomeSources: List<InsightsNamedAmount>,
     val buckets: List<InsightsBucket>
@@ -113,7 +115,10 @@ object InsightsCalculator {
         locale: Locale = Locale.getDefault()
     ): InsightsResult {
         val range = period.resolveRange(transactions, zone)
-            ?: return InsightsResult(null, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO, emptyList(), emptyList(), emptyList())
+            ?: return InsightsResult(
+                null, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO, Money.ZERO,
+                emptyList(), emptyList(), emptyList()
+            )
         val categoryNames = categories.associate { it.id to it.name }
         val entriesByJournalId = transactions.associateBy { it.journalEntryId }
         val bucketSpecs = makeBuckets(range, period.type, locale)
@@ -123,6 +128,8 @@ object InsightsCalculator {
         var income = Money.ZERO
         var expenses = Money.ZERO
         var netInterest = Money.ZERO
+        var subscriptionPayments = Money.ZERO
+        var receivablesCollected = Money.ZERO
 
         transactions.forEach { transaction ->
             val date = Instant.ofEpochMilli(transaction.timestamp).atZone(zone).toLocalDate()
@@ -136,9 +143,13 @@ object InsightsCalculator {
             val signedIncome = event.income.withSign(sign)
             val signedExpenses = event.expenses.withSign(sign)
             val signedInterest = event.netInterest.withSign(sign)
+            val signedSubscriptionPayments = event.subscriptionPayments.withSign(sign)
+            val signedReceivablesCollected = event.receivablesCollected.withSign(sign)
             income += signedIncome
             expenses += signedExpenses
             netInterest += signedInterest
+            subscriptionPayments += signedSubscriptionPayments
+            receivablesCollected += signedReceivablesCollected
             event.incomeSource?.let { (id, name, amount) ->
                 addAmount(incomeSources, id, name, amount.withSign(sign))
             }
@@ -162,6 +173,8 @@ object InsightsCalculator {
             expenses = expenses,
             net = income - expenses,
             netInterest = netInterest,
+            subscriptionPayments = subscriptionPayments,
+            receivablesCollected = receivablesCollected,
             categoryTotals = categoryTotals.map { (id, pair) -> InsightsNamedAmount(id, pair.first, pair.second) }
                 .sortedByDescending { it.amount.centavos },
             incomeSources = incomeSources.map { (id, pair) -> InsightsNamedAmount(id, pair.first, pair.second) }
@@ -174,6 +187,8 @@ object InsightsCalculator {
         val income: Money = Money.ZERO,
         val expenses: Money = Money.ZERO,
         val netInterest: Money = Money.ZERO,
+        val subscriptionPayments: Money = Money.ZERO,
+        val receivablesCollected: Money = Money.ZERO,
         val incomeSource: Triple<String, String, Money>? = null,
         val categoryExpenses: List<Triple<String, String, Money>> = emptyList()
     )
@@ -202,8 +217,10 @@ object InsightsCalculator {
             TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT,
             TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION -> Event(
                 expenses = transaction.amount,
+                subscriptionPayments = if (transaction.transactionType == TransactionType.SUBSCRIPTION_PAYMENT) transaction.amount else Money.ZERO,
                 categoryExpenses = listOf(Triple(expenseCategory.first, expenseCategory.second, transaction.amount))
             )
+            TransactionType.RECEIVABLE_COLLECTION -> Event(receivablesCollected = transaction.amount)
             TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> {
                 val interestCategory = category(transaction.categoryId, transaction.categoryName, "interest-expense")
                 Event(

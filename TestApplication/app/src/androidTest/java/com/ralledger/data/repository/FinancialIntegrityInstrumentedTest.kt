@@ -50,7 +50,8 @@ class FinancialIntegrityInstrumentedTest {
             source.categoryDao().insertCategories(
                 listOf(
                     CategoryEntity("cat_test_income", "Synthetic Income", CategoryType.INCOME.name, "payments", "#2E7D32", false),
-                    CategoryEntity("cat_test_expense", "Synthetic Expense", CategoryType.EXPENSE.name, "receipt", "#C62828", false)
+                    CategoryEntity("cat_test_expense", "Synthetic Expense", CategoryType.EXPENSE.name, "receipt", "#C62828", false),
+                    CategoryEntity("cat_test_sub_expense", "Synthetic Subcategory", CategoryType.EXPENSE.name, "receipt", "#C62828", false, "cat_test_expense")
                 )
             )
 

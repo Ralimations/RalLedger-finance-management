@@ -40,23 +40,17 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
             }
         }
 
+        item { AvailableMoneyCard(summary.liquidCashAndBankBalances) }
+
         item { NetWorthCard(summary) }
 
         item {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Cash & banks",
-                    value = summary.liquidCashAndBankBalances,
-                    detail = "Available to spend"
-                )
-                MetricCard(
-                    modifier = Modifier.weight(1f),
-                    title = "Reserved savings",
-                    value = summary.reservedSavings,
-                    detail = "Kept for later"
-                )
-            }
+            MetricCard(
+                modifier = Modifier.fillMaxWidth(),
+                title = "Reserved savings",
+                value = summary.reservedSavings,
+                detail = "Kept for later"
+            )
         }
 
         item {
@@ -84,21 +78,37 @@ fun DashboardScreen(viewModel: DashboardViewModel) {
 }
 
 @Composable
-private fun NetWorthCard(summary: DashboardSummary) {
+private fun AvailableMoneyCard(availableMoney: Money) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
         Column(modifier = Modifier.padding(22.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("NET WORTH", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.76f))
+            Text("AVAILABLE MONEY", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.76f))
             Text(
-                summary.netWorth.format(),
+                availableMoney.format(),
                 style = MaterialTheme.typography.displaySmall.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.onPrimaryContainer
             )
-            Text("Assets minus liabilities", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f))
-            Spacer(Modifier.height(4.dp))
+            Text("Cash & bank accounts", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f))
+        }
+    }
+}
+
+@Composable
+private fun NetWorthCard(summary: DashboardSummary) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("NET WORTH", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                summary.netWorth.format(),
+                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
+            )
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
                 AmountLabel("Assets", summary.totalAssets)
                 AmountLabel("Liabilities", summary.totalLiabilities)
@@ -151,10 +161,7 @@ private fun CashFlowCard(summary: DashboardSummary) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("This month", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
-                Text("Income and spending at a glance", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+            Text("This month", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 FlowAmount("Income", summary.monthlyIncomeReceived, MaterialTheme.colorScheme.primary)
                 FlowAmount("Expenses", summary.monthlyExpensesPaid, MaterialTheme.colorScheme.error)

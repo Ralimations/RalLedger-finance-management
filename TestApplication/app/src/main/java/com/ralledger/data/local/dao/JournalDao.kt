@@ -75,6 +75,19 @@ interface JournalDao {
     """)
     suspend fun countAccountReferences(accountId: String): Long
 
+    @Query("""
+        SELECT
+            (SELECT COUNT(*) FROM journal_entries WHERE categoryId = :categoryId) +
+            (SELECT COUNT(*) FROM journal_lines WHERE accountId = :categoryId)
+    """)
+    suspend fun countCategoryReferences(categoryId: String): Long
+
+    @Query("UPDATE journal_entries SET categoryId = :targetCategoryId WHERE categoryId = :sourceCategoryId")
+    suspend fun reassignEntryCategory(sourceCategoryId: String, targetCategoryId: String)
+
+    @Query("UPDATE journal_lines SET accountId = :targetCategoryId WHERE accountId = :sourceCategoryId")
+    suspend fun reassignCategoryLedgerLines(sourceCategoryId: String, targetCategoryId: String)
+
     @Query("DELETE FROM journal_entries WHERE id = :entryId")
     suspend fun deleteJournalEntry(entryId: String)
 }

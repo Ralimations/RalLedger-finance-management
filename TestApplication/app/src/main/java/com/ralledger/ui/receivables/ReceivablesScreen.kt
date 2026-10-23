@@ -101,7 +101,7 @@ fun ReceivablesScreen(
 
     if (showAddDialog) {
         AddReceivableDialog(
-            categories = categories.filter { it.type == CategoryType.INCOME },
+            categories = categories.filter { it.type == CategoryType.INCOME && !it.isArchived },
             onDismiss = { showAddDialog = false },
             onConfirm = { client, amount, desc, catId ->
                 viewModel.createReceivable(client, amount, System.currentTimeMillis() + 30 * 86400000L, catId, desc)

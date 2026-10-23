@@ -57,7 +57,8 @@ import java.util.Locale
 
 @Composable
 fun TransactionsScreen(
-    viewModel: TransactionsViewModel
+    viewModel: TransactionsViewModel,
+    onManageCategories: () -> Unit
 ) {
     val transactions by viewModel.filteredTransactions.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
@@ -81,10 +82,17 @@ fun TransactionsScreen(
                 .padding(padding)
                 .padding(16.dp)
         ) {
-            Text(
-                text = "Transaction Journal",
-                style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Transaction Journal",
+                    style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                TextButton(onClick = onManageCategories) { Text("Categories") }
+            }
             Spacer(modifier = Modifier.height(12.dp))
 
             OutlinedTextField(
@@ -243,7 +251,9 @@ private fun RecordTransactionDialog(
     var feeText by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var inputError by remember { mutableStateOf<String?>(null) }
-    val visibleCategories = categories.filter { it.type.name == if (selectedTab == 1) "INCOME" else "EXPENSE" }
+    val visibleCategories = categories.filter {
+        !it.isArchived && it.type.name == if (selectedTab == 1) "INCOME" else "EXPENSE"
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -290,7 +300,7 @@ private fun RecordTransactionDialog(
 
                 if (selectedTab == 2) {
                     CategoryDropdown(
-                        categories = categories.filter { it.type.name == "EXPENSE" },
+                        categories = categories.filter { it.type.name == "EXPENSE" && !it.isArchived },
                         selectedId = selectedFeeCategoryId,
                         onSelect = { selectedFeeCategoryId = it },
                         label = "Fee Category"

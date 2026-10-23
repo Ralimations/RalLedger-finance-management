@@ -21,7 +21,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AccountManagementInstrumentedTest {
     @Test
-    fun migrationFromSchemaTwo_preservesAccountAndAddsBlankDescription() {
+    fun migrationFromSchemaTwo_preservesAccountAndAddsNewFields() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val databaseName = "ralledger_schema2_migration_test.db"
         context.deleteDatabase(databaseName)
@@ -35,20 +35,27 @@ class AccountManagementInstrumentedTest {
                     VALUES ('legacy_account', 'Legacy Wallet', 'Test Bank', 'E_WALLET', 'PHP', 12500,
                     'account_balance_wallet', '#1565C0', 100, 0, 1, NULL)"""
             )
+            legacy.execSQL(
+                """INSERT INTO categories (id, name, type, iconName, colorHex, isDefault)
+                    VALUES ('legacy_category', 'Legacy Food', 'EXPENSE', 'restaurant', '#FF5722', 1)"""
+            )
             legacy.version = 2
         } finally {
             legacy.close()
         }
 
         val migrated = Room.databaseBuilder(context, RalLedgerDatabase::class.java, databaseName)
-            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3)
+            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4)
             .build()
         try {
             val account = kotlinx.coroutines.runBlocking { migrated.accountDao().getAccountById("legacy_account") }
             assertEquals("Legacy Wallet", account?.name)
             assertEquals(12_500L, account?.openingBalanceCentavos)
             assertEquals("", account?.description)
-            assertEquals(3, migrated.openHelper.readableDatabase.version)
+            val category = kotlinx.coroutines.runBlocking { migrated.categoryDao().getCategoryById("legacy_category") }
+            assertEquals(null, category?.parentCategoryId)
+            assertFalse(category?.isArchived ?: true)
+            assertEquals(4, migrated.openHelper.readableDatabase.version)
         } finally {
             migrated.close()
             context.deleteDatabase(databaseName)

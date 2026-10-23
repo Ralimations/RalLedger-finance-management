@@ -265,6 +265,14 @@ class BackupRepository(
                         (entry.reversesEntryId != null && entry.reversesEntryId !in entryIds)
                 }
             ) errors += "Journal entry references a missing related record"
+            val categoriesById = categories.associateBy { it.id }
+            if (categories.any { category ->
+                    category.parentCategoryId?.let { parentId ->
+                        val parent = categoriesById[parentId]
+                        parent == null || parent.type != category.type || parent.parentCategoryId != null
+                    } == true
+                }
+            ) errors += "Category has a missing, mismatched, or nested parent"
             if (accounts.any { runCatching { com.ralledger.domain.model.AccountType.valueOf(it.accountType) }.isFailure } ||
                 categories.any { runCatching { com.ralledger.domain.model.CategoryType.valueOf(it.type) }.isFailure } ||
                 receivables.any { runCatching { com.ralledger.domain.model.ReceivableStatus.valueOf(it.status) }.isFailure } ||
@@ -406,10 +414,13 @@ private fun JSONObject.toAccount() = AccountEntity(
 
 private fun CategoryEntity.toJson() = JSONObject().apply {
     put("id", id); put("name", name); put("type", type); put("iconName", iconName)
-    put("colorHex", colorHex); put("isDefault", isDefault)
+    put("colorHex", colorHex); put("isDefault", isDefault); putNullable("parentCategoryId", parentCategoryId)
+    put("isArchived", isArchived)
 }
 private fun JSONObject.toCategory() = CategoryEntity(
-    getString("id"), getString("name"), getString("type"), getString("iconName"), getString("colorHex"), getBoolean("isDefault")
+    id = getString("id"), name = getString("name"), type = getString("type"), iconName = getString("iconName"),
+    colorHex = getString("colorHex"), isDefault = getBoolean("isDefault"),
+    parentCategoryId = stringOrNull("parentCategoryId"), isArchived = optBoolean("isArchived", false)
 )
 
 private fun JournalEntryEntity.toJson() = JSONObject().apply {

@@ -13,5 +13,7 @@ data class Category(
     val type: CategoryType,
     val iconName: String = "label",
     val colorHex: String = "#757575",
-    val isDefault: Boolean = false
+    val isDefault: Boolean = false,
+    val parentCategoryId: String? = null,
+    val isArchived: Boolean = false
 )

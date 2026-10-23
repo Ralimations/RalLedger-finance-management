@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.EventNote
+import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -26,7 +27,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
@@ -59,6 +59,8 @@ import com.ralledger.di.AppContainer
 import com.ralledger.domain.model.Money
 import com.ralledger.ui.accounts.AccountsScreen
 import com.ralledger.ui.accounts.AccountsViewModel
+import com.ralledger.ui.categories.CategoriesScreen
+import com.ralledger.ui.categories.CategoriesViewModel
 import com.ralledger.ui.dashboard.DashboardScreen
 import com.ralledger.ui.dashboard.DashboardViewModel
 import com.ralledger.ui.insights.InsightsScreen
@@ -80,6 +82,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
     object Accounts : Screen("accounts", "Accounts", Icons.Default.AccountBalance)
     object Transactions : Screen("transactions", "Activity", Icons.Default.ReceiptLong)
     object Planning : Screen("planning", "Planning", Icons.Default.EventNote)
+    object Categories : Screen("categories", "Categories", Icons.Default.Label)
     object Insights : Screen("insights", "Insights", Icons.Default.Analytics)
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
 }
@@ -112,6 +115,11 @@ fun RalLedgerMainScreen(
             TopAppBar(
                 title = { Text("RalLedger") },
                 actions = {
+                    if (currentRoute == Screen.Dashboard.route || currentRoute == Screen.Insights.route) {
+                        IconButton(onClick = { showAddDialog = true }) {
+                            Icon(Icons.Default.Add, contentDescription = "Record transaction")
+                        }
+                    }
                     IconButton(onClick = { navController.navigate(Screen.Settings.route) }) {
                         Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
@@ -138,15 +146,6 @@ fun RalLedgerMainScreen(
                 }
             }
         },
-        floatingActionButton = {
-            // Screens with their own primary action own the FAB slot. Keep the
-            // app-wide transaction shortcut on overview screens only.
-            if (currentRoute == Screen.Dashboard.route || currentRoute == Screen.Insights.route) {
-                FloatingActionButton(onClick = { showAddDialog = true }) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Transaction")
-                }
-            }
-        }
     ) { innerPadding ->
         NavHost(
             navController = navController,
@@ -162,7 +161,7 @@ fun RalLedgerMainScreen(
             }
             composable(Screen.Transactions.route) {
                 val vm: TransactionsViewModel = viewModel(factory = TransactionsViewModel.Factory(appContainer.repository))
-                TransactionsScreen(viewModel = vm)
+                TransactionsScreen(viewModel = vm, onManageCategories = { navController.navigate(Screen.Categories.route) })
             }
             composable(Screen.Planning.route) {
                 val recVm: ReceivablesViewModel = viewModel(factory = ReceivablesViewModel.Factory(appContainer.repository))
@@ -179,8 +178,13 @@ fun RalLedgerMainScreen(
                     viewModel = vm,
                     appearance = themeSettings,
                     onThemeModeChange = { mode -> scope.launch { appContainer.themePreferences.setMode(mode) } },
-                    onThemePaletteChange = { palette -> scope.launch { appContainer.themePreferences.setPalette(palette) } }
+                    onThemePaletteChange = { palette -> scope.launch { appContainer.themePreferences.setPalette(palette) } },
+                    onManageCategories = { navController.navigate(Screen.Categories.route) }
                 )
+            }
+            composable(Screen.Categories.route) {
+                val vm: CategoriesViewModel = viewModel(factory = CategoriesViewModel.Factory(appContainer.repository))
+                CategoriesScreen(viewModel = vm, onBack = { navController.popBackStack() })
             }
         }
 
@@ -214,7 +218,7 @@ fun QuickAddTransactionDialog(
     val categories by appContainer.repository.categoriesFlow.collectAsState(initial = emptyList())
     val eligibleAccounts = accounts.filter { it.accountType.isAsset && !it.isArchived }
     val eligibleCategories = categories.filter {
-        it.type.name == if (txType == "INCOME") "INCOME" else "EXPENSE"
+        !it.isArchived && it.type.name == if (txType == "INCOME") "INCOME" else "EXPENSE"
     }
     LaunchedEffect(eligibleAccounts) {
         if (accountId.isBlank() && eligibleAccounts.isNotEmpty()) accountId = eligibleAccounts.first().id

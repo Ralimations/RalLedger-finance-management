@@ -183,7 +183,129 @@ class RalLedgerRepository(
     }
 
     suspend fun createCategory(category: Category) {
-        categoryDao.insertCategory(CategoryEntity.fromDomainModel(category))
+        validateCategoryType(category.type)
+        validateCategoryMetadata(category.name, category.colorHex)
+        database.withTransaction {
+            validateCategoryName(category.type, category.name, category.id)
+            validateCategoryParent(category.parentCategoryId, category.type)
+            categoryDao.insertCategory(CategoryEntity.fromDomainModel(category.copy(isDefault = false)))
+        }
+    }
+
+    suspend fun updateCategoryMetadata(
+        id: String,
+        name: String,
+        iconName: String,
+        colorHex: String,
+        parentCategoryId: String?
+    ) {
+        validateCategoryMetadata(name, colorHex)
+        database.withTransaction {
+            val current = categoryDao.getCategoryById(id)
+                ?: throw IllegalArgumentException("This category no longer exists")
+            requireEditableCategory(current)
+            validateCategoryName(CategoryType.valueOf(current.type), name, id)
+            if (parentCategoryId != current.parentCategoryId) {
+                require(categoryDao.countChildren(id) == 0L || parentCategoryId == null) {
+                    "Move or archive this category's subcategories before making it a subcategory"
+                }
+            }
+            validateCategoryParent(parentCategoryId, CategoryType.valueOf(current.type), id)
+            categoryDao.updateCategory(
+                current.copy(
+                    name = name.trim(),
+                    iconName = iconName,
+                    colorHex = colorHex.uppercase(),
+                    parentCategoryId = parentCategoryId
+                )
+            )
+        }
+    }
+
+    suspend fun setCategoryArchived(id: String, isArchived: Boolean) {
+        database.withTransaction {
+            val category = categoryDao.getCategoryById(id)
+                ?: throw IllegalArgumentException("This category no longer exists")
+            requireEditableCategory(category)
+            if (isArchived && categoryDao.countActiveChildren(id) > 0L) {
+                throw IllegalArgumentException("Archive this category's subcategories first")
+            }
+            categoryDao.setArchived(id, isArchived)
+        }
+    }
+
+    suspend fun deleteUnusedCategory(id: String) {
+        database.withTransaction {
+            val category = categoryDao.getCategoryById(id)
+                ?: throw IllegalArgumentException("This category no longer exists")
+            requireEditableCategory(category)
+            require(journalDao.countCategoryReferences(id) == 0L && categoryDao.countChildren(id) == 0L) {
+                "This category has transaction history or subcategories. Archive it to preserve its history."
+            }
+            categoryDao.deleteCategory(id)
+        }
+    }
+
+    suspend fun mergeCategory(sourceId: String, targetId: String) {
+        database.withTransaction {
+            require(sourceId != targetId) { "Choose a different category to merge into" }
+            val source = categoryDao.getCategoryById(sourceId)
+                ?: throw IllegalArgumentException("The category to merge no longer exists")
+            val target = categoryDao.getCategoryById(targetId)
+                ?: throw IllegalArgumentException("Choose an existing destination category")
+            requireEditableCategory(source)
+            requireEditableCategory(target)
+            require(source.type == target.type && !target.isArchived && target.parentCategoryId == null) {
+                "Choose an active top-level category of the same type"
+            }
+            journalDao.reassignEntryCategory(sourceId, targetId)
+            journalDao.reassignCategoryLedgerLines(sourceId, targetId)
+            categoryDao.moveChildren(sourceId, targetId)
+            categoryDao.deleteCategory(sourceId)
+        }
+    }
+
+    private fun validateCategoryType(type: CategoryType) {
+        require(type == CategoryType.INCOME || type == CategoryType.EXPENSE) {
+            "Choose an income or expense category"
+        }
+    }
+
+    private fun validateCategoryMetadata(name: String, colorHex: String) {
+        require(name.isNotBlank()) { "Category name is required" }
+        require(colorHex.matches(Regex("^#[0-9A-Fa-f]{6}$"))) { "Choose a valid category color" }
+    }
+
+    private suspend fun validateCategoryName(type: CategoryType, name: String, excludeId: String) {
+        require(categoryDao.countNameConflicts(type.name, name.trim(), excludeId) == 0L) {
+            "A ${type.name.lowercase()} category with this name already exists"
+        }
+    }
+
+    private suspend fun validateCategoryParent(parentId: String?, type: CategoryType, currentId: String? = null) {
+        if (parentId == null) return
+        require(type == CategoryType.INCOME || type == CategoryType.EXPENSE) {
+            "Only income and expense categories can have subcategories"
+        }
+        require(parentId != currentId) { "A category cannot be its own parent" }
+        val parent = categoryDao.getCategoryById(parentId)
+            ?: throw IllegalArgumentException("Choose an existing parent category")
+        require(parent.type == type.name && !parent.isArchived && parent.parentCategoryId == null) {
+            "Choose an active top-level category of the same type"
+        }
+    }
+
+    private fun requireEditableCategory(category: CategoryEntity) {
+        require(category.type != CategoryType.SYSTEM.name && category.type != CategoryType.TRANSFER.name) {
+            "System categories cannot be changed"
+        }
+        require(category.id != "cat_system" && category.id != "cat_transfer") {
+            "System categories cannot be changed"
+        }
+    }
+
+    fun getCategoryTransactionsFlow(categoryId: String): Flow<List<Transaction>> = transactionsFlow.map { transactions ->
+        transactions.filter { it.categoryId == categoryId }
     }
 
     // Transactions
@@ -328,6 +450,7 @@ class RalLedgerRepository(
         val category = categoryDao.getCategoryById(categoryId)
             ?: throw IllegalArgumentException("Select a valid ${expected.name.lowercase()} category")
         require(category.type == expected.name) { "Selected category must be ${expected.name.lowercase()}" }
+        require(!category.isArchived) { "Restore this category before using it" }
     }
 
     suspend fun reverseTransaction(journalEntryId: String) {

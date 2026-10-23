@@ -45,7 +45,8 @@ fun SettingsScreen(
     viewModel: SettingsViewModel,
     appearance: ThemeSettings,
     onThemeModeChange: (ThemeMode) -> Unit,
-    onThemePaletteChange: (ThemePalette) -> Unit
+    onThemePaletteChange: (ThemePalette) -> Unit,
+    onManageCategories: () -> Unit
 ) {
     val context = LocalContext.current
     val backupStatus by viewModel.backupStatus.collectAsState()
@@ -122,6 +123,14 @@ fun SettingsScreen(
                         )
                     }
                 }
+            }
+        }
+
+        Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Categories", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text("Manage income sources, expense categories, icons and colors.", style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = onManageCategories) { Text("Manage categories") }
             }
         }
 

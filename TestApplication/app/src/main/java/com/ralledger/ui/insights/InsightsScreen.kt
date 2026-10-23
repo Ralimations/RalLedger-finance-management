@@ -80,7 +80,7 @@ fun InsightsScreen(viewModel: InsightsViewModel) {
     val monthTransactions = remember(state.transactions, selectedMonth, reversedEntries) {
         state.transactions.filter { transaction ->
             transaction.journalEntryId !in reversedEntries &&
-                transaction.transactionType in setOf(TransactionType.INCOME, TransactionType.INTEREST_CREDIT, TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF) &&
+                transaction.transactionType in setOf(TransactionType.INCOME, TransactionType.INTEREST_CREDIT, TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.RECEIVABLE_WRITEOFF) &&
                 transaction.belongsTo(selectedMonth)
         }
     }
@@ -88,7 +88,7 @@ fun InsightsScreen(viewModel: InsightsViewModel) {
         .fold(Money.ZERO) { sum, transaction -> sum + transaction.amount }
     val monthExpenses = monthTransactions.fold(Money.ZERO) { sum, transaction ->
         sum + when (transaction.transactionType) {
-            TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF -> transaction.amount
+            TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.RECEIVABLE_WRITEOFF -> transaction.amount
             TransactionType.INTEREST_CREDIT -> transaction.fee
             else -> Money.ZERO
         }
@@ -101,7 +101,7 @@ fun InsightsScreen(viewModel: InsightsViewModel) {
     val slices = remember(monthTransactions, categoryById) {
         val grouped = monthTransactions.flatMap { transaction ->
             when (transaction.transactionType) {
-                TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF -> listOf(
+                TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.RECEIVABLE_WRITEOFF -> listOf(
                     (transaction.categoryId ?: "uncategorized") to transaction.amount
                 )
                 TransactionType.INTEREST_CREDIT -> if (transaction.fee.isPositive) listOf(

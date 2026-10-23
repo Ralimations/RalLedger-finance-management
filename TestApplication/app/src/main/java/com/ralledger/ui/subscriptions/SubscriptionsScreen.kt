@@ -52,8 +52,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.BillingFrequency
+import com.ralledger.domain.model.Category
+import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Subscription
+import com.ralledger.domain.model.SubscriptionPayment
 import com.ralledger.domain.model.SubscriptionStatus
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -63,12 +66,16 @@ import java.util.Locale
 fun SubscriptionsScreen(viewModel: SubscriptionsViewModel) {
     val subscriptions by viewModel.subscriptions.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
+    val categories by viewModel.categories.collectAsState()
     val operationMessage by viewModel.operationMessage.collectAsState()
     var includeArchived by remember { mutableStateOf(false) }
     var showEditor by remember { mutableStateOf(false) }
     var editingSubscription by remember { mutableStateOf<Subscription?>(null) }
     var pendingCancel by remember { mutableStateOf<Subscription?>(null) }
     var pendingDelete by remember { mutableStateOf<Subscription?>(null) }
+    var pendingPayment by remember { mutableStateOf<Subscription?>(null) }
+    var pendingReversePayment by remember { mutableStateOf<SubscriptionPayment?>(null) }
+    var expandedHistoryId by remember { mutableStateOf<String?>(null) }
     val visibleSubscriptions = subscriptions.filter { includeArchived || !it.isArchived }
 
     Scaffold(
@@ -105,7 +112,13 @@ fun SubscriptionsScreen(viewModel: SubscriptionsViewModel) {
                     items(visibleSubscriptions, key = { it.id }) { subscription ->
                         SubscriptionCard(
                             subscription = subscription,
+                            historyExpanded = expandedHistoryId == subscription.id,
                             onEdit = { editingSubscription = subscription; showEditor = true },
+                            onRecordPayment = { pendingPayment = subscription },
+                            onToggleHistory = {
+                                expandedHistoryId = if (expandedHistoryId == subscription.id) null else subscription.id
+                            },
+                            onReversePayment = { pendingReversePayment = it },
                             onPauseResume = {
                                 viewModel.setStatus(
                                     subscription,
@@ -152,6 +165,33 @@ fun SubscriptionsScreen(viewModel: SubscriptionsViewModel) {
         )
     }
 
+    pendingPayment?.let { subscription ->
+        SubscriptionPaymentDialog(
+            subscription = subscription,
+            expenseCategories = categories.filter { it.type == CategoryType.EXPENSE && !it.isArchived },
+            onDismiss = { pendingPayment = null },
+            onConfirm = { amount, categoryId, date, notes ->
+                viewModel.recordPayment(subscription.id, amount, categoryId, date, notes)
+                pendingPayment = null
+            }
+        )
+    }
+
+    pendingReversePayment?.let { payment ->
+        AlertDialog(
+            onDismissRequest = { pendingReversePayment = null },
+            title = { Text("Reverse this payment?") },
+            text = { Text("The ledger entry will be reversed and the subscription schedule restored. The payment stays in history.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.reversePayment(payment.journalEntryId)
+                    pendingReversePayment = null
+                }) { Text("Reverse payment") }
+            },
+            dismissButton = { TextButton(onClick = { pendingReversePayment = null }) { Text("Keep payment") } }
+        )
+    }
+
     pendingCancel?.let { subscription ->
         AlertDialog(
             onDismissRequest = { pendingCancel = null },
@@ -195,7 +235,11 @@ fun SubscriptionsScreen(viewModel: SubscriptionsViewModel) {
 @Composable
 private fun SubscriptionCard(
     subscription: Subscription,
+    historyExpanded: Boolean,
     onEdit: () -> Unit,
+    onRecordPayment: () -> Unit,
+    onToggleHistory: () -> Unit,
+    onReversePayment: (SubscriptionPayment) -> Unit,
     onPauseResume: () -> Unit,
     onCancel: () -> Unit,
     onReactivate: () -> Unit,
@@ -204,6 +248,9 @@ private fun SubscriptionCard(
     onDelete: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val latestActivePayment = subscription.payments
+        .filter { it.reversedAt == null }
+        .maxByOrNull { it.paymentDate }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
@@ -211,55 +258,191 @@ private fun SubscriptionCard(
             containerColor = if (subscription.isArchived) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.tertiaryContainer
         )
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(subscription.name, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                if (subscription.merchant.isNotBlank()) Text("Merchant: ${subscription.merchant}", style = MaterialTheme.typography.bodySmall)
-                Text("Assigned: ${subscription.assignedAccountName}", style = MaterialTheme.typography.labelSmall)
-                Text("Next bill: ${formatDate(subscription.nextBillingDate)}", style = MaterialTheme.typography.labelSmall)
-                subscription.lastPaymentDate?.let { Text("Last payment: ${formatDate(it)}", style = MaterialTheme.typography.labelSmall) }
-                Text(
-                    if (subscription.isArchived) "Archived" else subscription.status.displayName,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = if (subscription.status == SubscriptionStatus.CANCELLED || subscription.isArchived) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(subscription.billingAmount.format(), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
-                Text(subscription.billingFrequency.displayName, style = MaterialTheme.typography.labelSmall)
-                Box {
-                    IconButton(onClick = { menuExpanded = true }) {
-                        Icon(Icons.Default.MoreVert, contentDescription = "${subscription.name} actions")
-                    }
-                    DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                        if (subscription.isArchived) {
-                            DropdownMenuItem(text = { Text("Restore") }, onClick = { menuExpanded = false; onRestore() })
-                        } else {
-                            DropdownMenuItem(text = { Text("Edit") }, onClick = { menuExpanded = false; onEdit() })
-                            when (subscription.status) {
-                                SubscriptionStatus.ACTIVE -> {
-                                    DropdownMenuItem(text = { Text("Pause") }, onClick = { menuExpanded = false; onPauseResume() })
-                                    DropdownMenuItem(text = { Text("Cancel subscription") }, onClick = { menuExpanded = false; onCancel() })
-                                }
-                                SubscriptionStatus.PAUSED -> {
-                                    DropdownMenuItem(text = { Text("Resume") }, onClick = { menuExpanded = false; onPauseResume() })
-                                    DropdownMenuItem(text = { Text("Cancel subscription") }, onClick = { menuExpanded = false; onCancel() })
-                                }
-                                SubscriptionStatus.CANCELLED -> DropdownMenuItem(
-                                    text = { Text("Reactivate") }, onClick = { menuExpanded = false; onReactivate() }
-                                )
-                            }
-                            DropdownMenuItem(text = { Text("Archive") }, onClick = { menuExpanded = false; onArchive() })
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(subscription.name, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                    if (subscription.merchant.isNotBlank()) Text("Merchant: ${subscription.merchant}", style = MaterialTheme.typography.bodySmall)
+                    Text("Assigned: ${subscription.assignedAccountName}", style = MaterialTheme.typography.labelSmall)
+                    Text("Next bill: ${formatDate(subscription.nextBillingDate)}", style = MaterialTheme.typography.labelSmall)
+                    subscription.lastPaymentDate?.let { Text("Last payment: ${formatDate(it)}", style = MaterialTheme.typography.labelSmall) }
+                    Text(
+                        if (subscription.isArchived) "Archived" else subscription.status.displayName,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (subscription.status == SubscriptionStatus.CANCELLED || subscription.isArchived) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(subscription.billingAmount.format(), style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold))
+                    Text(subscription.billingFrequency.displayName, style = MaterialTheme.typography.labelSmall)
+                    Box {
+                        IconButton(onClick = { menuExpanded = true }) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "${subscription.name} actions")
                         }
-                        DropdownMenuItem(text = { Text("Delete") }, onClick = { menuExpanded = false; onDelete() })
+                        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                            if (subscription.isArchived) {
+                                DropdownMenuItem(text = { Text("Restore") }, onClick = { menuExpanded = false; onRestore() })
+                            } else {
+                                DropdownMenuItem(text = { Text("Edit") }, onClick = { menuExpanded = false; onEdit() })
+                                when (subscription.status) {
+                                    SubscriptionStatus.ACTIVE -> {
+                                        DropdownMenuItem(text = { Text("Pause") }, onClick = { menuExpanded = false; onPauseResume() })
+                                        DropdownMenuItem(text = { Text("Cancel subscription") }, onClick = { menuExpanded = false; onCancel() })
+                                    }
+                                    SubscriptionStatus.PAUSED -> {
+                                        DropdownMenuItem(text = { Text("Resume") }, onClick = { menuExpanded = false; onPauseResume() })
+                                        DropdownMenuItem(text = { Text("Cancel subscription") }, onClick = { menuExpanded = false; onCancel() })
+                                    }
+                                    SubscriptionStatus.CANCELLED -> DropdownMenuItem(
+                                        text = { Text("Reactivate") }, onClick = { menuExpanded = false; onReactivate() }
+                                    )
+                                }
+                                DropdownMenuItem(text = { Text("Archive") }, onClick = { menuExpanded = false; onArchive() })
+                            }
+                            DropdownMenuItem(text = { Text("Delete") }, onClick = { menuExpanded = false; onDelete() })
+                        }
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (!subscription.isArchived && subscription.status == SubscriptionStatus.ACTIVE) {
+                    TextButton(modifier = Modifier.weight(1f), onClick = onRecordPayment) { Text("Record payment", maxLines = 1) }
+                } else {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+                TextButton(modifier = Modifier.weight(1f), onClick = onToggleHistory) {
+                    Text(if (historyExpanded) "Hide history" else "History (${subscription.payments.size})", maxLines = 1)
+                }
+            }
+        }
+        if (historyExpanded) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (subscription.payments.isEmpty()) {
+                    Text("No payments recorded.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    subscription.payments.sortedByDescending { it.paymentDate }.forEach { payment ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("${formatDate(payment.paymentDate)} · ${payment.expenseCategoryName}", style = MaterialTheme.typography.bodyMedium)
+                                Text(
+                                    if (payment.reversedAt == null) "Paid from ${payment.paymentAccountName}" else "Reversed · ${payment.paymentAccountName}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                if (payment.notes.isNotBlank()) Text(payment.notes, style = MaterialTheme.typography.bodySmall)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(payment.amount.format(), style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
+                                if (payment.reversedAt == null && payment.id == latestActivePayment?.id) {
+                                    TextButton(onClick = { onReversePayment(payment) }) { Text("Reverse") }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun SubscriptionPaymentDialog(
+    subscription: Subscription,
+    expenseCategories: List<Category>,
+    onDismiss: () -> Unit,
+    onConfirm: (amount: Money, categoryId: String, paymentDate: Long, notes: String) -> Unit
+) {
+    var amountText by remember(subscription.id) { mutableStateOf(moneyInput(subscription.billingAmount.centavos)) }
+    var selectedCategoryId by remember(subscription.id) { mutableStateOf(expenseCategories.firstOrNull()?.id.orEmpty()) }
+    var notes by remember(subscription.id) { mutableStateOf("") }
+    var paymentDate by remember(subscription.id) { mutableStateOf(System.currentTimeMillis()) }
+    var categoryExpanded by remember { mutableStateOf(false) }
+    var datePickerOpen by remember { mutableStateOf(false) }
+    var inputError by remember { mutableStateOf<String?>(null) }
+    val datePickerState = if (datePickerOpen) rememberDatePickerState(initialSelectedDateMillis = paymentDate) else null
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Record ${subscription.name} payment") },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("Payment account: ${subscription.assignedAccountName}", style = MaterialTheme.typography.bodySmall)
+                OutlinedTextField(
+                    value = amountText,
+                    onValueChange = { amountText = it; inputError = null },
+                    label = { Text("Amount (PHP)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                ExposedDropdownMenuBox(expanded = categoryExpanded, onExpandedChange = { categoryExpanded = !categoryExpanded }) {
+                    OutlinedTextField(
+                        value = expenseCategories.firstOrNull { it.id == selectedCategoryId }?.name ?: "Choose expense category",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Expense category") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = categoryExpanded, onDismissRequest = { categoryExpanded = false }) {
+                        expenseCategories.forEach { category ->
+                            DropdownMenuItem(text = { Text(category.name) }, onClick = { selectedCategoryId = category.id; categoryExpanded = false })
+                        }
+                    }
+                }
+                TextButton(onClick = { datePickerOpen = true }) { Text("Payment date: ${formatDate(paymentDate)}") }
+                OutlinedTextField(notes, { notes = it }, label = { Text("Notes (optional)") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                if (expenseCategories.isEmpty()) Text("Create an active expense category before recording a payment.", color = MaterialTheme.colorScheme.error)
+                inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = expenseCategories.isNotEmpty(),
+                onClick = {
+                    val amount = Money.parse(amountText)
+                    when {
+                        amount == null || !amount.isPositive -> inputError = "Enter an amount greater than zero."
+                        selectedCategoryId.isBlank() -> inputError = "Choose an expense category."
+                        paymentDate > System.currentTimeMillis() -> inputError = "Payment date must be today or earlier."
+                        else -> onConfirm(amount, selectedCategoryId, paymentDate, notes.trim())
+                    }
+                }
+            ) { Text("Save payment") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+
+    if (datePickerOpen && datePickerState != null) {
+        DatePickerDialog(
+            onDismissRequest = { datePickerOpen = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let { paymentDate = it }
+                    datePickerOpen = false
+                }) { Text("Choose") }
+            },
+            dismissButton = { TextButton(onClick = { datePickerOpen = false }) { Text("Cancel") } }
+        ) { DatePicker(state = datePickerState, showModeToggle = false) }
     }
 }
 

@@ -204,10 +204,10 @@ fun SettingsScreen(
                     Text("${preview.debts} bills and loans · ${preview.debtPayments} debt payments")
                     Text("${preview.savingsGoals} savings goals · ${preview.savingsGoalEvents} allocations")
                     Text("${preview.interestProducts} interest profiles · ${preview.interestCredits} credits")
+                    Text("${preview.subscriptions} subscriptions · ${preview.subscriptionPayments} payments · ${preview.reconciliations} reconciliations")
                     Text("${preview.journalEntries} journal entries · ${preview.journalLines} journal lines")
                     Text("${preview.receivables} receivables · ${preview.payments} payments")
                     Text("${preview.writeOffs} receivable write-offs")
-                    Text("${preview.subscriptions} subscriptions · ${preview.reconciliations} reconciliations")
                     Text(
                         "Restoring replaces all current RalLedger records on this device.",
                         color = MaterialTheme.colorScheme.error

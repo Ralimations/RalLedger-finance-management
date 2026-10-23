@@ -77,6 +77,8 @@ class DashboardSummaryCalculatorTest {
             transaction("income_reversal", TransactionType.REVERSAL, 30_000L, reverses = "income"),
             transaction("expense", TransactionType.EXPENSE, 15_000L),
             transaction("expense_reversal", TransactionType.REVERSAL, 5_000L, reverses = "expense"),
+            transaction("subscription_payment", TransactionType.SUBSCRIPTION_PAYMENT, 9_000L),
+            transaction("subscription_payment_reversal", TransactionType.REVERSAL, 3_000L, reverses = "subscription_payment"),
             transaction("receivable_writeoff", TransactionType.RECEIVABLE_WRITEOFF, 4_000L),
             transaction("writeoff_reversal", TransactionType.REVERSAL, 1_000L, reverses = "receivable_writeoff")
         )
@@ -90,8 +92,8 @@ class DashboardSummaryCalculatorTest {
         )
 
         assertEquals(Money(20_000L), summary.monthlyIncomeReceived)
-        assertEquals(Money(10_000L), summary.monthlyExpensesPaid)
-        assertEquals(Money(10_000L), summary.netCashFlow)
+        assertEquals(Money(16_000L), summary.monthlyExpensesPaid)
+        assertEquals(Money(4_000L), summary.netCashFlow)
     }
 
     private fun account(

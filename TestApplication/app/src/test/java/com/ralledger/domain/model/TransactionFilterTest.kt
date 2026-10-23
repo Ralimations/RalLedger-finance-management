@@ -89,4 +89,25 @@ class TransactionFilterTest {
         assertTrue(TransactionFilter(query = "withholding tax").matches(interestCredit))
         assertFalse(TransactionFilter(categoryId = "other").matches(interestCredit))
     }
+
+    @Test
+    fun subscriptionPaymentMatchesExpenseAndSearchFilters() {
+        val payment = Transaction(
+            id = "subscription-payment",
+            journalEntryId = "subscription-payment",
+            timestamp = 200L,
+            transactionType = TransactionType.SUBSCRIPTION_PAYMENT,
+            amount = Money(1_299L),
+            accountId = "wallet",
+            accountName = "Main wallet",
+            categoryId = "streaming",
+            categoryName = "Subscriptions",
+            description = "Subscription payment: Music service"
+        )
+
+        assertTrue(TransactionFilter(type = TransactionTypeFilter.EXPENSE).matches(payment))
+        assertTrue(TransactionFilter(categoryId = "streaming").matches(payment))
+        assertTrue(TransactionFilter(query = "music service").matches(payment))
+        assertFalse(TransactionFilter(type = TransactionTypeFilter.OTHER).matches(payment))
+    }
 }

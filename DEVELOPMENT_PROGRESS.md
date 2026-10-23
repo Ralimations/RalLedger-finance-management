@@ -119,6 +119,16 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - A fresh offline Gradle run stopped before project configuration because `org.gradle.toolchains.foojay-resolver-convention:1.0.0` is unavailable in the local plugin cache. The Gradle wrapper's distribution download was denied by the restricted network. Therefore schema-11 Room generation, Android compilation, unit-suite integration, lint and instrumentation are not verified in this checkpoint; no connected device was available for interest UI smoke.
 - The existing debug APK remains the earlier schema-10 build (22,225,331 bytes); it does not contain the interest/time-deposit implementation and is not a schema-11 release artifact.
 
+## Schema 12 — Linked subscription payments
+
+- Added a subscription payment-history table linked to its subscription, posted journal entry, cash account and expense category. The migration is additive; prior subscriptions remain without payment history.
+- Recording a payment validates the active subscription, assigned liquid account, active expense category, positive amount and nonfuture date. It posts a balanced expense, updates the account ledger, stores amount/category/account/date/notes, and advances the recurring billing schedule past the payment date.
+- Reversal posts the ordinary inverse journal entry, retains the event as reversed, and restores the previous payment date and billing due date when the current due date still matches the saved post-payment date. Later active payments must be reversed first.
+- Added the payment dialog and expandable history; rows show date, category, account, amount, notes and reversal state. The newest unreversed payment can be reversed after confirmation. Payments feed budget, Insights, dashboard cash-flow and transaction expense/search filters.
+- Encrypted backup serialization and integrity validation include payment references, balanced journals, category/account types, schedule snapshots and reversal-state consistency. Category merge reassigns payment category references; category/account foreign keys protect linked history.
+- Added pure tests for schedule advancement and month-end cadence, transaction expense filters, budget aggregation and reversal-aware cash flow, plus repository instrumentation coverage for posting, schedule progression, reverse ordering, category merge, protected deletion, history and encrypted backup restore. A direct local Kotlin/JUnit run passed 32 pure domain/unit tests; the run uses a temporary stub only for the database system-account ID constants and does not compile Room, Compose or Android integration.
+- Android/Room compilation, connected tests, lint and device smoke remain unverified. Offline Gradle configuration stops at the missing `org.gradle.toolchains.foojay-resolver-convention:1.0.0` plugin; this task's attempt failed before any Android task ran.
+
 ## Module readiness
 
 | Module | Status | Limits |
@@ -132,10 +142,10 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 | Bills and personal loans | Bill recognition to expense/payable; loan proceeds to cash/liability without income classification; partial principal and interest payments; payment reversal, cancellation by journal reversal, metadata edit, closed-record archive/restore, due-date state, search and encrypted backup | Connected debt lifecycle, reversals, category merge, schema migration and backup restore pass. Manual route and Add bill/Add loan form smoke passes; payment form interaction/restart still needs QA; posted amount/category cannot be edited or deleted |
 | Reconciliation | Atomic adjustments for asset/liability accounts implemented and unit-tested | Screen accessibility is limited; unmatched-transaction workflow is incomplete |
 | Budgets | Monthly expense-category budgets; create/edit/archive/restore/confirmed delete; live spend, remaining amount and overspend indicators; safe category references and merge handling; encrypted backup support | Connected budget lifecycle and merge tests pass. No carry-forward, fund allocation, or multi-period budget rules |
-| Subscriptions | Metadata create/edit; pause/resume/cancel/reactivate; archive/restore; guarded delete; monthly normalization; backup state | Connected lifecycle and backup tests pass. Linked payment posting/history and due notifications remain incomplete |
+| Subscriptions | Schedule create/edit, pause/resume/cancel/reactivate, archive/restore, guarded delete, normalized commitments, categorized ledger payment, history and ordered reversal | Schema-12 code and focused tests are present. Android/Room/backup integration is not verified in this environment; due reminders remain incomplete |
 | Savings goals | Create/edit target, date and notes; searchable list; reserve/release existing liquid cash with dated history; archive/restore; delete only before use | Connected lifecycle and encrypted backup/restore passed before the final search-field edit; final source build/unit/lint/test compilation pass; screen interaction and restart persistence remain |
 | Interest-bearing savings and time deposits | Schema-11 profile terms, interest/tax estimate, compounding, maturity, actual gross/tax/net credits, history and journal reversal; archive/restore and delete-unused | Implementation and migration are present; only the pure calculator's 5 JUnit tests passed in the current checkpoint. Android compile, Room migration, repository/backup instrumentation and UI/restart smoke need Android Studio verification |
-| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, budgets, expected income, savings goals/allocations, interest profiles/credits, bills/loans/payment audit trail, subscriptions, receivables and write-off history | Prior connected round-trip passed through schema 10. Schema-11 interest backup code is present but not currently verified; older backups omit new interest arrays |
+| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, budgets, expected income, savings goals/allocations, interest profiles/credits, bills/loans/payment audit trail, subscriptions/payment history, receivables and write-off history | Prior connected round-trip passed through schema 10. Schema-11/12 serialization and validation code is present but not currently verified; older backups omit the new arrays |
 | Dashboard | Available Money is primary; Net Worth is separate; debt liabilities, payable totals, loan proceeds and reversal-aware month cash flow flow from the ledger | User-specific account flags cannot be inspected without a device database |
 | Appearance and insights UI | Saved theme mode/palette options; monthly interactive spending chart and clearer money summaries | Must be checked on device for motion, contrast, and small-screen layout; native home-screen widgets are still incomplete |
 | Time deposits, CSV/XLSX import, reports export, app lock, widgets, advanced charts | Incomplete | No end-to-end implementation in this checkpoint |
@@ -144,7 +154,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 - The prior dashboard discrepancy is reproduced as a regression test under the stated account assumptions: liquid cash is ₱2,111; total assets and net worth are ₱17,111 when liabilities are zero and receivables are ₱15,000. The actual historical database flags were not available, so its specific cause is not claimed as proven.
 - No existing user database was reset. Populated synthetic schema-1/schema-2 databases were migrated through schema 10 on the emulator. The schema-11 migration is not verified yet; user-specific historical database contents and flags remain uninspected.
-- The Android UI describes backup coverage accurately for previously verified records; schema-11 interest backup integration remains unverified. CSV, expanded reports, linked subscription payments/notifications, app lock, saved views, and home-screen widgets remain outside this checkpoint.
+- The Android UI describes backup coverage accurately for previously verified records; schema-11 interest and schema-12 subscription-payment backup integration remain unverified. CSV, expanded reports, subscription notifications, app lock, saved views, and home-screen widgets remain outside this checkpoint.
 
 ## Android Studio validation checklist
 
@@ -169,7 +179,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - [x] Verify Bills & loans, Add bill/Add loan forms, and Subscriptions tab routing after the final mapping correction.
 - [ ] Complete hands-on Bills & loans payment entry, reversal, restart persistence, and small-screen checks.
 - [ ] Smoke-check Savings goals create/edit, reserve/release, archive/restore, and persistence after restart in Android Studio.
-- [ ] Resolve the missing Foojay plugin through the approved Android Studio/Gradle environment; compile and run schema-11 migration, interest lifecycle/backup tests, lint and the full suites on an online emulator.
+- [ ] Resolve the missing Foojay plugin through the approved Android Studio/Gradle environment; compile and run schema-11/12 migrations, interest and subscription-payment lifecycle/backup tests, lint and the full suites on an online emulator.
 - [ ] Smoke-check interest-bearing savings and time-deposit profile editing, estimates, actual credit, tax classification, reversal, archive/restore, account archive, backup/restore and relaunch persistence.
 - [ ] Finish hands-on account/category/receivable/subscription workflows, settings persistence, charts, smaller-screen sizing, and SAF export/restore UI checks.
 
@@ -178,5 +188,5 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 1. Finish hands-on account/category/receivable/subscription CRUD, settings persistence, chart interaction, smaller-screen layout, and SAF export/restore checks.
 2. Finish hands-on Bills & loans payment, reversal, restart persistence and small-screen checks.
 3. Verify the schema-11 interest/time-deposit slice in Android Studio, including migration, account/profile lifecycle, tax accounting, encrypted backup and device UI.
-4. Add linked subscription payment posting/history and due notifications; add CSV import, spreadsheet export and expanded date-range reports.
+4. Verify linked subscription payment posting/history in Android Studio; then add due notifications, CSV import, spreadsheet export and expanded date-range reports.
 5. Add remaining customizable preferences, optional PIN/biometric lock, export privacy controls, saved filters/reports and home-screen widgets; verify each persisted workflow and backup state.

@@ -18,6 +18,7 @@ import com.ralledger.data.local.entity.SavingsGoalEntity
 import com.ralledger.data.local.entity.SavingsGoalEventEntity
 import com.ralledger.data.local.entity.InterestProductEntity
 import com.ralledger.data.local.entity.InterestCreditEntity
+import com.ralledger.data.local.entity.SubscriptionPaymentEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.LineType
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +48,7 @@ data class BackupPreview(
     val savingsGoalEvents: Int = 0,
     val interestProducts: Int = 0,
     val interestCredits: Int = 0,
+    val subscriptionPayments: Int = 0,
     val journalEntries: Int,
     val journalLines: Int,
     val receivables: Int,
@@ -101,6 +103,7 @@ class BackupRepository(
             val debts = database.debtDao()
             val savingsGoals = database.savingsGoalDao()
             val interest = database.interestDao()
+            val subscriptionPayments = database.subscriptionPaymentDao()
             val journals = database.journalDao()
             val receivables = database.receivableDao()
             val subscriptions = database.subscriptionDao()
@@ -117,6 +120,7 @@ class BackupRepository(
             savingsGoals.clearGoals()
             interest.clearCredits()
             interest.clearProducts()
+            subscriptionPayments.clearPayments()
             journals.clearJournalLines()
             journals.clearJournalEntries()
             receivables.clearReceivables()
@@ -142,6 +146,7 @@ class BackupRepository(
             if (snapshot.writeOffs.isNotEmpty()) receivables.insertWriteOffs(snapshot.writeOffs)
             if (snapshot.interestCredits.isNotEmpty()) interest.insertCredits(snapshot.interestCredits)
             if (snapshot.subscriptions.isNotEmpty()) subscriptions.insertSubscriptions(snapshot.subscriptions)
+            if (snapshot.subscriptionPayments.isNotEmpty()) subscriptionPayments.insertPayments(snapshot.subscriptionPayments)
             if (snapshot.reconciliations.isNotEmpty()) reconciliations.insertReconciliations(snapshot.reconciliations)
 
             val restored = readSnapshot().copy(createdAt = snapshot.createdAt)
@@ -181,6 +186,7 @@ class BackupRepository(
         savingsGoalEvents = database.savingsGoalDao().getAllEvents(),
         interestProducts = database.interestDao().getAllProducts(),
         interestCredits = database.interestDao().getAllCredits(),
+        subscriptionPayments = database.subscriptionPaymentDao().getAllPayments(),
         entries = database.journalDao().getAllJournalEntries(),
         lines = database.journalDao().getAllJournalLines(),
         receivables = database.receivableDao().getAllReceivables(),
@@ -270,6 +276,7 @@ class BackupRepository(
         val savingsGoalEvents: List<SavingsGoalEventEntity>,
         val interestProducts: List<InterestProductEntity>,
         val interestCredits: List<InterestCreditEntity>,
+        val subscriptionPayments: List<SubscriptionPaymentEntity>,
         val entries: List<JournalEntryEntity>,
         val lines: List<JournalLineEntity>,
         val receivables: List<ReceivableEntity>,
@@ -293,6 +300,7 @@ class BackupRepository(
             put("savingsGoalEvents", JSONArray().also { array -> savingsGoalEvents.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("interestProducts", JSONArray().also { array -> interestProducts.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("interestCredits", JSONArray().also { array -> interestCredits.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("subscriptionPayments", JSONArray().also { array -> subscriptionPayments.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalEntries", JSONArray().also { array -> entries.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalLines", JSONArray().also { array -> lines.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("receivables", JSONArray().also { array -> receivables.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
@@ -319,6 +327,8 @@ class BackupRepository(
             checkUnique("interest product", interestProducts) { it.id }
             checkUnique("interest credit", interestCredits) { it.id }
             checkUnique("interest journal entry", interestCredits) { it.journalEntryId }
+            checkUnique("subscription payment", subscriptionPayments) { it.id }
+            checkUnique("subscription payment journal entry", subscriptionPayments) { it.journalEntryId }
             checkUnique("journal entry", entries) { it.id }
             checkUnique("journal line", lines) { it.id }
             checkUnique("receivable", receivables) { it.id }
@@ -382,6 +392,46 @@ class BackupRepository(
                 }
             ) errors += "Journal entry references a missing related record"
             val categoriesById = categories.associateBy { it.id }
+            val subscriptionsById = subscriptions.associateBy { it.id }
+            if (subscriptionPayments.any { payment ->
+                    val subscription = subscriptionsById[payment.subscriptionId]
+                    val entry = entryById[payment.journalEntryId]
+                    val account = accountsById[payment.paymentAccountId]
+                    val accountType = account?.accountType?.let { runCatching { com.ralledger.domain.model.AccountType.valueOf(it) }.getOrNull() }
+                    val category = categoriesById[payment.expenseCategoryId]
+                    subscription == null || entry == null || entry.transactionType != "SUBSCRIPTION_PAYMENT" ||
+                        accountType?.isLiquid != true || category?.type != "EXPENSE" ||
+                        payment.amountCentavos <= 0L || payment.paymentDate <= 0L || payment.paymentDate > now ||
+                        payment.previousNextBillingDate <= 0L || payment.nextBillingDateAfter <= payment.previousNextBillingDate ||
+                        (payment.previousLastPaymentDate != null && payment.paymentDate <= payment.previousLastPaymentDate) ||
+                        (payment.reversedAt != null && (payment.reversedAt <= 0L || payment.reversedAt > now)) ||
+                        entry.primaryAccountId != payment.paymentAccountId || entry.categoryId != payment.expenseCategoryId ||
+                        entry.amountCentavos != payment.amountCentavos || entry.feeCentavos != 0L || entry.timestamp != payment.paymentDate
+                }) errors += "Subscription payment references a missing or mismatched schedule, account, category, or journal entry"
+            subscriptionPayments.forEach { payment ->
+                val entry = entryById[payment.journalEntryId] ?: return@forEach
+                val linesForPayment = lines.filter { it.journalEntryId == entry.id }
+                val validExpense = linesForPayment.any {
+                    it.accountId == payment.expenseCategoryId && it.lineType == "DEBIT" && it.amountCentavos == payment.amountCentavos
+                }
+                val validAccount = linesForPayment.any {
+                    it.accountId == payment.paymentAccountId && it.lineType == "CREDIT" && it.amountCentavos == payment.amountCentavos
+                }
+                if (!validExpense || !validAccount || linesForPayment.size != 2) {
+                    errors += "Subscription payment ${payment.id} does not match its balanced journal posting"
+                }
+                val hasReversal = entries.any { it.reversesEntryId == entry.id }
+                if ((payment.reversedAt != null) != hasReversal) {
+                    errors += "Subscription payment ${payment.id} reversal state does not match its journal"
+                }
+            }
+            subscriptionPayments.filter { it.reversedAt == null }.groupBy { it.subscriptionId }.forEach { (subscriptionId, activePayments) ->
+                val latestPayment = activePayments.maxWithOrNull(compareBy<SubscriptionPaymentEntity> { it.paymentDate }.thenBy { it.id })
+                val subscription = subscriptionsById[subscriptionId]
+                if (latestPayment != null && subscription?.lastPaymentDate != latestPayment.paymentDate) {
+                    errors += "Subscription $subscriptionId does not match its latest active payment"
+                }
+            }
             if (interestProducts.any { product ->
                     val account = accountsById[product.accountId]
                     val accountType = account?.accountType?.let { runCatching { com.ralledger.domain.model.AccountType.valueOf(it) }.getOrNull() }
@@ -639,6 +689,7 @@ class BackupRepository(
                 savingsGoalEvents = savingsGoalEvents.size,
                 interestProducts = interestProducts.size,
                 interestCredits = interestCredits.size,
+                subscriptionPayments = subscriptionPayments.size,
                 journalEntries = entries.size,
                 journalLines = lines.size,
                 receivables = receivables.size,
@@ -670,6 +721,7 @@ class BackupRepository(
                     savingsGoalEvents = json.optJSONArray("savingsGoalEvents")?.objects()?.map { it.toSavingsGoalEvent() }.orEmpty(),
                     interestProducts = json.optJSONArray("interestProducts")?.objects()?.map { it.toInterestProduct() }.orEmpty(),
                     interestCredits = json.optJSONArray("interestCredits")?.objects()?.map { it.toInterestCredit() }.orEmpty(),
+                    subscriptionPayments = json.optJSONArray("subscriptionPayments")?.objects()?.map { it.toSubscriptionPayment() }.orEmpty(),
                     entries = json.getJSONArray("journalEntries").objects().map { it.toJournalEntry() },
                     lines = json.getJSONArray("journalLines").objects().map { it.toJournalLine() },
                     receivables = json.getJSONArray("receivables").objects().map { it.toReceivable() },
@@ -829,6 +881,21 @@ private fun JSONObject.toInterestCredit() = InterestCreditEntity(
     annualRateBasisPoints = getInt("annualRateBasisPoints"), taxRateBasisPoints = getInt("taxRateBasisPoints"),
     taxExpenseCategoryId = stringOrNull("taxExpenseCategoryId"), creditedAt = getLong("creditedAt"),
     notes = optString("notes", ""), reversedAt = longOrNull("reversedAt")
+)
+
+private fun SubscriptionPaymentEntity.toJson() = JSONObject().apply {
+    put("id", id); put("subscriptionId", subscriptionId); put("journalEntryId", journalEntryId)
+    put("paymentAccountId", paymentAccountId); put("expenseCategoryId", expenseCategoryId)
+    put("amountCentavos", amountCentavos); put("paymentDate", paymentDate); put("notes", notes)
+    putNullable("reversedAt", reversedAt); putNullable("previousLastPaymentDate", previousLastPaymentDate)
+    put("previousNextBillingDate", previousNextBillingDate); put("nextBillingDateAfter", nextBillingDateAfter)
+}
+private fun JSONObject.toSubscriptionPayment() = SubscriptionPaymentEntity(
+    id = getString("id"), subscriptionId = getString("subscriptionId"), journalEntryId = getString("journalEntryId"),
+    paymentAccountId = getString("paymentAccountId"), expenseCategoryId = getString("expenseCategoryId"),
+    amountCentavos = getLong("amountCentavos"), paymentDate = getLong("paymentDate"), notes = optString("notes", ""),
+    reversedAt = longOrNull("reversedAt"), previousLastPaymentDate = longOrNull("previousLastPaymentDate"),
+    previousNextBillingDate = getLong("previousNextBillingDate"), nextBillingDateAfter = getLong("nextBillingDateAfter")
 )
 
 private fun JournalEntryEntity.toJson() = JSONObject().apply {

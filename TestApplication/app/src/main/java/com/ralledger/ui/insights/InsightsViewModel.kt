@@ -41,7 +41,7 @@ class InsightsViewModel(
         val validTransactions = transactions.filter {
             it.journalEntryId !in reversedJournalIds &&
                 it.transactionType in setOf(
-                    TransactionType.INCOME, TransactionType.INTEREST_CREDIT, TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF,
+                    TransactionType.INCOME, TransactionType.INTEREST_CREDIT, TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.RECEIVABLE_WRITEOFF,
                     TransactionType.PAYABLE_RECOGNITION, TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT
                 )
         }
@@ -52,7 +52,7 @@ class InsightsViewModel(
         val totalExpenses = validTransactions
             .fold(Money.ZERO) { total, transaction ->
                 total + when (transaction.transactionType) {
-                    TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION -> transaction.amount
+                    TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION -> transaction.amount
                     TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> transaction.fee
                     TransactionType.INTEREST_CREDIT -> transaction.fee
                     else -> Money.ZERO
@@ -62,7 +62,7 @@ class InsightsViewModel(
         val categoryMap = categories.associateBy { it.id }
         val categorizedExpenses = validTransactions.flatMap { transaction ->
             when (transaction.transactionType) {
-                TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION -> listOf(
+                TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION -> listOf(
                     (transaction.categoryId?.let { categoryMap[it]?.name } ?: transaction.categoryName ?: "Uncategorized") to transaction.amount
                 )
                 TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> listOf(

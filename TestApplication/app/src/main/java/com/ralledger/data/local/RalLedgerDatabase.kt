@@ -18,6 +18,7 @@ import com.ralledger.data.local.dao.ReconciliationDao
 import com.ralledger.data.local.dao.SubscriptionDao
 import com.ralledger.data.local.dao.SavingsGoalDao
 import com.ralledger.data.local.dao.InterestDao
+import com.ralledger.data.local.dao.SubscriptionPaymentDao
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
@@ -35,6 +36,7 @@ import com.ralledger.data.local.entity.SavingsGoalEntity
 import com.ralledger.data.local.entity.SavingsGoalEventEntity
 import com.ralledger.data.local.entity.InterestProductEntity
 import com.ralledger.data.local.entity.InterestCreditEntity
+import com.ralledger.data.local.entity.SubscriptionPaymentEntity
 import com.ralledger.domain.model.AccountCategory
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.CategoryType
@@ -60,9 +62,10 @@ import kotlinx.coroutines.launch
         SavingsGoalEntity::class,
         SavingsGoalEventEntity::class,
         InterestProductEntity::class,
-        InterestCreditEntity::class
+        InterestCreditEntity::class,
+        SubscriptionPaymentEntity::class
     ],
-    version = 11,
+    version = 12,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -78,9 +81,10 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun reconciliationDao(): ReconciliationDao
     abstract fun savingsGoalDao(): SavingsGoalDao
     abstract fun interestDao(): InterestDao
+    abstract fun subscriptionPaymentDao(): SubscriptionPaymentDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 11
+        const val CURRENT_SCHEMA_VERSION = 12
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -323,6 +327,37 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS subscription_payments (
+                        id TEXT NOT NULL,
+                        subscriptionId TEXT NOT NULL,
+                        journalEntryId TEXT NOT NULL,
+                        paymentAccountId TEXT NOT NULL,
+                        expenseCategoryId TEXT NOT NULL,
+                        amountCentavos INTEGER NOT NULL,
+                        paymentDate INTEGER NOT NULL,
+                        notes TEXT NOT NULL,
+                        reversedAt INTEGER,
+                        previousLastPaymentDate INTEGER,
+                        previousNextBillingDate INTEGER NOT NULL,
+                        nextBillingDateAfter INTEGER NOT NULL,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(subscriptionId) REFERENCES subscriptions(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(journalEntryId) REFERENCES journal_entries(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(paymentAccountId) REFERENCES accounts(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(expenseCategoryId) REFERENCES categories(id) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_subscription_payments_subscriptionId ON subscription_payments(subscriptionId)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_subscription_payments_journalEntryId ON subscription_payments(journalEntryId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_subscription_payments_paymentAccountId ON subscription_payments(paymentAccountId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_subscription_payments_expenseCategoryId ON subscription_payments(expenseCategoryId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_subscription_payments_subscriptionId_paymentDate ON subscription_payments(subscriptionId, paymentDate)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
 
@@ -333,7 +368,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

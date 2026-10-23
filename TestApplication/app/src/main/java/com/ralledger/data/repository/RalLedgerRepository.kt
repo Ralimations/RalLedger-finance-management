@@ -19,10 +19,12 @@ import com.ralledger.data.local.entity.SavingsGoalEntity
 import com.ralledger.data.local.entity.SavingsGoalEventEntity
 import com.ralledger.data.local.entity.InterestProductEntity
 import com.ralledger.data.local.entity.InterestCreditEntity
+import com.ralledger.data.local.entity.SubscriptionPaymentEntity
 import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalDomainModel
 import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalEventDomainModel
 import com.ralledger.data.local.entity.toDomainModel as toInterestProductDomainModel
 import com.ralledger.data.local.entity.toDomainModel as toInterestCreditDomainModel
+import com.ralledger.data.local.entity.toDomainModel as toSubscriptionPaymentDomainModel
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.AccountCategory
@@ -30,6 +32,7 @@ import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.Budget
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
+import com.ralledger.domain.model.BillingFrequency
 import com.ralledger.domain.model.DashboardSummary
 import com.ralledger.domain.model.Debt
 import com.ralledger.domain.model.DebtKind
@@ -49,6 +52,7 @@ import com.ralledger.domain.model.InterestCredit
 import com.ralledger.domain.model.InterestProductType
 import com.ralledger.domain.model.InterestCompounding
 import com.ralledger.domain.model.Subscription
+import com.ralledger.domain.model.SubscriptionPayment
 import com.ralledger.domain.model.SubscriptionStatus
 import com.ralledger.domain.model.Transaction
 import com.ralledger.domain.model.TransactionCorrection
@@ -57,6 +61,7 @@ import com.ralledger.domain.usecase.AccountingEngine
 import com.ralledger.domain.usecase.BudgetSpendingCalculator
 import com.ralledger.domain.usecase.BudgetSpendingKey
 import com.ralledger.domain.usecase.DashboardSummaryCalculator
+import com.ralledger.domain.usecase.SubscriptionSchedule
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
@@ -77,6 +82,7 @@ class RalLedgerRepository(
     private val reconciliationDao = database.reconciliationDao()
     private val savingsGoalDao = database.savingsGoalDao()
     private val interestDao = database.interestDao()
+    private val subscriptionPaymentDao = database.subscriptionPaymentDao()
 
     // Dynamically calculate ledger balances for all accounts from journal line aggregates
     val accountsFlow: Flow<List<Account>> = combine(
@@ -285,6 +291,7 @@ class RalLedgerRepository(
                 budgetDao.countCategoryReferences(id) == 0L && expectedIncomeDao.countCategoryReferences(id) == 0L &&
                 debtDao.countDebtsForCategory(id) == 0L && debtDao.countPaymentsForCategory(id) == 0L &&
                 interestDao.countCreditsForTaxCategory(id) == 0L &&
+                subscriptionPaymentDao.countPaymentsForCategory(id) == 0L &&
                 categoryDao.countChildren(id) == 0L
             ) {
                 "This category has transaction history, budgets, expected income, or subcategories. Archive it to preserve its history."
@@ -318,6 +325,7 @@ class RalLedgerRepository(
             debtDao.reassignDebtCategory(sourceId, targetId)
             debtDao.reassignPaymentCategory(sourceId, targetId)
             interestDao.reassignTaxCategory(sourceId, targetId)
+            subscriptionPaymentDao.reassignCategory(sourceId, targetId)
             receivableDao.reassignIncomeCategory(sourceId, targetId)
             receivableDao.reassignWriteOffCategory(sourceId, targetId)
             categoryDao.moveChildren(sourceId, targetId)
@@ -1232,6 +1240,29 @@ class RalLedgerRepository(
                     require(credit.reversedAt == null) { "This interest credit has already been reversed" }
                     interestDao.updateCredit(credit.copy(reversedAt = System.currentTimeMillis()))
                 }
+                TransactionType.SUBSCRIPTION_PAYMENT -> {
+                    val payment = subscriptionPaymentDao.getPaymentByJournalEntry(journalEntryId)
+                        ?: throw IllegalStateException("Subscription payment history is missing")
+                    require(payment.reversedAt == null) { "This subscription payment has already been reversed" }
+                    val latestPayment = subscriptionPaymentDao.getLatestActivePayment(payment.subscriptionId)
+                    require(latestPayment?.id == payment.id) {
+                        "Reverse later subscription payments first so the billing schedule stays accurate"
+                    }
+                    val subscription = subscriptionDao.getSubscriptionById(payment.subscriptionId)
+                        ?: throw IllegalStateException("The linked subscription is missing")
+                    val nextBillingDate = if (subscription.nextBillingDate == payment.nextBillingDateAfter) {
+                        payment.previousNextBillingDate
+                    } else {
+                        subscription.nextBillingDate
+                    }
+                    subscriptionDao.updateSubscription(
+                        subscription.copy(
+                            lastPaymentDate = payment.previousLastPaymentDate,
+                            nextBillingDate = nextBillingDate
+                        )
+                    )
+                    subscriptionPaymentDao.updatePayment(payment.copy(reversedAt = System.currentTimeMillis()))
+                }
                 TransactionType.RECEIVABLE_COLLECTION -> {
                     val payment = receivableDao.getPaymentByJournalEntryId(journalEntryId)
                         ?: throw IllegalStateException("Receivable payment history is missing")
@@ -1812,12 +1843,23 @@ class RalLedgerRepository(
     // Subscriptions
     val subscriptionsFlow: Flow<List<Subscription>> = combine(
         subscriptionDao.getAllSubscriptionsFlow(),
-        accountDao.getAllAccountsFlow()
-    ) { subs, accounts ->
+        accountDao.getAllAccountsFlow(),
+        subscriptionPaymentDao.getPaymentsFlow(),
+        categoryDao.getAllCategoriesFlow()
+    ) { subs, accounts, payments, categories ->
         val accountMap = accounts.associateBy { it.id }
+        val categoryMap = categories.associateBy { it.id }
+        val paymentsBySubscription = payments.groupBy { it.subscriptionId }
         subs.map { subEntity ->
             val accountName = accountMap[subEntity.assignedAccountId]?.name ?: "Assigned Account"
-            subEntity.toDomainModel(accountName)
+            subEntity.toDomainModel(accountName).copy(
+                payments = paymentsBySubscription[subEntity.id].orEmpty().map { payment ->
+                    payment.toSubscriptionPaymentDomainModel(
+                        paymentAccountName = accountMap[payment.paymentAccountId]?.name ?: "Archived account",
+                        expenseCategoryName = categoryMap[payment.expenseCategoryId]?.name ?: "Archived category"
+                    )
+                }
+            )
         }
     }
 
@@ -1865,8 +1907,78 @@ class RalLedgerRepository(
             require(current.lastPaymentDate == null) {
                 "This subscription has recorded payments. Cancel or archive it to preserve its history."
             }
+            require(subscriptionPaymentDao.countPayments(current.id) == 0L) {
+                "This subscription has payment history. Archive it to preserve its financial records."
+            }
             subscriptionDao.deleteSubscription(current)
         }
+    }
+
+    suspend fun recordSubscriptionPayment(
+        subscriptionId: String,
+        amount: Money,
+        expenseCategoryId: String,
+        paymentDate: Long,
+        notes: String
+    ): String {
+        require(amount.isPositive) { "Enter a payment amount greater than zero" }
+        require(paymentDate in 1L..System.currentTimeMillis()) { "Payment date must be in the past or today" }
+        val paymentId = UUID.randomUUID().toString()
+        database.withTransaction {
+            val current = subscriptionDao.getSubscriptionById(subscriptionId)
+                ?: throw IllegalArgumentException("This subscription no longer exists")
+            require(!current.isArchived && current.status == SubscriptionStatus.ACTIVE.name) {
+                "Restore and resume this subscription before recording a payment"
+            }
+            require(paymentDate > (current.lastPaymentDate ?: 0L)) {
+                "Payment date must be later than the previous recorded payment"
+            }
+            val account = accountDao.getAccountById(current.assignedAccountId)
+                ?: throw IllegalArgumentException("Choose a valid payment account")
+            require(AccountType.valueOf(account.accountType).isLiquid && !account.isArchived) {
+                "Restore an active cash, bank, or e-wallet account before recording payment"
+            }
+            validateCategory(expenseCategoryId, CategoryType.EXPENSE)
+            val entry = AccountingEngine.createExpenseEntry(
+                accountId = current.assignedAccountId,
+                expenseCategoryId = expenseCategoryId,
+                amount = amount,
+                description = "Subscription payment: ${current.name}",
+                timestamp = paymentDate
+            )
+            postJournalEntry(
+                entry = entry,
+                transactionType = TransactionType.SUBSCRIPTION_PAYMENT,
+                amount = amount,
+                fee = Money.ZERO,
+                primaryAccountId = current.assignedAccountId,
+                categoryId = expenseCategoryId,
+                notes = notes.trim()
+            )
+            val nextBillingDate = SubscriptionSchedule.nextBillingDateAfterPayment(
+                current.nextBillingDate, paymentDate, BillingFrequency.valueOf(current.billingFrequency)
+            )
+            subscriptionDao.updateSubscription(
+                current.copy(lastPaymentDate = paymentDate, nextBillingDate = nextBillingDate)
+            )
+            subscriptionPaymentDao.insertPayment(
+                SubscriptionPaymentEntity(
+                    id = paymentId,
+                    subscriptionId = current.id,
+                    journalEntryId = entry.id,
+                    paymentAccountId = current.assignedAccountId,
+                    expenseCategoryId = expenseCategoryId,
+                    amountCentavos = amount.centavos,
+                    paymentDate = paymentDate,
+                    notes = notes.trim(),
+                    reversedAt = null,
+                    previousLastPaymentDate = current.lastPaymentDate,
+                    previousNextBillingDate = current.nextBillingDate,
+                    nextBillingDateAfter = nextBillingDate
+                )
+            )
+        }
+        return paymentId
     }
 
     suspend fun setSubscriptionStatus(id: String, status: SubscriptionStatus) {

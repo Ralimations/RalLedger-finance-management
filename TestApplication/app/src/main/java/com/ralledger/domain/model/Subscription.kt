@@ -29,7 +29,8 @@ data class Subscription(
     val status: SubscriptionStatus = SubscriptionStatus.ACTIVE,
     val cancellationDate: Long? = null,
     val notes: String = "",
-    val isArchived: Boolean = false
+    val isArchived: Boolean = false,
+    val payments: List<SubscriptionPayment> = emptyList()
 ) {
     /** Average monthly commitment using a 52-week year and exact centavo rounding. */
     fun normalizedMonthlyCost(): Money {
@@ -45,3 +46,20 @@ data class Subscription(
         return Money(monthly.longValueExact())
     }
 }
+
+data class SubscriptionPayment(
+    val id: String,
+    val subscriptionId: String,
+    val journalEntryId: String,
+    val paymentAccountId: String,
+    val paymentAccountName: String,
+    val expenseCategoryId: String,
+    val expenseCategoryName: String,
+    val amount: Money,
+    val paymentDate: Long,
+    val notes: String,
+    val reversedAt: Long?,
+    val previousLastPaymentDate: Long?,
+    val previousNextBillingDate: Long,
+    val nextBillingDateAfter: Long
+)

@@ -24,12 +24,13 @@ data class TransactionFilter(
             TransactionTypeFilter.EXPENSE -> transaction.transactionType in setOf(
                 TransactionType.EXPENSE,
                 TransactionType.RECEIVABLE_WRITEOFF,
-                TransactionType.PAYABLE_RECOGNITION
+                TransactionType.PAYABLE_RECOGNITION,
+                TransactionType.SUBSCRIPTION_PAYMENT
             ) || (transaction.transactionType == TransactionType.INTEREST_CREDIT && transaction.fee.isPositive)
             TransactionTypeFilter.TRANSFER -> transaction.transactionType == TransactionType.TRANSFER
             TransactionTypeFilter.OTHER -> transaction.transactionType !in setOf(
                 TransactionType.INCOME, TransactionType.INTEREST_CREDIT, TransactionType.EXPENSE,
-                TransactionType.RECEIVABLE_WRITEOFF, TransactionType.TRANSFER
+                TransactionType.RECEIVABLE_WRITEOFF, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.TRANSFER
             )
         }
         val matchesAccount = accountId == null ||

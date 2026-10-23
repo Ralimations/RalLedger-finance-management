@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.ralledger.data.repository.RalLedgerRepository
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.BillingFrequency
+import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.SubscriptionStatus
@@ -28,6 +29,8 @@ class SubscriptionsViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val accounts: StateFlow<List<Account>> = repository.accountsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val categories: StateFlow<List<Category>> = repository.categoriesFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun createSubscription(
@@ -105,6 +108,28 @@ class SubscriptionsViewModel(
                 _operationMessage.value = if (isArchived) "Subscription archived." else "Subscription restored."
             } catch (error: Exception) {
                 _operationMessage.value = error.localizedMessage ?: "Subscription could not be archived."
+            }
+        }
+    }
+
+    fun recordPayment(subscriptionId: String, amount: Money, expenseCategoryId: String, paymentDate: Long, notes: String) {
+        viewModelScope.launch {
+            try {
+                repository.recordSubscriptionPayment(subscriptionId, amount, expenseCategoryId, paymentDate, notes)
+                _operationMessage.value = "Payment recorded in the ledger."
+            } catch (error: Exception) {
+                _operationMessage.value = error.localizedMessage ?: "Subscription payment could not be recorded."
+            }
+        }
+    }
+
+    fun reversePayment(journalEntryId: String) {
+        viewModelScope.launch {
+            try {
+                repository.reverseTransaction(journalEntryId)
+                _operationMessage.value = "Subscription payment reversed; its history remains saved."
+            } catch (error: Exception) {
+                _operationMessage.value = error.localizedMessage ?: "Subscription payment could not be reversed."
             }
         }
     }

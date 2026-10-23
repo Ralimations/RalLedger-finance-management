@@ -23,6 +23,8 @@ class BudgetSpendingCalculatorTest {
             transaction("reversal", TransactionType.REVERSAL, 9_000L, currentMonth, "food"),
             transaction("transfer-fee", TransactionType.TRANSFER, 20_000L, currentMonth, "food", fee = 500L),
             transaction("interest-tax", TransactionType.INTEREST_CREDIT, 10_000L, currentMonth, "interest-income", fee = 2_000L, secondaryCategoryId = "tax"),
+            transaction("subscription-payment", TransactionType.SUBSCRIPTION_PAYMENT, 800L, currentMonth, "food"),
+            transaction("reversed-subscription-payment", TransactionType.SUBSCRIPTION_PAYMENT, 1_500L, currentMonth, "food", reversed = true),
             transaction("no-fee", TransactionType.TRANSFER, 80_000L, currentMonth, "food"),
             transaction("other-category", TransactionType.EXPENSE, 7_000L, currentMonth, "home"),
             transaction("previous-month", TransactionType.EXPENSE, 4_000L, previousMonth, "food")
@@ -30,7 +32,7 @@ class BudgetSpendingCalculatorTest {
 
         val totals = BudgetSpendingCalculator.aggregate(transactions)
 
-        assertEquals(Money(7_700L), totals[BudgetSpendingKey("food", period.year, period.monthValue)])
+        assertEquals(Money(8_500L), totals[BudgetSpendingKey("food", period.year, period.monthValue)])
         assertEquals(Money(2_000L), totals[BudgetSpendingKey("tax", period.year, period.monthValue)])
         assertEquals(Money(7_000L), totals[BudgetSpendingKey("home", period.year, period.monthValue)])
         assertEquals(Money(4_000L), totals[BudgetSpendingKey("food", previousPeriod.year, previousPeriod.monthValue)])

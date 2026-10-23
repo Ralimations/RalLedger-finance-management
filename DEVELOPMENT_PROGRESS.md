@@ -180,7 +180,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - [ ] Complete hands-on Bills & loans payment entry, reversal, restart persistence, and small-screen checks.
 - [ ] Smoke-check Savings goals create/edit, reserve/release, archive/restore, and persistence after restart in Android Studio.
 - [x] Resolve the Foojay plugin using the approved Gradle download; debug build, 40 unit tests, lint, and Android-test source compilation pass.
-- [ ] Run schema-11/12 migration, interest and subscription-payment lifecycle/backup tests on an online emulator; the current connected-test attempt was blocked because `emulator-5562` was offline.
+- [x] Run schema-11/12 migration, interest and subscription-payment lifecycle/backup tests on an online emulator; completed in the schema-13 connected suite on `emulator-5554`.
 - [ ] Smoke-check interest-bearing savings and time-deposit profile editing, estimates, actual credit, tax classification, reversal, archive/restore, account archive, backup/restore and relaunch persistence.
 - [ ] Finish hands-on account/category/receivable/subscription workflows, settings persistence, charts, smaller-screen sizing, and SAF export/restore UI checks.
 
@@ -211,7 +211,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Added a normalization unit assertion and a daily overdue-schedule test. The subscription model and schedule plus six focused existing/new tests compile and pass using cached Kotlin/JUnit artifacts.
 - Android build, 40-test unit suite, lint and Android-test source compilation pass after the user approved Gradle downloads. Connected repository/backup verification remains unrun because the emulator was offline; no notifications or background billing automation were added.
 
-## Latest Android verification — 2026-10-23
+## Previous Android verification — 2026-10-23
 
 - The debug build initially exposed a compile error in backup validation: `accountsById` was declared below code that used it. Moved the lookup before its first use and removed the later duplicate declaration.
 - After the user approved Gradle downloads, the combined `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug` and `:app:compileDebugAndroidTestKotlin` task completed successfully.
@@ -220,3 +220,16 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Android-test source compilation passed. The connected test task was attempted but skipped `emulator-5562` as OFFLINE and failed with “No online devices found.” ADB reconnect did not bring a device online.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (22,394,639 bytes; built 2026-10-23). It contains the current schema-12 source but is not release-signed. Schema-11/12 runtime migrations, repository/backup instrumentation, and current UI smoke are still pending an online emulator.
 - No user database was reset or modified. The unrelated `TestApplication/.idea/deploymentTargetSelector.xml` local IDE change remains uncommitted.
+
+## Transaction labels and connected verification — 2026-10-23
+
+- Added persistent transaction labels with case-insensitive unique names, custom colors, multi-label assignment to journal entries, label search/filtering, edit, archive/restore, merge, and delete-if-unused. Archived labels stay attached to historical entries but cannot be newly assigned.
+- Raised Room to schema 13 with `transaction_tags` and `journal_entry_tags`. Migration 12→13 creates both tables and indexes without rewriting existing financial rows. Populated schema-1 and schema-2 migration fixtures now traverse through schema 13.
+- Encrypted backup/restore now includes label definitions and journal-entry assignments, validates names/colors/IDs/references, accepts earlier backups without label arrays, and restores in foreign-key-safe order.
+- Added unit coverage for label search/filtering and connected coverage for label lifecycle, assignment, merge behavior, archive protections, history preservation, migration chains and encrypted backup round-trip.
+- The connected suite exposed a subscription-payment API bug: its payment-record ID was returned where callers needed the journal-entry ID to reverse the posting. The repository now returns the journal-entry ID; the subscription payment history remains linked internally to the schedule.
+- Verified on `Medium_Phone(AVD) - 17` / `emulator-5554`: `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:compileDebugAndroidTestKotlin`, and `:app:connectedDebugAndroidTest` all succeeded. Results: 41 unit tests and 20 connected tests passed, with zero failures, errors, or skips. Lint reports 24 warnings and zero errors.
+- Connected tests include schema-1/schema-2 migrations through schema 13, interest-product lifecycle/backup, subscription payment posting/reversal/backup, transaction correction, all previous lifecycle suites, and both transaction-label tests.
+- Installed the debug APK over the existing development emulator app without clearing app data. The transaction journal, label manager, and new-label editor rendered; the dialogs fit the 1080×2400 emulator screen. No label or transaction was created during this visual check, and no user financial data was reset or changed.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (22,866,788 bytes; built 2026-10-23). This is a debug build, not a release-signed artifact. Manual label assignment/search/filter UI walkthrough and smaller-device sizing remain open.
+- `TestApplication/.idea/deploymentTargetSelector.xml` remains the pre-existing local IDE change and is excluded from the implementation commit.

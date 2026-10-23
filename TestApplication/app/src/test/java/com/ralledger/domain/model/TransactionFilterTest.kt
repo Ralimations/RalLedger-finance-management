@@ -110,4 +110,14 @@ class TransactionFilterTest {
         assertTrue(TransactionFilter(query = "music service").matches(payment))
         assertFalse(TransactionFilter(type = TransactionTypeFilter.OTHER).matches(payment))
     }
+
+    @Test
+    fun transactionLabelsParticipateInSearchAndLabelFilters() {
+        val labeled = transfer.copy(tagIds = setOf("tag-home", "tag-work"), tagNames = listOf("Home", "Work"))
+
+        assertTrue(TransactionFilter(tagId = "tag-home").matches(labeled))
+        assertFalse(TransactionFilter(tagId = "tag-other").matches(labeled))
+        assertTrue(TransactionFilter(query = "work").matches(labeled))
+        assertFalse(TransactionFilter(query = "travel").matches(labeled))
+    }
 }

@@ -20,6 +20,8 @@ import com.ralledger.data.local.entity.SavingsGoalEventEntity
 import com.ralledger.data.local.entity.InterestProductEntity
 import com.ralledger.data.local.entity.InterestCreditEntity
 import com.ralledger.data.local.entity.SubscriptionPaymentEntity
+import com.ralledger.data.local.entity.JournalEntryTagEntity
+import com.ralledger.data.local.entity.TransactionTagEntity
 import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalDomainModel
 import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalEventDomainModel
 import com.ralledger.data.local.entity.toDomainModel as toInterestProductDomainModel
@@ -57,6 +59,7 @@ import com.ralledger.domain.model.SubscriptionStatus
 import com.ralledger.domain.model.Transaction
 import com.ralledger.domain.model.TransactionCorrection
 import com.ralledger.domain.model.TransactionType
+import com.ralledger.domain.model.TransactionTag
 import com.ralledger.domain.usecase.AccountingEngine
 import com.ralledger.domain.usecase.BudgetSpendingCalculator
 import com.ralledger.domain.usecase.BudgetSpendingKey
@@ -83,6 +86,7 @@ class RalLedgerRepository(
     private val savingsGoalDao = database.savingsGoalDao()
     private val interestDao = database.interestDao()
     private val subscriptionPaymentDao = database.subscriptionPaymentDao()
+    private val transactionTagDao = database.transactionTagDao()
 
     // Dynamically calculate ledger balances for all accounts from journal line aggregates
     val accountsFlow: Flow<List<Account>> = combine(
@@ -375,6 +379,106 @@ class RalLedgerRepository(
     fun getCategoryTransactionsFlow(categoryId: String): Flow<List<Transaction>> = transactionsFlow.map { transactions ->
         transactions.filter { it.categoryId == categoryId || it.secondaryCategoryId == categoryId }
     }
+
+    val transactionTagsFlow: Flow<List<TransactionTag>> = transactionTagDao.getAllTagsFlow().map { tags ->
+        tags.map(TransactionTagEntity::toDomainModel)
+    }
+
+    suspend fun createTransactionTag(name: String, colorHex: String): String {
+        validateTransactionTag(name, colorHex)
+        val normalizedName = normalizeTagName(name)
+        val tag = TransactionTagEntity(
+            id = UUID.randomUUID().toString(),
+            name = name.trim(),
+            normalizedName = normalizedName,
+            colorHex = colorHex.uppercase(),
+            createdAt = System.currentTimeMillis(),
+            isArchived = false
+        )
+        database.withTransaction {
+            require(transactionTagDao.getTagByNormalizedName(normalizedName) == null) {
+                "A transaction label with this name already exists"
+            }
+            transactionTagDao.insertTag(tag)
+        }
+        return tag.id
+    }
+
+    suspend fun updateTransactionTag(id: String, name: String, colorHex: String) {
+        validateTransactionTag(name, colorHex)
+        database.withTransaction {
+            val current = transactionTagDao.getTagById(id)
+                ?: throw IllegalArgumentException("This transaction label no longer exists")
+            val normalizedName = normalizeTagName(name)
+            require(transactionTagDao.getTagByNormalizedName(normalizedName)?.id in setOf(null, id)) {
+                "A transaction label with this name already exists"
+            }
+            transactionTagDao.updateTag(
+                current.copy(name = name.trim(), normalizedName = normalizedName, colorHex = colorHex.uppercase())
+            )
+        }
+    }
+
+    suspend fun setTransactionTagArchived(id: String, isArchived: Boolean) {
+        database.withTransaction {
+            val tag = transactionTagDao.getTagById(id)
+                ?: throw IllegalArgumentException("This transaction label no longer exists")
+            transactionTagDao.updateTag(tag.copy(isArchived = isArchived))
+        }
+    }
+
+    suspend fun deleteUnusedTransactionTag(id: String) {
+        database.withTransaction {
+            val tag = transactionTagDao.getTagById(id)
+                ?: throw IllegalArgumentException("This transaction label no longer exists")
+            require(transactionTagDao.countAssignments(id) == 0L) {
+                "This label is attached to transaction history. Remove it from those transactions or archive it to preserve the label."
+            }
+            transactionTagDao.deleteTag(tag.id)
+        }
+    }
+
+    suspend fun mergeTransactionTag(sourceId: String, targetId: String) {
+        database.withTransaction {
+            require(sourceId != targetId) { "Choose a different label to merge into" }
+            val source = transactionTagDao.getTagById(sourceId)
+                ?: throw IllegalArgumentException("The label to merge no longer exists")
+            val target = transactionTagDao.getTagById(targetId)
+                ?: throw IllegalArgumentException("Choose an existing destination label")
+            require(!target.isArchived) { "Restore the destination label before merging" }
+            transactionTagDao.deleteDuplicateAssignmentsForMerge(source.id, target.id)
+            transactionTagDao.reassignTag(source.id, target.id)
+            transactionTagDao.deleteTag(source.id)
+        }
+    }
+
+    suspend fun setJournalEntryTags(journalEntryId: String, tagIds: Set<String>) {
+        database.withTransaction {
+            require(journalDao.getJournalEntryById(journalEntryId) != null) {
+                "This transaction no longer exists"
+            }
+            val currentIds = transactionTagDao.getTagIdsForEntry(journalEntryId).toSet()
+            val availableTags = tagIds.map { id ->
+                transactionTagDao.getTagById(id)
+                    ?: throw IllegalArgumentException("A selected label no longer exists")
+            }
+            require(availableTags.all { !it.isArchived || it.id in currentIds }) {
+                "Restore an archived label before adding it to a transaction"
+            }
+            transactionTagDao.clearAssignmentsForEntry(journalEntryId)
+            if (tagIds.isNotEmpty()) {
+                transactionTagDao.insertAssignments(tagIds.map { JournalEntryTagEntity(journalEntryId, it) })
+            }
+        }
+    }
+
+    private fun validateTransactionTag(name: String, colorHex: String) {
+        require(name.isNotBlank()) { "Enter a transaction label name" }
+        require(name.trim().length <= 40) { "Keep transaction labels to 40 characters or fewer" }
+        require(colorHex.matches(Regex("^#[0-9A-Fa-f]{6}$"))) { "Choose a valid label color" }
+    }
+
+    private fun normalizeTagName(name: String): String = name.trim().lowercase(java.util.Locale.ROOT)
 
     suspend fun createBill(title: String, counterparty: String, amount: Money, dueDate: Long, expenseCategoryId: String): String {
         validateDebtFields(title, amount, dueDate)
@@ -899,6 +1003,21 @@ class RalLedgerRepository(
         val categoryNames = categories.associate { it.id to it.name }
         transactions.map { transaction ->
             transaction.copy(secondaryCategoryName = transaction.secondaryCategoryId?.let(categoryNames::get))
+        }
+    }.combine(transactionTagDao.getAllTagsFlow()) { transactions, tags ->
+        transactions to tags.associateBy { it.id }
+    }.combine(transactionTagDao.getAllAssignmentsFlow()) { (transactions, tagsById), assignments ->
+        val tagIdsByEntry = assignments.groupBy { it.journalEntryId }.mapValues { (_, rows) ->
+            rows.map { it.tagId }.toSet()
+        }
+        transactions.map { transaction ->
+            val assignedTags = tagIdsByEntry[transaction.journalEntryId].orEmpty()
+                .mapNotNull { tagsById[it] }
+                .sortedBy { it.name.lowercase(java.util.Locale.ROOT) }
+            transaction.copy(
+                tagIds = assignedTags.map { it.id }.toSet(),
+                tagNames = assignedTags.map { it.name }
+            )
         }
     }
 
@@ -1923,8 +2042,8 @@ class RalLedgerRepository(
     ): String {
         require(amount.isPositive) { "Enter a payment amount greater than zero" }
         require(paymentDate in 1L..System.currentTimeMillis()) { "Payment date must be in the past or today" }
-        val paymentId = UUID.randomUUID().toString()
-        database.withTransaction {
+        return database.withTransaction {
+            val paymentId = UUID.randomUUID().toString()
             val current = subscriptionDao.getSubscriptionById(subscriptionId)
                 ?: throw IllegalArgumentException("This subscription no longer exists")
             require(!current.isArchived && current.status == SubscriptionStatus.ACTIVE.name) {
@@ -1977,8 +2096,8 @@ class RalLedgerRepository(
                     nextBillingDateAfter = nextBillingDate
                 )
             )
+            entry.id
         }
-        return paymentId
     }
 
     suspend fun setSubscriptionStatus(id: String, status: SubscriptionStatus) {

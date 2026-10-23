@@ -19,7 +19,9 @@ data class Transaction(
     val reversesEntryId: String? = null,
     val isReversed: Boolean = false,
     val secondaryCategoryId: String? = null,
-    val secondaryCategoryName: String? = null
+    val secondaryCategoryName: String? = null,
+    val tagIds: Set<String> = emptySet(),
+    val tagNames: List<String> = emptyList()
 )
 
 data class TransactionCorrection(

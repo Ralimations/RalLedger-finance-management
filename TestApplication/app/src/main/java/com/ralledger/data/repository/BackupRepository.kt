@@ -19,6 +19,8 @@ import com.ralledger.data.local.entity.SavingsGoalEventEntity
 import com.ralledger.data.local.entity.InterestProductEntity
 import com.ralledger.data.local.entity.InterestCreditEntity
 import com.ralledger.data.local.entity.SubscriptionPaymentEntity
+import com.ralledger.data.local.entity.TransactionTagEntity
+import com.ralledger.data.local.entity.JournalEntryTagEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.LineType
 import kotlinx.coroutines.Dispatchers
@@ -49,6 +51,8 @@ data class BackupPreview(
     val interestProducts: Int = 0,
     val interestCredits: Int = 0,
     val subscriptionPayments: Int = 0,
+    val transactionTags: Int = 0,
+    val taggedJournalEntries: Int = 0,
     val journalEntries: Int,
     val journalLines: Int,
     val receivables: Int,
@@ -104,6 +108,7 @@ class BackupRepository(
             val savingsGoals = database.savingsGoalDao()
             val interest = database.interestDao()
             val subscriptionPayments = database.subscriptionPaymentDao()
+            val transactionTags = database.transactionTagDao()
             val journals = database.journalDao()
             val receivables = database.receivableDao()
             val subscriptions = database.subscriptionDao()
@@ -121,6 +126,8 @@ class BackupRepository(
             interest.clearCredits()
             interest.clearProducts()
             subscriptionPayments.clearPayments()
+            transactionTags.clearAllAssignments()
+            transactionTags.clearTags()
             journals.clearJournalLines()
             journals.clearJournalEntries()
             receivables.clearReceivables()
@@ -147,6 +154,8 @@ class BackupRepository(
             if (snapshot.interestCredits.isNotEmpty()) interest.insertCredits(snapshot.interestCredits)
             if (snapshot.subscriptions.isNotEmpty()) subscriptions.insertSubscriptions(snapshot.subscriptions)
             if (snapshot.subscriptionPayments.isNotEmpty()) subscriptionPayments.insertPayments(snapshot.subscriptionPayments)
+            if (snapshot.transactionTags.isNotEmpty()) transactionTags.insertTags(snapshot.transactionTags)
+            if (snapshot.journalEntryTags.isNotEmpty()) transactionTags.insertAssignments(snapshot.journalEntryTags)
             if (snapshot.reconciliations.isNotEmpty()) reconciliations.insertReconciliations(snapshot.reconciliations)
 
             val restored = readSnapshot().copy(createdAt = snapshot.createdAt)
@@ -187,6 +196,8 @@ class BackupRepository(
         interestProducts = database.interestDao().getAllProducts(),
         interestCredits = database.interestDao().getAllCredits(),
         subscriptionPayments = database.subscriptionPaymentDao().getAllPayments(),
+        transactionTags = database.transactionTagDao().getAllTags(),
+        journalEntryTags = database.transactionTagDao().getAllAssignments(),
         entries = database.journalDao().getAllJournalEntries(),
         lines = database.journalDao().getAllJournalLines(),
         receivables = database.receivableDao().getAllReceivables(),
@@ -277,6 +288,8 @@ class BackupRepository(
         val interestProducts: List<InterestProductEntity>,
         val interestCredits: List<InterestCreditEntity>,
         val subscriptionPayments: List<SubscriptionPaymentEntity>,
+        val transactionTags: List<TransactionTagEntity>,
+        val journalEntryTags: List<JournalEntryTagEntity>,
         val entries: List<JournalEntryEntity>,
         val lines: List<JournalLineEntity>,
         val receivables: List<ReceivableEntity>,
@@ -301,6 +314,8 @@ class BackupRepository(
             put("interestProducts", JSONArray().also { array -> interestProducts.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("interestCredits", JSONArray().also { array -> interestCredits.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("subscriptionPayments", JSONArray().also { array -> subscriptionPayments.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("transactionTags", JSONArray().also { array -> transactionTags.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("journalEntryTags", JSONArray().also { array -> journalEntryTags.sortedWith(compareBy<JournalEntryTagEntity> { it.journalEntryId }.thenBy { it.tagId }).forEach { array.put(it.toJson()) } })
             put("journalEntries", JSONArray().also { array -> entries.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalLines", JSONArray().also { array -> lines.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("receivables", JSONArray().also { array -> receivables.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
@@ -329,6 +344,9 @@ class BackupRepository(
             checkUnique("interest journal entry", interestCredits) { it.journalEntryId }
             checkUnique("subscription payment", subscriptionPayments) { it.id }
             checkUnique("subscription payment journal entry", subscriptionPayments) { it.journalEntryId }
+            checkUnique("transaction tag", transactionTags) { it.id }
+            checkUnique("transaction tag name", transactionTags) { it.normalizedName }
+            checkUnique("journal entry tag", journalEntryTags) { "${it.journalEntryId}\u0000${it.tagId}" }
             checkUnique("journal entry", entries) { it.id }
             checkUnique("journal line", lines) { it.id }
             checkUnique("receivable", receivables) { it.id }
@@ -372,6 +390,18 @@ class BackupRepository(
             }
 
             val entryIds = entries.map { it.id }.toSet()
+            val transactionTagsById = transactionTags.associateBy { it.id }
+            val tagsByNormalizedName = transactionTags.groupBy { it.normalizedName }
+            if (transactionTags.any {
+                    it.name.isBlank() || it.name.trim().length > 40 ||
+                        it.normalizedName != it.name.trim().lowercase(java.util.Locale.ROOT) ||
+                        !it.colorHex.matches(Regex("^#[0-9A-Fa-f]{6}$")) || it.createdAt <= 0L
+                } || tagsByNormalizedName.values.any { it.size > 1 }) {
+                errors += "Transaction label has an invalid name, color, creation date, or duplicate name"
+            }
+            if (journalEntryTags.any { it.journalEntryId !in entryIds || it.tagId !in transactionTagsById }) {
+                errors += "Transaction label assignment references a missing label or journal entry"
+            }
             val entryById = entries.associateBy { it.id }
             val reversals = entries.filter { it.transactionType == "REVERSAL" }
             val linesByEntry = lines.groupBy { it.journalEntryId }
@@ -690,6 +720,8 @@ class BackupRepository(
                 interestProducts = interestProducts.size,
                 interestCredits = interestCredits.size,
                 subscriptionPayments = subscriptionPayments.size,
+                transactionTags = transactionTags.size,
+                taggedJournalEntries = journalEntryTags.map { it.journalEntryId }.toSet().size,
                 journalEntries = entries.size,
                 journalLines = lines.size,
                 receivables = receivables.size,
@@ -722,6 +754,8 @@ class BackupRepository(
                     interestProducts = json.optJSONArray("interestProducts")?.objects()?.map { it.toInterestProduct() }.orEmpty(),
                     interestCredits = json.optJSONArray("interestCredits")?.objects()?.map { it.toInterestCredit() }.orEmpty(),
                     subscriptionPayments = json.optJSONArray("subscriptionPayments")?.objects()?.map { it.toSubscriptionPayment() }.orEmpty(),
+                    transactionTags = json.optJSONArray("transactionTags")?.objects()?.map { it.toTransactionTag() }.orEmpty(),
+                    journalEntryTags = json.optJSONArray("journalEntryTags")?.objects()?.map { it.toJournalEntryTag() }.orEmpty(),
                     entries = json.getJSONArray("journalEntries").objects().map { it.toJournalEntry() },
                     lines = json.getJSONArray("journalLines").objects().map { it.toJournalLine() },
                     receivables = json.getJSONArray("receivables").objects().map { it.toReceivable() },
@@ -896,6 +930,21 @@ private fun JSONObject.toSubscriptionPayment() = SubscriptionPaymentEntity(
     amountCentavos = getLong("amountCentavos"), paymentDate = getLong("paymentDate"), notes = optString("notes", ""),
     reversedAt = longOrNull("reversedAt"), previousLastPaymentDate = longOrNull("previousLastPaymentDate"),
     previousNextBillingDate = getLong("previousNextBillingDate"), nextBillingDateAfter = getLong("nextBillingDateAfter")
+)
+
+private fun TransactionTagEntity.toJson() = JSONObject().apply {
+    put("id", id); put("name", name); put("normalizedName", normalizedName)
+    put("colorHex", colorHex); put("createdAt", createdAt); put("isArchived", isArchived)
+}
+private fun JSONObject.toTransactionTag() = TransactionTagEntity(
+    id = getString("id"), name = getString("name"), normalizedName = getString("normalizedName"),
+    colorHex = getString("colorHex"), createdAt = getLong("createdAt"), isArchived = getBoolean("isArchived")
+)
+private fun JournalEntryTagEntity.toJson() = JSONObject().apply {
+    put("journalEntryId", journalEntryId); put("tagId", tagId)
+}
+private fun JSONObject.toJournalEntryTag() = JournalEntryTagEntity(
+    journalEntryId = getString("journalEntryId"), tagId = getString("tagId")
 )
 
 private fun JournalEntryEntity.toJson() = JSONObject().apply {

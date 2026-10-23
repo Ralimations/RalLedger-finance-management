@@ -8,13 +8,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
@@ -24,6 +28,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
@@ -53,6 +58,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.text.KeyboardOptions
@@ -64,6 +70,7 @@ import com.ralledger.domain.model.Transaction
 import com.ralledger.domain.model.TransactionCorrection
 import com.ralledger.domain.model.TransactionTypeFilter
 import com.ralledger.domain.model.TransactionType
+import com.ralledger.domain.model.TransactionTag
 import java.math.BigDecimal
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -82,12 +89,15 @@ fun TransactionsScreen(
     val transactions by viewModel.filteredTransactions.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
+    val tags by viewModel.tags.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val typeFilter by viewModel.typeFilter.collectAsState()
     val accountFilterId by viewModel.accountFilterId.collectAsState()
     val categoryFilterId by viewModel.categoryFilterId.collectAsState()
+    val tagFilterId by viewModel.tagFilterId.collectAsState()
     val dateRange by viewModel.dateRange.collectAsState()
     val operationMessage by viewModel.operationMessage.collectAsState()
+    val tagMessage by viewModel.tagMessage.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
@@ -95,6 +105,8 @@ fun TransactionsScreen(
     var reverseCandidate by remember { mutableStateOf<Transaction?>(null) }
     var correctCandidate by remember { mutableStateOf<Transaction?>(null) }
     var duplicateCandidate by remember { mutableStateOf<Transaction?>(null) }
+    var showTagManager by remember { mutableStateOf(false) }
+    var tagAssignmentCandidate by remember { mutableStateOf<Transaction?>(null) }
 
     Scaffold(
         floatingActionButton = {
@@ -109,16 +121,15 @@ fun TransactionsScreen(
                 .padding(padding)
                 .padding(16.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Column {
                 Text(
                     text = "Transaction Journal",
                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
                 )
-                TextButton(onClick = onManageCategories) { Text("Categories") }
+                Row {
+                    TextButton(onClick = onManageCategories) { Text("Categories") }
+                    TextButton(onClick = { showTagManager = true }) { Text("Labels") }
+                }
             }
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -172,6 +183,12 @@ fun TransactionsScreen(
                             options = listOf<Pair<String?, String>>(null to "All categories") + categories.map { it.id to it.name },
                             onSelect = viewModel::setCategoryFilter
                         )
+                        FilterDropdownChip(
+                            title = "Label",
+                            selectedId = tagFilterId,
+                            options = listOf<Pair<String?, String>>(null to "All labels") + tags.map { it.id to (it.name + if (it.isArchived) " · Archived" else "") },
+                            onSelect = viewModel::setTagFilter
+                        )
                     }
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         TextButton(onClick = { filterDateTarget = FilterDateTarget.FROM }) {
@@ -197,7 +214,8 @@ fun TransactionsScreen(
                             transaction = tx,
                             onCorrect = { correctCandidate = tx },
                             onDuplicate = { duplicateCandidate = tx },
-                            onReverse = { reverseCandidate = tx }
+                            onReverse = { reverseCandidate = tx },
+                            onManageTags = { tagAssignmentCandidate = tx }
                         )
                     }
                 }
@@ -240,6 +258,30 @@ fun TransactionsScreen(
         )
     }
 
+    if (showTagManager) {
+        TransactionTagsManagerDialog(
+            tags = tags,
+            onDismiss = { showTagManager = false },
+            onCreate = viewModel::createTag,
+            onUpdate = viewModel::updateTag,
+            onArchive = viewModel::setTagArchived,
+            onDelete = viewModel::deleteUnusedTag,
+            onMerge = viewModel::mergeTags
+        )
+    }
+
+    tagAssignmentCandidate?.let { transaction ->
+        TransactionTagAssignmentDialog(
+            transaction = transaction,
+            tags = tags,
+            onDismiss = { tagAssignmentCandidate = null },
+            onSave = { tagIds ->
+                viewModel.setTransactionTags(transaction.journalEntryId, tagIds)
+                tagAssignmentCandidate = null
+            }
+        )
+    }
+
     reverseCandidate?.let { transaction ->
         AlertDialog(
             onDismissRequest = { reverseCandidate = null },
@@ -261,6 +303,15 @@ fun TransactionsScreen(
             title = { Text("Transaction update") },
             text = { Text(message) },
             confirmButton = { TextButton(onClick = viewModel::clearOperationMessage) { Text("OK") } }
+        )
+    }
+
+    tagMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = viewModel::clearTagMessage,
+            title = { Text("Transaction labels") },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = viewModel::clearTagMessage) { Text("OK") } }
         )
     }
 
@@ -362,7 +413,8 @@ private fun TransactionRow(
     transaction: Transaction,
     onCorrect: () -> Unit,
     onDuplicate: () -> Unit,
-    onReverse: () -> Unit
+    onReverse: () -> Unit,
+    onManageTags: () -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()) }
     val isPositive = transaction.transactionType == TransactionType.INCOME ||
@@ -415,6 +467,13 @@ private fun TransactionRow(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                 )
+                if (transaction.tagNames.isNotEmpty()) {
+                    Text(
+                        text = transaction.tagNames.joinToString(" · "),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -428,14 +487,13 @@ private fun TransactionRow(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = amountColor
                 )
-                val hasActions = (canCorrect && !transaction.isReversed) ||
-                    (transaction.transactionType != TransactionType.REVERSAL && !transaction.isReversed)
-                if (hasActions) {
+                run {
                     Box {
                         IconButton(onClick = { actionsExpanded = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "Transaction actions")
                         }
                         DropdownMenu(expanded = actionsExpanded, onDismissRequest = { actionsExpanded = false }) {
+                            DropdownMenuItem(text = { Text("Manage labels") }, onClick = { actionsExpanded = false; onManageTags() })
                             if (canCorrect && !transaction.isReversed) {
                                 DropdownMenuItem(text = { Text("Correct") }, onClick = { actionsExpanded = false; onCorrect() })
                                 DropdownMenuItem(text = { Text("Duplicate") }, onClick = { actionsExpanded = false; onDuplicate() })
@@ -445,8 +503,9 @@ private fun TransactionRow(
                             }
                         }
                     }
-                } else if (transaction.isReversed) {
-                    Text("Reversed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (transaction.isReversed) {
+                        Text("Reversed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
         }
@@ -789,4 +848,242 @@ private fun CategoryDropdown(
             }
         }
     }
+}
+
+@Composable
+private fun TransactionTagAssignmentDialog(
+    transaction: Transaction,
+    tags: List<TransactionTag>,
+    onDismiss: () -> Unit,
+    onSave: (Set<String>) -> Unit
+) {
+    var selectedIds by remember(transaction.journalEntryId) { mutableStateOf(transaction.tagIds) }
+    val availableTags = tags.filter { !it.isArchived || it.id in transaction.tagIds }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Labels for ${transaction.description.ifBlank { "transaction" }}") },
+        text = {
+            if (availableTags.isEmpty()) {
+                Text("Create a label first to organize and filter transactions.")
+            } else {
+                Column(
+                    modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    availableTags.forEach { tag ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier.size(16.dp)
+                                    .background(parseTagColor(tag.colorHex), CircleShape)
+                            )
+                            Checkbox(
+                                checked = tag.id in selectedIds,
+                                onCheckedChange = { checked ->
+                                    selectedIds = if (checked) selectedIds + tag.id else selectedIds - tag.id
+                                }
+                            )
+                            Text(tag.name + if (tag.isArchived) " · Archived" else "")
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(selectedIds) }, enabled = availableTags.isNotEmpty() || selectedIds.isEmpty()) {
+                Text("Save")
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+private fun TransactionTagsManagerDialog(
+    tags: List<TransactionTag>,
+    onDismiss: () -> Unit,
+    onCreate: (String, String) -> Unit,
+    onUpdate: (String, String, String) -> Unit,
+    onArchive: (String, Boolean) -> Unit,
+    onDelete: (String) -> Unit,
+    onMerge: (String, String) -> Unit
+) {
+    var query by remember { mutableStateOf("") }
+    var showEditor by remember { mutableStateOf(false) }
+    var editingTag by remember { mutableStateOf<TransactionTag?>(null) }
+    var mergeSource by remember { mutableStateOf<TransactionTag?>(null) }
+    var deleteCandidate by remember { mutableStateOf<TransactionTag?>(null) }
+    val visibleTags = tags.filter { it.name.contains(query, ignoreCase = true) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Transaction labels") },
+        text = {
+            Column(
+                modifier = Modifier.heightIn(max = 560.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    label = { Text("Search labels") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                TextButton(onClick = { editingTag = null; showEditor = true }) { Text("Add label") }
+                if (visibleTags.isEmpty()) {
+                    Text(if (tags.isEmpty()) "No labels yet." else "No matching labels.")
+                }
+                visibleTags.forEach { tag ->
+                    TransactionTagManagerRow(
+                        tag = tag,
+                        onEdit = { editingTag = tag; showEditor = true },
+                        onArchive = { onArchive(tag.id, !tag.isArchived) },
+                        onDelete = { deleteCandidate = tag },
+                        onMerge = { mergeSource = tag }
+                    )
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } }
+    )
+
+    if (showEditor) {
+        TransactionTagEditorDialog(
+            tag = editingTag,
+            onDismiss = { showEditor = false },
+            onSave = { name, color ->
+                val current = editingTag
+                if (current == null) onCreate(name, color) else onUpdate(current.id, name, color)
+                showEditor = false
+            }
+        )
+    }
+
+    mergeSource?.let { source ->
+        val targets = tags.filter { it.id != source.id && !it.isArchived }
+        AlertDialog(
+            onDismissRequest = { mergeSource = null },
+            title = { Text("Merge ${source.name}") },
+            text = {
+                Column(modifier = Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
+                    Text("Its transaction labels will move to the selected label. Duplicate assignments will be combined, and the source label will be removed.")
+                    targets.forEach { target ->
+                        TextButton(
+                            onClick = {
+                                onMerge(source.id, target.id)
+                                mergeSource = null
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) { Text("Merge into ${target.name}") }
+                    }
+                    if (targets.isEmpty()) Text("Create or restore another label first.")
+                }
+            },
+            confirmButton = { TextButton(onClick = { mergeSource = null }) { Text("Cancel") } }
+        )
+    }
+
+    deleteCandidate?.let { tag ->
+        AlertDialog(
+            onDismissRequest = { deleteCandidate = null },
+            title = { Text("Delete ${tag.name}?") },
+            text = { Text("Only unused labels can be deleted. Labels attached to transactions must be removed from those transactions first, or archived to preserve history.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    onDelete(tag.id)
+                    deleteCandidate = null
+                }) { Text("Delete if unused") }
+            },
+            dismissButton = { TextButton(onClick = { deleteCandidate = null }) { Text("Cancel") } }
+        )
+    }
+}
+
+@Composable
+private fun TransactionTagManagerRow(
+    tag: TransactionTag,
+    onEdit: () -> Unit,
+    onArchive: () -> Unit,
+    onDelete: () -> Unit,
+    onMerge: () -> Unit
+) {
+    var menuExpanded by remember(tag.id) { mutableStateOf(false) }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier.size(18.dp)
+                    .background(parseTagColor(tag.colorHex), CircleShape)
+            )
+            Spacer(Modifier.size(10.dp))
+            Text(tag.name + if (tag.isArchived) " · Archived" else "", modifier = Modifier.weight(1f))
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Actions for ${tag.name}")
+                }
+                DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    DropdownMenuItem(text = { Text("Edit") }, onClick = { menuExpanded = false; onEdit() })
+                    DropdownMenuItem(text = { Text("Merge into…") }, onClick = { menuExpanded = false; onMerge() })
+                    DropdownMenuItem(text = { Text(if (tag.isArchived) "Restore" else "Archive") }, onClick = { menuExpanded = false; onArchive() })
+                    DropdownMenuItem(text = { Text("Delete if unused") }, onClick = { menuExpanded = false; onDelete() })
+                }
+            }
+        }
+    }
+}
+
+private fun parseTagColor(colorHex: String): Color = runCatching {
+    Color(android.graphics.Color.parseColor(colorHex))
+}.getOrElse { Color.Gray }
+
+@Composable
+private fun TransactionTagEditorDialog(
+    tag: TransactionTag?,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit
+) {
+    var name by remember(tag?.id) { mutableStateOf(tag?.name.orEmpty()) }
+    var colorHex by remember(tag?.id) { mutableStateOf(tag?.colorHex ?: "#6750A4") }
+    var validationMessage by remember(tag?.id) { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (tag == null) "New label" else "Edit label") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; validationMessage = null },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = colorHex,
+                    onValueChange = { colorHex = it; validationMessage = null },
+                    label = { Text("Color (hex)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                validationMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                validationMessage = when {
+                    name.isBlank() -> "Enter a label name."
+                    name.trim().length > 40 -> "Use 40 characters or fewer."
+                    !colorHex.matches(Regex("^#[0-9A-Fa-f]{6}$")) -> "Enter a color like #6750A4."
+                    else -> null
+                }
+                if (validationMessage == null) onSave(name.trim(), colorHex)
+            }) { Text("Save") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }

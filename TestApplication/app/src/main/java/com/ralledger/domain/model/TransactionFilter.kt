@@ -8,7 +8,8 @@ data class TransactionFilter(
     val accountId: String? = null,
     val categoryId: String? = null,
     val startInclusive: Long? = null,
-    val endExclusive: Long? = null
+    val endExclusive: Long? = null,
+    val tagId: String? = null
 ) {
     fun matches(transaction: Transaction): Boolean {
         val matchesSearch = query.isBlank() ||
@@ -17,7 +18,8 @@ data class TransactionFilter(
             transaction.accountName.contains(query, ignoreCase = true) ||
             transaction.destinationAccountName?.contains(query, ignoreCase = true) == true ||
             transaction.categoryName?.contains(query, ignoreCase = true) == true ||
-            transaction.secondaryCategoryName?.contains(query, ignoreCase = true) == true
+            transaction.secondaryCategoryName?.contains(query, ignoreCase = true) == true ||
+            transaction.tagNames.any { it.contains(query, ignoreCase = true) }
         val matchesType = when (type) {
             TransactionTypeFilter.ALL -> true
             TransactionTypeFilter.INCOME -> transaction.transactionType in setOf(TransactionType.INCOME, TransactionType.INTEREST_CREDIT)
@@ -36,8 +38,9 @@ data class TransactionFilter(
         val matchesAccount = accountId == null ||
             transaction.accountId == accountId || transaction.destinationAccountId == accountId
         val matchesCategory = categoryId == null || transaction.categoryId == categoryId || transaction.secondaryCategoryId == categoryId
+        val matchesTag = tagId == null || tagId in transaction.tagIds
         val matchesStart = startInclusive == null || transaction.timestamp >= startInclusive
         val matchesEnd = endExclusive == null || transaction.timestamp < endExclusive
-        return matchesSearch && matchesType && matchesAccount && matchesCategory && matchesStart && matchesEnd
+        return matchesSearch && matchesType && matchesAccount && matchesCategory && matchesTag && matchesStart && matchesEnd
     }
 }

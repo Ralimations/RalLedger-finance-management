@@ -44,6 +44,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Added transaction duplication with a prefilled entry form, plus type, account, category, and date-range filters. Search now also matches counterparty and either side of a transfer.
 - Added row actions for Correct, Duplicate, and Void with reversal. Reversed originals have no further actions; correction preserves the transaction type and exposes the relevant editable fields.
 - Added unit coverage for transaction search/filter behavior and emulator coverage for atomic correction, preserved original journal lines, rejected invalid targets, and receivable safety.
+- Added a schema-1 migration fixture populated across accounts, categories, journal entries/lines, receivables/payments, subscriptions and reconciliations. It verifies all records survive the 1→2→3→4 upgrade and that newly introduced fields get safe defaults.
 
 ## Verification
 
@@ -59,8 +60,8 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Passed: `:app:compileDebugAndroidTestKotlin` including the new account lifecycle coverage.
 - Passed: `:app:connectedDebugAndroidTest` on `Medium_Phone(AVD) - 17` — 5 tests, 0 failures, including schema-2→4 migration, account/category lifecycle, income-category merge, backup round-trip with new metadata, and receivable reversal/concurrency.
 - Passed: final combined debug build, 14 unit tests, lint, Android-test Kotlin compilation, and 5 connected emulator tests after the dashboard and category-action layout updates; lint reports 23 issues, with no task failure.
-- Passed: final combined `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:compileDebugAndroidTestKotlin`, and `:app:connectedDebugAndroidTest` after transaction correction/filter work. Results: 18 unit tests and 7 connected emulator tests, all passing; lint task succeeds with 23 guidance issues and no task failure.
-- Passed: schema-2 fixture migration preserves account/category data, adds a blank account description, and gives legacy categories no parent and active status. Schema-1→2 migration still lacks a fixture test.
+- Passed: final combined `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:compileDebugAndroidTestKotlin`, and `:app:connectedDebugAndroidTest` after transaction correction/filter and schema-1 fixture work. Results: 18 unit tests and 8 connected emulator tests, all passing; lint task succeeds with 23 guidance issues and no task failure.
+- Passed: schema-1 fixture migration preserves account, category, journal, receivable/payment, subscription and reconciliation data through schema 4; schema-2 fixture migration preserves account/category data and adds blank description, no parent and active category status.
 - Passed: debug APK launch smoke check on `emulator-5554`; Overview showed Available Money first with Net Worth separate, the transaction shortcut clear of the monthly summary, the Accounts empty state, and Categories opened from Settings. The category list and Add category dialog were visually checked; full account/category form submission and lifecycle actions remain outstanding. One offline emulator was skipped.
 - Passed: transaction UI smoke on `emulator-5554` using only synthetic data. The journal filter panel rendered; Duplicate opened with account/category/amount/description/date prefilled; Correct opened with editable fields; saving a correction displayed the reversal, a Reversed marker on the original, and the replacement entry. The synthetic correction was posted only to the emulator test install.
 - Debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`.
@@ -108,7 +109,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Next development steps
 
-1. Verify migration 1→2 against a schema-v1 fixture and continue hands-on account/category CRUD checks, including archive/restore and delete guards.
+1. Continue hands-on account/category CRUD checks, including archive/restore and delete guards.
 2. Implement the next financial modules with full CRUD and accounting coverage: budgets, payables/debts, savings goals, expected income, and time deposits.
 3. Add CSV import/export and expanded statistics/reports, extending encrypted backup and restore coverage with each persisted module.
 4. Finish subscription lifecycle controls, optional app lock, export privacy controls, and home-screen widgets after their underlying data/actions exist.

@@ -34,6 +34,7 @@ This matrix distinguishes a working lifecycle from a create-only screen or repos
 - Transaction correction is available only for income, expense and transfer journal entries. It validates all targets before writing and records the original reversal plus corrected replacement in one Room transaction. The original financial record is never overwritten.
 - Duplicate copies transaction details into a new form; it creates no journal rows until the user saves the new entry. Transaction filter controls are available in the journal; date filtering uses a start-inclusive/end-exclusive range.
 - The transaction correction and duplicate dialogs plus reversal result were visually checked on `emulator-5554` using synthetic data. Automated connected tests cover correction atomicity, journal preservation, invalid target rejection and receivable exclusion.
+- Automated migration coverage now starts with a populated schema-1 database and checks all financial tables survive the full upgrade path to schema 4, including new reversal links and category/account metadata defaults.
 
 ## MyMoney design permission and asset scope
 

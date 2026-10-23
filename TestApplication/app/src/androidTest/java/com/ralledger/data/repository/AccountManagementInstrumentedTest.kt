@@ -21,6 +21,110 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AccountManagementInstrumentedTest {
     @Test
+    fun migrationFromSchemaOne_preservesFinancialRowsAndAddsReversalFields() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val databaseName = "ralledger_schema1_migration_test.db"
+        context.deleteDatabase(databaseName)
+        context.getDatabasePath(databaseName).parentFile?.mkdirs()
+        val legacy = SQLiteDatabase.openOrCreateDatabase(context.getDatabasePath(databaseName), null)
+        try {
+            createSchemaOneTables(legacy)
+            legacy.execSQL(
+                """INSERT INTO accounts (id, name, institution, accountType, currency, openingBalanceCentavos,
+                    iconName, colorHex, createdAt, isArchived, includeInDashboardTotals, lastReconciledAt)
+                    VALUES ('legacy_account', 'Legacy Wallet', 'Test Bank', 'E_WALLET', 'PHP', 12500,
+                    'account_balance_wallet', '#1565C0', 100, 0, 1, NULL)"""
+            )
+            legacy.execSQL(
+                """INSERT INTO categories (id, name, type, iconName, colorHex, isDefault)
+                    VALUES ('legacy_category', 'Legacy Food', 'EXPENSE', 'restaurant', '#FF5722', 1)"""
+            )
+            legacy.execSQL(
+                """INSERT INTO journal_entries (id, timestamp, description, transactionType, amountCentavos,
+                    feeCentavos, primaryAccountId, destinationAccountId, categoryId, counterparty, notes)
+                    VALUES ('legacy_entry', 111, 'Legacy expense', 'EXPENSE', 12345, 0, 'legacy_account',
+                    NULL, 'legacy_category', 'Legacy shop', 'Before migration')"""
+            )
+            legacy.execSQL(
+                """INSERT INTO journal_lines (id, journalEntryId, accountId, lineType, amountCentavos)
+                    VALUES ('legacy_line_expense', 'legacy_entry', 'legacy_category', 'DEBIT', 12345)"""
+            )
+            legacy.execSQL(
+                """INSERT INTO journal_lines (id, journalEntryId, accountId, lineType, amountCentavos)
+                    VALUES ('legacy_line_cash', 'legacy_entry', 'legacy_account', 'CREDIT', 12345)"""
+            )
+            legacy.execSQL(
+                """INSERT INTO receivables (id, clientName, originalAmountCentavos, outstandingAmountCentavos,
+                    recognitionDate, dueDate, linkedCategoryId, description, status)
+                    VALUES ('legacy_receivable', 'Legacy client', 50000, 40000, 100, 200,
+                    'legacy_category', 'Legacy invoice', 'PARTIALLY_PAID')"""
+            )
+            legacy.execSQL(
+                """INSERT INTO receivable_payments (id, receivableId, journalEntryId, amountCentavos,
+                    destinationAccountId, paymentDate, notes)
+                    VALUES ('legacy_payment', 'legacy_receivable', 'legacy_entry', 10000,
+                    'legacy_account', 150, 'Partial collection')"""
+            )
+            legacy.execSQL(
+                """INSERT INTO subscriptions (id, name, merchant, billingAmountCentavos, billingFrequency,
+                    assignedAccountId, nextBillingDate, lastPaymentDate, status, cancellationDate, notes)
+                    VALUES ('legacy_subscription', 'Internet', 'Legacy ISP', 150000, 'MONTHLY',
+                    'legacy_account', 300, 50, 'ACTIVE', NULL, 'Legacy plan')"""
+            )
+            legacy.execSQL(
+                """INSERT INTO reconciliations (id, accountId, timestamp, recordedBalanceCentavos,
+                    actualBalanceCentavos, differenceCentavos, adjustmentReason, journalEntryId)
+                    VALUES ('legacy_reconciliation', 'legacy_account', 120, 12500, 12000, -500,
+                    'Legacy statement', NULL)"""
+            )
+            legacy.version = 1
+        } finally {
+            legacy.close()
+        }
+
+        val migrated = Room.databaseBuilder(context, RalLedgerDatabase::class.java, databaseName)
+            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4)
+            .build()
+        try {
+            runBlocking {
+                val account = migrated.accountDao().getAccountById("legacy_account")
+                assertEquals("Legacy Wallet", account?.name)
+                assertEquals(12_500L, account?.openingBalanceCentavos)
+                assertEquals("", account?.description)
+
+                val category = migrated.categoryDao().getCategoryById("legacy_category")
+                assertEquals("Legacy Food", category?.name)
+                assertNull(category?.parentCategoryId)
+                assertFalse(category?.isArchived ?: true)
+
+                val entry = migrated.journalDao().getJournalEntryById("legacy_entry")
+                assertEquals("Legacy expense", entry?.description)
+                assertEquals(12_345L, entry?.amountCentavos)
+                assertNull(entry?.reversesEntryId)
+                assertEquals(2, migrated.journalDao().getLinesForJournalEntry("legacy_entry").size)
+
+                val receivable = migrated.receivableDao().getReceivableById("legacy_receivable")
+                assertEquals(40_000L, receivable?.outstandingAmountCentavos)
+                val payment = migrated.receivableDao().getAllPayments().single()
+                assertEquals("legacy_payment", payment.id)
+                assertEquals(10_000L, payment.amountCentavos)
+                assertNull(payment.reversedAt)
+
+                val subscription = migrated.subscriptionDao().getSubscriptionById("legacy_subscription")
+                assertEquals(150_000L, subscription?.billingAmountCentavos)
+                assertEquals("Legacy plan", subscription?.notes)
+                val reconciliation = migrated.reconciliationDao().getAllReconciliations().single()
+                assertEquals("legacy_reconciliation", reconciliation.id)
+                assertEquals(-500L, reconciliation.differenceCentavos)
+            }
+            assertEquals(4, migrated.openHelper.readableDatabase.version)
+        } finally {
+            migrated.close()
+            context.deleteDatabase(databaseName)
+        }
+    }
+
+    @Test
     fun migrationFromSchemaTwo_preservesAccountAndAddsNewFields() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val databaseName = "ralledger_schema2_migration_test.db"
@@ -159,6 +263,20 @@ class AccountManagementInstrumentedTest {
         db.execSQL("CREATE TABLE receivable_payments (id TEXT NOT NULL, receivableId TEXT NOT NULL, journalEntryId TEXT NOT NULL, amountCentavos INTEGER NOT NULL, destinationAccountId TEXT NOT NULL, paymentDate INTEGER NOT NULL, notes TEXT NOT NULL, reversedAt INTEGER, PRIMARY KEY(id), FOREIGN KEY(receivableId) REFERENCES receivables(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
         db.execSQL("CREATE INDEX index_receivable_payments_receivableId ON receivable_payments(receivableId)")
         db.execSQL("CREATE INDEX index_receivable_payments_journalEntryId ON receivable_payments(journalEntryId)")
+        db.execSQL("CREATE TABLE subscriptions (id TEXT NOT NULL, name TEXT NOT NULL, merchant TEXT NOT NULL, billingAmountCentavos INTEGER NOT NULL, billingFrequency TEXT NOT NULL, assignedAccountId TEXT NOT NULL, nextBillingDate INTEGER NOT NULL, lastPaymentDate INTEGER, status TEXT NOT NULL, cancellationDate INTEGER, notes TEXT NOT NULL, PRIMARY KEY(id))")
+        db.execSQL("CREATE TABLE reconciliations (id TEXT NOT NULL, accountId TEXT NOT NULL, timestamp INTEGER NOT NULL, recordedBalanceCentavos INTEGER NOT NULL, actualBalanceCentavos INTEGER NOT NULL, differenceCentavos INTEGER NOT NULL, adjustmentReason TEXT NOT NULL, journalEntryId TEXT, PRIMARY KEY(id))")
+    }
+
+    private fun createSchemaOneTables(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE accounts (id TEXT NOT NULL, name TEXT NOT NULL, institution TEXT NOT NULL, accountType TEXT NOT NULL, currency TEXT NOT NULL, openingBalanceCentavos INTEGER NOT NULL, iconName TEXT NOT NULL, colorHex TEXT NOT NULL, createdAt INTEGER NOT NULL, isArchived INTEGER NOT NULL, includeInDashboardTotals INTEGER NOT NULL, lastReconciledAt INTEGER, PRIMARY KEY(id))")
+        db.execSQL("CREATE TABLE journal_entries (id TEXT NOT NULL, timestamp INTEGER NOT NULL, description TEXT NOT NULL, transactionType TEXT NOT NULL, amountCentavos INTEGER NOT NULL, feeCentavos INTEGER NOT NULL, primaryAccountId TEXT NOT NULL, destinationAccountId TEXT, categoryId TEXT, counterparty TEXT NOT NULL, notes TEXT NOT NULL, PRIMARY KEY(id))")
+        db.execSQL("CREATE TABLE journal_lines (id TEXT NOT NULL, journalEntryId TEXT NOT NULL, accountId TEXT NOT NULL, lineType TEXT NOT NULL, amountCentavos INTEGER NOT NULL, PRIMARY KEY(id), FOREIGN KEY(journalEntryId) REFERENCES journal_entries(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+        db.execSQL("CREATE INDEX index_journal_lines_journalEntryId ON journal_lines(journalEntryId)")
+        db.execSQL("CREATE INDEX index_journal_lines_accountId ON journal_lines(accountId)")
+        db.execSQL("CREATE TABLE categories (id TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL, iconName TEXT NOT NULL, colorHex TEXT NOT NULL, isDefault INTEGER NOT NULL, PRIMARY KEY(id))")
+        db.execSQL("CREATE TABLE receivables (id TEXT NOT NULL, clientName TEXT NOT NULL, originalAmountCentavos INTEGER NOT NULL, outstandingAmountCentavos INTEGER NOT NULL, recognitionDate INTEGER NOT NULL, dueDate INTEGER NOT NULL, linkedCategoryId TEXT, description TEXT NOT NULL, status TEXT NOT NULL, PRIMARY KEY(id))")
+        db.execSQL("CREATE TABLE receivable_payments (id TEXT NOT NULL, receivableId TEXT NOT NULL, journalEntryId TEXT NOT NULL, amountCentavos INTEGER NOT NULL, destinationAccountId TEXT NOT NULL, paymentDate INTEGER NOT NULL, notes TEXT NOT NULL, PRIMARY KEY(id), FOREIGN KEY(receivableId) REFERENCES receivables(id) ON UPDATE NO ACTION ON DELETE CASCADE)")
+        db.execSQL("CREATE INDEX index_receivable_payments_receivableId ON receivable_payments(receivableId)")
         db.execSQL("CREATE TABLE subscriptions (id TEXT NOT NULL, name TEXT NOT NULL, merchant TEXT NOT NULL, billingAmountCentavos INTEGER NOT NULL, billingFrequency TEXT NOT NULL, assignedAccountId TEXT NOT NULL, nextBillingDate INTEGER NOT NULL, lastPaymentDate INTEGER, status TEXT NOT NULL, cancellationDate INTEGER, notes TEXT NOT NULL, PRIMARY KEY(id))")
         db.execSQL("CREATE TABLE reconciliations (id TEXT NOT NULL, accountId TEXT NOT NULL, timestamp INTEGER NOT NULL, recordedBalanceCentavos INTEGER NOT NULL, actualBalanceCentavos INTEGER NOT NULL, differenceCentavos INTEGER NOT NULL, adjustmentReason TEXT NOT NULL, journalEntryId TEXT, PRIMARY KEY(id))")
     }

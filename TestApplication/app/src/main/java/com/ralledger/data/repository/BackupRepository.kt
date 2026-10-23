@@ -501,14 +501,14 @@ private fun SubscriptionEntity.toJson() = JSONObject().apply {
     put("id", id); put("name", name); put("merchant", merchant); put("billingAmountCentavos", billingAmountCentavos)
     put("billingFrequency", billingFrequency); put("assignedAccountId", assignedAccountId); put("nextBillingDate", nextBillingDate)
     putNullable("lastPaymentDate", lastPaymentDate); put("status", status); putNullable("cancellationDate", cancellationDate)
-    put("notes", notes)
+    put("notes", notes); put("isArchived", isArchived)
 }
 private fun JSONObject.toSubscription() = SubscriptionEntity(
     id = getString("id"), name = getString("name"), merchant = getString("merchant"),
     billingAmountCentavos = getLong("billingAmountCentavos"), billingFrequency = getString("billingFrequency"),
     assignedAccountId = getString("assignedAccountId"), nextBillingDate = getLong("nextBillingDate"),
     lastPaymentDate = longOrNull("lastPaymentDate"), status = getString("status"),
-    cancellationDate = longOrNull("cancellationDate"), notes = getString("notes")
+    cancellationDate = longOrNull("cancellationDate"), notes = getString("notes"), isArchived = optBoolean("isArchived", false)
 )
 
 private fun ReconciliationEntity.toJson() = JSONObject().apply {

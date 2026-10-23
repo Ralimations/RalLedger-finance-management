@@ -28,7 +28,8 @@ data class Subscription(
     val lastPaymentDate: Long? = null,
     val status: SubscriptionStatus = SubscriptionStatus.ACTIVE,
     val cancellationDate: Long? = null,
-    val notes: String = ""
+    val notes: String = "",
+    val isArchived: Boolean = false
 ) {
     /** Average monthly commitment using a 52-week year and exact centavo rounding. */
     fun normalizedMonthlyCost(): Money {

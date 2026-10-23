@@ -1,6 +1,7 @@
 package com.ralledger.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.PrimaryKey
 import com.ralledger.domain.model.BillingFrequency
 import com.ralledger.domain.model.Money
@@ -19,7 +20,8 @@ data class SubscriptionEntity(
     val lastPaymentDate: Long?,
     val status: String, // SubscriptionStatus.name
     val cancellationDate: Long?,
-    val notes: String
+    val notes: String,
+    @ColumnInfo(defaultValue = "0") val isArchived: Boolean = false
 ) {
     fun toDomainModel(assignedAccountName: String): Subscription {
         return Subscription(
@@ -34,7 +36,8 @@ data class SubscriptionEntity(
             lastPaymentDate = lastPaymentDate,
             status = SubscriptionStatus.valueOf(status),
             cancellationDate = cancellationDate,
-            notes = notes
+            notes = notes,
+            isArchived = isArchived
         )
     }
 
@@ -51,7 +54,8 @@ data class SubscriptionEntity(
                 lastPaymentDate = sub.lastPaymentDate,
                 status = sub.status.name,
                 cancellationDate = sub.cancellationDate,
-                notes = sub.notes
+                notes = sub.notes,
+                isArchived = sub.isArchived
             )
         }
     }

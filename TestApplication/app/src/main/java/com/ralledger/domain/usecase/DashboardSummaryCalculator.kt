@@ -62,7 +62,7 @@ object DashboardSummaryCalculator {
             }
 
         val monthlySubscriptionCost = subscriptions
-            .filter { it.status == SubscriptionStatus.ACTIVE }
+            .filter { it.status == SubscriptionStatus.ACTIVE && !it.isArchived }
             .fold(Money.ZERO) { total, subscription -> total + subscription.normalizedMonthlyCost() }
 
         return DashboardSummary(

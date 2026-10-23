@@ -8,6 +8,7 @@ import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.BillingFrequency
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Subscription
+import com.ralledger.domain.model.SubscriptionStatus
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -67,6 +68,43 @@ class SubscriptionsViewModel(
                 _operationMessage.value = "Subscription removed."
             } catch (error: Exception) {
                 _operationMessage.value = error.localizedMessage ?: "Subscription could not be removed."
+            }
+        }
+    }
+
+    fun updateSubscription(subscription: Subscription) {
+        viewModelScope.launch {
+            try {
+                repository.updateSubscription(subscription)
+                _operationMessage.value = "Subscription updated. Previous payment records are unchanged."
+            } catch (error: Exception) {
+                _operationMessage.value = error.localizedMessage ?: "Subscription could not be updated."
+            }
+        }
+    }
+
+    fun setStatus(subscription: Subscription, status: SubscriptionStatus) {
+        viewModelScope.launch {
+            try {
+                repository.setSubscriptionStatus(subscription.id, status)
+                _operationMessage.value = when (status) {
+                    SubscriptionStatus.ACTIVE -> "Subscription resumed."
+                    SubscriptionStatus.PAUSED -> "Subscription paused."
+                    SubscriptionStatus.CANCELLED -> "Subscription cancelled."
+                }
+            } catch (error: Exception) {
+                _operationMessage.value = error.localizedMessage ?: "Subscription status could not be updated."
+            }
+        }
+    }
+
+    fun setArchived(subscription: Subscription, isArchived: Boolean) {
+        viewModelScope.launch {
+            try {
+                repository.setSubscriptionArchived(subscription.id, isArchived)
+                _operationMessage.value = if (isArchived) "Subscription archived." else "Subscription restored."
+            } catch (error: Exception) {
+                _operationMessage.value = error.localizedMessage ?: "Subscription could not be archived."
             }
         }
     }

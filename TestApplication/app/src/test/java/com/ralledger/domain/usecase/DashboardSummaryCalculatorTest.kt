@@ -5,12 +5,37 @@ import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Receivable
 import com.ralledger.domain.model.ReceivableStatus
+import com.ralledger.domain.model.BillingFrequency
+import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.Transaction
 import com.ralledger.domain.model.TransactionType
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class DashboardSummaryCalculatorTest {
+    @Test
+    fun archivedSubscriptionsAreExcludedFromMonthlyCommitments() {
+        val active = Subscription(
+            id = "active-sub",
+            name = "Active",
+            billingAmount = Money(1_000L),
+            assignedAccountId = "wallet",
+            nextBillingDate = 1L,
+            billingFrequency = BillingFrequency.MONTHLY
+        )
+        val archived = active.copy(id = "archived-sub", isArchived = true)
+
+        val summary = DashboardSummaryCalculator.calculate(
+            accounts = emptyList(),
+            receivables = emptyList(),
+            subscriptions = listOf(active, archived),
+            transactions = emptyList(),
+            startOfMonthTimestamp = 0L
+        )
+
+        assertEquals(Money(1_000L), summary.activeSubscriptionsMonthlyTotal)
+    }
+
     @Test
     fun totals_includeWalletBalancesAndReceivablesOnce_andExcludeHiddenAccounts() {
         val accounts = listOf(

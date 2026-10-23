@@ -83,7 +83,7 @@ class AccountManagementInstrumentedTest {
         }
 
         val migrated = Room.databaseBuilder(context, RalLedgerDatabase::class.java, databaseName)
-            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5)
+            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6)
             .build()
         try {
             runBlocking {
@@ -113,11 +113,12 @@ class AccountManagementInstrumentedTest {
                 val subscription = migrated.subscriptionDao().getSubscriptionById("legacy_subscription")
                 assertEquals(150_000L, subscription?.billingAmountCentavos)
                 assertEquals("Legacy plan", subscription?.notes)
+                assertFalse(subscription?.isArchived ?: true)
                 val reconciliation = migrated.reconciliationDao().getAllReconciliations().single()
                 assertEquals("legacy_reconciliation", reconciliation.id)
                 assertEquals(-500L, reconciliation.differenceCentavos)
             }
-            assertEquals(5, migrated.openHelper.readableDatabase.version)
+            assertEquals(6, migrated.openHelper.readableDatabase.version)
         } finally {
             migrated.close()
             context.deleteDatabase(databaseName)
@@ -149,7 +150,7 @@ class AccountManagementInstrumentedTest {
         }
 
         val migrated = Room.databaseBuilder(context, RalLedgerDatabase::class.java, databaseName)
-            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5)
+            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6)
             .build()
         try {
             val account = kotlinx.coroutines.runBlocking { migrated.accountDao().getAccountById("legacy_account") }
@@ -159,7 +160,7 @@ class AccountManagementInstrumentedTest {
             val category = kotlinx.coroutines.runBlocking { migrated.categoryDao().getCategoryById("legacy_category") }
             assertEquals(null, category?.parentCategoryId)
             assertFalse(category?.isArchived ?: true)
-            assertEquals(5, migrated.openHelper.readableDatabase.version)
+            assertEquals(6, migrated.openHelper.readableDatabase.version)
         } finally {
             migrated.close()
             context.deleteDatabase(databaseName)

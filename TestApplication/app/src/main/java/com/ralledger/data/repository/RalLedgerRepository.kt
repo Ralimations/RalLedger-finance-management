@@ -907,18 +907,56 @@ class RalLedgerRepository(
         require(subscription.name.isNotBlank()) { "Subscription name is required" }
         require(subscription.billingAmount.isPositive) { "Subscription billing amount must be positive" }
         database.withTransaction {
+            val current = subscriptionDao.getSubscriptionById(subscription.id)
+                ?: throw IllegalArgumentException("This subscription no longer exists")
             val account = accountDao.getAccountById(subscription.assignedAccountId)
                 ?: throw IllegalArgumentException("Select a valid payment account")
             require(AccountType.valueOf(account.accountType).isLiquid && !account.isArchived) {
                 "Choose an active cash, bank, or e-wallet account for this subscription"
             }
-            subscriptionDao.updateSubscription(SubscriptionEntity.fromDomainModel(subscription))
+            subscriptionDao.updateSubscription(
+                SubscriptionEntity.fromDomainModel(
+                    subscription.copy(
+                        status = SubscriptionStatus.valueOf(current.status),
+                        lastPaymentDate = current.lastPaymentDate,
+                        cancellationDate = current.cancellationDate,
+                        isArchived = current.isArchived
+                    )
+                )
+            )
         }
     }
 
     suspend fun deleteSubscription(subscription: Subscription) {
         database.withTransaction {
-            subscriptionDao.deleteSubscription(SubscriptionEntity.fromDomainModel(subscription))
+            val current = subscriptionDao.getSubscriptionById(subscription.id)
+                ?: throw IllegalArgumentException("This subscription no longer exists")
+            require(current.lastPaymentDate == null) {
+                "This subscription has recorded payments. Cancel or archive it to preserve its history."
+            }
+            subscriptionDao.deleteSubscription(current)
+        }
+    }
+
+    suspend fun setSubscriptionStatus(id: String, status: SubscriptionStatus) {
+        database.withTransaction {
+            val current = subscriptionDao.getSubscriptionById(id)
+                ?: throw IllegalArgumentException("This subscription no longer exists")
+            require(!current.isArchived) { "Restore this subscription before changing its status" }
+            val cancellationDate = if (status == SubscriptionStatus.CANCELLED) {
+                current.cancellationDate ?: System.currentTimeMillis()
+            } else {
+                null
+            }
+            subscriptionDao.updateSubscription(current.copy(status = status.name, cancellationDate = cancellationDate))
+        }
+    }
+
+    suspend fun setSubscriptionArchived(id: String, isArchived: Boolean) {
+        database.withTransaction {
+            val current = subscriptionDao.getSubscriptionById(id)
+                ?: throw IllegalArgumentException("This subscription no longer exists")
+            subscriptionDao.updateSubscription(current.copy(isArchived = isArchived))
         }
     }
 

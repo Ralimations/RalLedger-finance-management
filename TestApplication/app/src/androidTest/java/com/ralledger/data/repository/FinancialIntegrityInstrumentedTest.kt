@@ -7,7 +7,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ralledger.data.local.RalLedgerDatabase
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.CategoryEntity
+import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.AccountType
+import com.ralledger.domain.model.BillingFrequency
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
 import kotlinx.coroutines.async
@@ -57,6 +59,22 @@ class FinancialIntegrityInstrumentedTest {
 
             val repository = RalLedgerRepository(source)
             repository.createBudget("cat_test_expense", 2026, 10, Money(50_000L))
+            source.subscriptionDao().insertSubscription(
+                SubscriptionEntity(
+                    id = "archived_subscription_test",
+                    name = "Archived synthetic plan",
+                    merchant = "Test merchant",
+                    billingAmountCentavos = 1_299L,
+                    billingFrequency = BillingFrequency.MONTHLY.name,
+                    assignedAccountId = "wallet_test",
+                    nextBillingDate = 1_800_000_000_000L,
+                    lastPaymentDate = 1_799_000_000_000L,
+                    status = "CANCELLED",
+                    cancellationDate = 1_799_500_000_000L,
+                    notes = "Preserve archived subscription metadata",
+                    isArchived = true
+                )
+            )
             repository.recordIncome("wallet_test", "cat_test_income", Money(12345L), "Synthetic test income")
             val receivable = repository.createReceivable(
                 clientName = "Synthetic Client",
@@ -93,6 +111,8 @@ class FinancialIntegrityInstrumentedTest {
             assertEquals(source.journalDao().getAllJournalLines(), destination.journalDao().getAllJournalLines())
             assertEquals(source.receivableDao().getAllReceivables(), destination.receivableDao().getAllReceivables())
             assertEquals(source.receivableDao().getAllPayments(), destination.receivableDao().getAllPayments())
+            assertEquals(source.subscriptionDao().getAllSubscriptions(), destination.subscriptionDao().getAllSubscriptions())
+            assertTrue(destination.subscriptionDao().getAllSubscriptions().single().isArchived)
             assertEquals(source.journalDao().getBalanceAggregateForAccount("wallet_test"), destination.journalDao().getBalanceAggregateForAccount("wallet_test"))
             assertEquals(7500L, destination.receivableDao().getAllReceivables().single().outstandingAmountCentavos)
             assertTrue(destination.receivableDao().getAllPayments().single { it.id == concurrentPayment.id }.reversedAt != null)

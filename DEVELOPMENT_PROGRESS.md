@@ -162,35 +162,36 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - [ ] Install and launch the debug APK on an emulator/device; confirm current user data remains intact after migration.
 - [ ] Create an asset and liability account with opening balances; edit metadata and verify type/opening balances and journal history remain unchanged.
 - [ ] Search accounts, inspect transaction history, archive/restore an account, delete an unused account, and confirm a used account cannot be deleted.
-- [ ] Manage income/expense categories: create, edit, reorganize, archive/restore, merge, view history and delete unused; confirm used history remains intact.
+- [x] Emulator UI smoke: create a custom income source, rename it, archive it, show archived categories, restore it, and confirm unused deletion. The synthetic category was removed; no transaction was assigned to it.
+- [ ] Finish manual category UI checks for subcategory reorganization, merge, and history display. Connected lifecycle instrumentation covers category merge and history protection; account/category screen behavior on smaller devices remains unverified.
 - [ ] Record an income, expense, transfer with fee, and reversal; inspect ledger and month totals.
 - [ ] Create a receivable, edit client/details/due date, collect partially, attempt overcollection, reverse a collection, partially/full write it off, reverse a write-off, cancel, archive/restore, and verify journal and payment/write-off history.
-- [x] Run the connected suite on an online emulator; populated schema-1/schema-2 migration chains through schema 10, debt/receivable/expected-income/savings-goal lifecycle, and encrypted backup round-trip passed before the final savings-goal search-field edit. Connected rerun after that edit was blocked because no emulator was online.
+- [x] Run the connected suite on `Medium_Phone(AVD) - 17`: 22 tests passed with 0 failures/errors/skips. Populated schema-1/schema-2 migration chains reach schema 14; the suite covers account/category/budget/receivable/debt/expected-income/savings-goal/interest/subscription/labels/saved-filter lifecycle and encrypted backup/restore. This run includes the saved-filter and dashboard-widget changes.
 - [x] Verify repository reconciliation corrections for asset and liability accounts with positive and negative differences while preserving original opening journal entries.
 - [x] Smoke-check account-menu reconciliation on emulator; verified adjustment text, reason entry, saved balance and success feedback.
 - [ ] Add subscriptions with daily, weekly, monthly, quarterly, and annual billing; edit a schedule, pause/resume, cancel/reactivate, archive/restore, and verify normalized dashboard total.
-- [x] Run subscription lifecycle and archived-subscription backup tests as part of the schema-8 connected suite. The populated schema-1→8 chain also traverses the 5→6 migration.
+- [x] Subscription lifecycle, payment posting/reversal, archived state, backup, and migration coverage pass in the schema-13/14 connected suite; all five billing frequencies are represented in the current model/UI options.
 - [ ] Export an encrypted backup, restore it into an empty test install, and compare accounts, journal, receivables, payment history, and dashboard balances.
-- [ ] Restart the app and verify records persist; inspect UI sizing, insets, dialogs, and navigation on multiple screen sizes.
-- [ ] Switch System/Light/Dark and Ocean/Indigo/Sage in Settings; confirm selection persists after relaunch and chart colors remain readable.
+- [ ] Confirm user-created financial records survive app restart and inspect UI sizing, insets, dialogs, and navigation on multiple screen sizes. This emulator contains no user ledger records; smaller-screen review remains open.
+- [x] Switch System/Ocean to Dark/Indigo, force-stop and relaunch, and confirm Dark/Indigo remain selected; restore the original System/Ocean settings afterward. Light and Sage combinations and chart-color contrast still need review.
 - [ ] Validate day/week/month/year/custom/all-time Insights, custom date boundaries, reversals, category taps, source totals, and selected-bucket values against the journal.
-- [x] Run `connectedDebugAndroidTest`; 13 tests passed, including backup and concurrent collection coverage.
+- [x] Run `connectedDebugAndroidTest`; the latest full run passed 22 tests, including backup, migration, lifecycle, and concurrent collection coverage.
 - [x] Smoke-check expected-income tab and editor; create, cancel, and delete a synthetic forecast and verify the list returns to empty.
 - [x] Verify Bills & loans, Add bill/Add loan forms, and Subscriptions tab routing after the final mapping correction.
 - [ ] Complete hands-on Bills & loans payment entry, reversal, restart persistence, and small-screen checks.
 - [ ] Smoke-check Savings goals create/edit, reserve/release, archive/restore, and persistence after restart in Android Studio.
-- [x] Resolve the Foojay plugin using the approved Gradle download; debug build, 40 unit tests, lint, and Android-test source compilation pass.
-- [x] Run schema-11/12 migration, interest and subscription-payment lifecycle/backup tests on an online emulator; completed in the schema-13 connected suite on `emulator-5554`.
+- [x] Resolve the Foojay plugin using the approved Gradle download; the latest full run passed debug assembly, 51 unit tests, lint (24 warnings, 0 errors), and Android-test source compilation.
+- [x] Run populated schema-11/12 migration, interest, and subscription-payment lifecycle/backup tests on `emulator-5554`; later migration fixtures pass through schema 14.
 - [ ] Smoke-check interest-bearing savings and time-deposit profile editing, estimates, actual credit, tax classification, reversal, archive/restore, account archive, backup/restore and relaunch persistence.
 - [ ] Finish hands-on account/category/receivable/subscription workflows, settings persistence, charts, smaller-screen sizing, and SAF export/restore UI checks.
 
 ## Next development steps
 
-1. Finish hands-on account/category/receivable/subscription CRUD, settings persistence, chart interaction, smaller-screen layout, and SAF export/restore checks.
-2. Finish hands-on Bills & loans payment, reversal, restart persistence and small-screen checks.
-3. Verify the schema-11 interest/time-deposit slice on an online emulator, including runtime migration, account/profile lifecycle, tax accounting, encrypted backup and device UI.
-4. Verify linked subscription payment posting/history and multi-period Insights on an online emulator; then add subscription trend views, due notifications, CSV import and spreadsheet export.
-5. Add remaining customizable preferences, optional PIN/biometric lock, export privacy controls, saved filters/reports and home-screen widgets; verify each persisted workflow and backup state.
+1. Finish manual category subcategory/merge/history flows, then complete receivable and transaction entry/reversal walkthroughs with synthetic data and cleanup.
+2. Finish Bills & loans payment/reversal UI, restart persistence, and smaller-screen checks.
+3. Manually verify the interest/time-deposit profile editor, estimates, actual credit/tax/reversal, archive behavior, and visible history; connected migration/repository/backup tests already pass.
+4. Verify period and chart interactions against synthetic journal data, including custom boundaries, reversals, source totals, and small-screen chart labels.
+5. Complete the encrypted SAF backup/restore walkthrough on an isolated test install, then review data-export privacy, optional app lock, native home-screen widgets, and report gaps against the mission requirements.
 
 ## Insights period analytics — 2026-10-23
 
@@ -263,6 +264,24 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Passed on `Medium_Phone(AVD) - 17`: debug assembly, all 47 unit tests, lint (24 warnings, 0 errors), Android-test Kotlin compilation, and all 22 connected tests (0 failures, errors, or skips). The connected suite includes the new saved-filter lifecycle/backup test and schema-14 migration checks.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (22,933,919 bytes; SHA-256 `86F5703E5921DB72B442CE39F574EDFDB9EA7EB75F31960136606E1C294CA609`; built 2026-10-23; debug-signed, not a release APK). Smaller-device sizing remains pending. No financial data was entered or changed by the saved-filter connected test; it used in-memory databases.
 - The pre-existing local `TestApplication/.idea/deploymentTargetSelector.xml` change remains untouched and excluded from implementation commits.
+
+## Narrow-screen layout and current build — 2026-10-23
+
+- Simplified the Settings heading and removed its redundant helper copy. Theme-mode and palette chips now flow onto a second row instead of compressing and breaking words.
+- On screens narrower than 320 dp, bottom navigation keeps its icons and accessible descriptions while hiding labels that would otherwise split mid-word.
+- Shortened the Budgets empty state to `No budgets for this month.`; on the narrow viewport it no longer runs beneath the floating Add budget button.
+- Installed the rebuilt APK and manually checked Overview, Accounts, Transaction Journal, Budgets, Insights and Settings at 720×1600 physical pixels (274 dp logical width). The toolbar actions stayed separated, Settings chips remained readable, and the Budget empty state remained clear of the add button. Restored the emulator to 1080×2400 afterward.
+- Re-ran `:app:assembleDebug`, `:app:testDebugUnitTest` (51 tests; 0 failures), `:app:lintDebug` (24 warnings; 0 errors), Android-test Kotlin compilation, and `:app:connectedDebugAndroidTest` (22 tests; 0 failures, errors or skips). The full build succeeded.
+- Current APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (23,502,789 bytes; SHA-256 `F276AEB7D12B41A6B81323A3DA21F697CCA471EBBB7D41A77585555A8C3843F2`; debug-signed, not release-signed).
+- Publishing remains blocked by the missing destination: this checkout has no Git remote, and GitHub search/listing found no RalLedger repository under the connected account. The `Programming_Projects` repository has no RalLedger path and is not being used. The exact repository URL/name is needed before pushing to `main` or uploading the APK.
+- Other live-use release gaps in the CRUD matrix remain open. The pre-existing local `TestApplication/.idea/deploymentTargetSelector.xml` change is excluded from this implementation.
+
+## Category lifecycle and appearance follow-up — 2026-10-23
+
+- On `emulator-5554`, created the synthetic income source `CodexQAIncomeStream`, renamed it to `CodexQAIncomeStreamEdited`, archived it, enabled the archived-category view, restored it, and confirmed deletion through the unused-category confirmation. Each operation returned its success message and the filtered list reflected the updates.
+- No transaction was assigned to the test category, and no financial records were changed. The category was permanently removed after the smoke test.
+- Changed appearance from System/Ocean to Dark/Indigo, force-stopped and relaunched the app, and visually confirmed the selected theme and palette persisted. Restored System/Ocean afterward.
+- Connected instrumentation remains the evidence for category merge/history protections; manual category history, subcategory reorganization and merge flows remain open. Appearance checks for Light/Sage and chart contrast also remain open.
 - Manual flow verified on `emulator-5554` after the saved-filter implementation: saved and applied a temporary expense filter, changed current criteria and updated the saved filter, renamed it, then confirmed deletion. The manager initially clipped the final action; its controls now use two rows and all four actions fit. The temporary filter was removed, the development emulator had no transaction records, and no journal data was changed.
 
 ## Dashboard widget customization — 2026-10-23

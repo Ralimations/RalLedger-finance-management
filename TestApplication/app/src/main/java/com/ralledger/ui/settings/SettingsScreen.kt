@@ -4,6 +4,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -49,6 +51,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
@@ -125,13 +128,8 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Settings & Data Ownership",
+            text = "Settings",
             style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-        )
-        Text(
-            text = "Know your money. Own your data. Stay in control.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
         )
 
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
@@ -139,10 +137,11 @@ fun SettingsScreen(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text("Make it yours", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                Text("Choose the look that feels right. Your preference stays on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("Appearance", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Appearance", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     ThemeMode.entries.forEach { mode ->
                         FilterChip(
                             selected = appearance.mode == mode,
@@ -152,7 +151,10 @@ fun SettingsScreen(
                     }
                 }
                 Text("Color palette", style = MaterialTheme.typography.labelLarge)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     ThemePalette.entries.forEach { palette ->
                         FilterChip(
                             selected = appearance.palette == palette,

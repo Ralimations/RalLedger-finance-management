@@ -134,7 +134,7 @@ fun BudgetsScreen(viewModel: BudgetsViewModel) {
 
             if (shownBudgets.isEmpty()) {
                 Text(
-                    text = if (includeArchived) "No budgets for this month." else "No budgets for this month. Tap + to set a category limit.",
+                    text = "No budgets for this month.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

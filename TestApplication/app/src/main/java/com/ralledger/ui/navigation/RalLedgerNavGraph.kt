@@ -46,6 +46,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -110,6 +113,7 @@ fun RalLedgerMainScreen(
 ) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+    val showBottomNavLabels = LocalConfiguration.current.screenWidthDp >= 320
 
     var showAddDialog by remember { mutableStateOf(false) }
     val themeSettings by appContainer.themePreferences.settings.collectAsState(initial = ThemeSettings())
@@ -139,7 +143,17 @@ fun RalLedgerMainScreen(
                 navScreens.forEach { screen ->
                     NavigationBarItem(
                         icon = { Icon(screen.icon, contentDescription = screen.title) },
-                        label = { Text(screen.title) },
+                        label = if (showBottomNavLabels) {
+                            {
+                                Text(
+                                    text = screen.title,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        } else null,
                         selected = currentRoute == screen.route,
                         onClick = {
                             navController.navigate(screen.route) {

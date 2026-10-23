@@ -352,20 +352,19 @@ fun TransactionsScreen(
                                 Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(saved.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                                     Text(savedFilterSummary(saved.filter), style = MaterialTheme.typography.bodySmall)
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        TextButton(onClick = {
+                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                        TextButton(modifier = Modifier.weight(1f), onClick = {
                                             viewModel.applySavedFilter(saved)
                                             showSavedFilters = false
                                         }) { Text("Apply") }
-                                        TextButton(onClick = { viewModel.updateSavedFilter(saved.id) }) { Text("Update") }
-                                        TextButton(onClick = {
+                                        TextButton(modifier = Modifier.weight(1f), onClick = { viewModel.updateSavedFilter(saved.id) }) { Text("Update") }
+                                    }
+                                    Row(modifier = Modifier.fillMaxWidth()) {
+                                        TextButton(modifier = Modifier.weight(1f), onClick = {
                                             renameFilterCandidate = saved
                                             renameFilterName = saved.name
                                         }) { Text("Rename") }
-                                        TextButton(onClick = { deleteFilterCandidate = saved }) { Text("Delete") }
+                                        TextButton(modifier = Modifier.weight(1f), onClick = { deleteFilterCandidate = saved }) { Text("Delete") }
                                     }
                                 }
                             }

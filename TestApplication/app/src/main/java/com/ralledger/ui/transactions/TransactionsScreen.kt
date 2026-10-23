@@ -71,6 +71,8 @@ import com.ralledger.domain.model.TransactionCorrection
 import com.ralledger.domain.model.TransactionTypeFilter
 import com.ralledger.domain.model.TransactionType
 import com.ralledger.domain.model.TransactionTag
+import com.ralledger.domain.model.SavedTransactionFilter
+import com.ralledger.domain.model.TransactionFilter
 import java.math.BigDecimal
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -90,6 +92,8 @@ fun TransactionsScreen(
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val tags by viewModel.tags.collectAsState()
+    val savedFilters by viewModel.savedFilters.collectAsState()
+    val canSaveActiveFilter by viewModel.canSaveActiveFilter.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val typeFilter by viewModel.typeFilter.collectAsState()
     val accountFilterId by viewModel.accountFilterId.collectAsState()
@@ -98,6 +102,7 @@ fun TransactionsScreen(
     val dateRange by viewModel.dateRange.collectAsState()
     val operationMessage by viewModel.operationMessage.collectAsState()
     val tagMessage by viewModel.tagMessage.collectAsState()
+    val savedFilterMessage by viewModel.savedFilterMessage.collectAsState()
 
     var showAddDialog by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
@@ -107,6 +112,12 @@ fun TransactionsScreen(
     var duplicateCandidate by remember { mutableStateOf<Transaction?>(null) }
     var showTagManager by remember { mutableStateOf(false) }
     var tagAssignmentCandidate by remember { mutableStateOf<Transaction?>(null) }
+    var showSavedFilters by remember { mutableStateOf(false) }
+    var showSaveFilter by remember { mutableStateOf(false) }
+    var saveFilterName by remember { mutableStateOf("") }
+    var renameFilterCandidate by remember { mutableStateOf<SavedTransactionFilter?>(null) }
+    var renameFilterName by remember { mutableStateOf("") }
+    var deleteFilterCandidate by remember { mutableStateOf<SavedTransactionFilter?>(null) }
 
     Scaffold(
         floatingActionButton = {
@@ -200,6 +211,15 @@ fun TransactionsScreen(
                         Spacer(Modifier.weight(1f))
                         TextButton(onClick = viewModel::clearFilters) { Text("Clear") }
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { showSavedFilters = true }) {
+                            Text("Saved filters (${savedFilters.size})")
+                        }
+                        TextButton(onClick = { saveFilterName = ""; showSaveFilter = true }, enabled = canSaveActiveFilter) {
+                            Text("Save current")
+                        }
+                    }
+                    savedFilterMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                 }
             }
 
@@ -315,6 +335,107 @@ fun TransactionsScreen(
         )
     }
 
+    if (showSavedFilters) {
+        AlertDialog(
+            onDismissRequest = { showSavedFilters = false },
+            title = { Text("Saved transaction filters") },
+            text = {
+                if (savedFilters.isEmpty()) {
+                    Text("Save a search or filter combination to reuse it here.")
+                } else {
+                    Column(
+                        modifier = Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        savedFilters.forEach { saved ->
+                            Card(shape = RoundedCornerShape(12.dp)) {
+                                Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(saved.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                                    Text(savedFilterSummary(saved.filter), style = MaterialTheme.typography.bodySmall)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        TextButton(onClick = {
+                                            viewModel.applySavedFilter(saved)
+                                            showSavedFilters = false
+                                        }) { Text("Apply") }
+                                        TextButton(onClick = { viewModel.updateSavedFilter(saved.id) }) { Text("Update") }
+                                        TextButton(onClick = {
+                                            renameFilterCandidate = saved
+                                            renameFilterName = saved.name
+                                        }) { Text("Rename") }
+                                        TextButton(onClick = { deleteFilterCandidate = saved }) { Text("Delete") }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showSavedFilters = false }) { Text("Done") } }
+        )
+    }
+
+    if (showSaveFilter) {
+        AlertDialog(
+            onDismissRequest = { showSaveFilter = false },
+            title = { Text("Save current filters") },
+            text = {
+                OutlinedTextField(
+                    value = saveFilterName,
+                    onValueChange = { if (it.length <= 40) saveFilterName = it },
+                    label = { Text("Filter name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.saveActiveFilter(saveFilterName)
+                    showSaveFilter = false
+                }, enabled = saveFilterName.isNotBlank()) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showSaveFilter = false }) { Text("Cancel") } }
+        )
+    }
+
+    renameFilterCandidate?.let { candidate ->
+        AlertDialog(
+            onDismissRequest = { renameFilterCandidate = null },
+            title = { Text("Rename saved filter") },
+            text = {
+                OutlinedTextField(
+                    value = renameFilterName,
+                    onValueChange = { if (it.length <= 40) renameFilterName = it },
+                    label = { Text("Filter name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.renameSavedFilter(candidate.id, renameFilterName)
+                    renameFilterCandidate = null
+                }, enabled = renameFilterName.isNotBlank()) { Text("Save name") }
+            },
+            dismissButton = { TextButton(onClick = { renameFilterCandidate = null }) { Text("Cancel") } }
+        )
+    }
+
+    deleteFilterCandidate?.let { candidate ->
+        AlertDialog(
+            onDismissRequest = { deleteFilterCandidate = null },
+            title = { Text("Delete saved filter?") },
+            text = { Text("${candidate.name} will be removed. Transactions will not be changed.") },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.deleteSavedFilter(candidate.id)
+                    deleteFilterCandidate = null
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { deleteFilterCandidate = null }) { Text("Cancel") } }
+        )
+    }
+
     filterDateTarget?.let { target ->
         key(target) {
             val existingDate = when (target) {
@@ -374,6 +495,15 @@ private fun FilterDropdownChip(
 
 private fun formatLocalDate(timestamp: Long): String =
     SimpleDateFormat("MMM d, yyyy", Locale.getDefault()).format(Date(timestamp))
+
+private fun savedFilterSummary(filter: TransactionFilter): String = buildList {
+    if (filter.query.isNotBlank()) add("Search: ${filter.query}")
+    if (filter.type != TransactionTypeFilter.ALL) add(filter.type.name.lowercase(Locale.getDefault()).replaceFirstChar { it.uppercase() })
+    if (filter.accountId != null) add("Account")
+    if (filter.categoryId != null) add("Category")
+    if (filter.tagId != null) add("Label")
+    if (filter.startInclusive != null || filter.endExclusive != null) add("Date range")
+}.ifEmpty { listOf("All transactions") }.joinToString(" · ")
 
 private fun localTimestampToPickerDateMillis(timestamp: Long): Long {
     val localDate = Calendar.getInstance().apply { timeInMillis = timestamp }

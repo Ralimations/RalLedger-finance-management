@@ -20,6 +20,7 @@ import com.ralledger.data.local.dao.SavingsGoalDao
 import com.ralledger.data.local.dao.InterestDao
 import com.ralledger.data.local.dao.SubscriptionPaymentDao
 import com.ralledger.data.local.dao.TransactionTagDao
+import com.ralledger.data.local.dao.SavedTransactionFilterDao
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
@@ -40,6 +41,7 @@ import com.ralledger.data.local.entity.InterestCreditEntity
 import com.ralledger.data.local.entity.SubscriptionPaymentEntity
 import com.ralledger.data.local.entity.TransactionTagEntity
 import com.ralledger.data.local.entity.JournalEntryTagEntity
+import com.ralledger.data.local.entity.SavedTransactionFilterEntity
 import com.ralledger.domain.model.AccountCategory
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.CategoryType
@@ -68,9 +70,10 @@ import kotlinx.coroutines.launch
         InterestCreditEntity::class,
         SubscriptionPaymentEntity::class,
         TransactionTagEntity::class,
-        JournalEntryTagEntity::class
+        JournalEntryTagEntity::class,
+        SavedTransactionFilterEntity::class
     ],
-    version = 13,
+    version = 14,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -88,9 +91,10 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun interestDao(): InterestDao
     abstract fun subscriptionPaymentDao(): SubscriptionPaymentDao
     abstract fun transactionTagDao(): TransactionTagDao
+    abstract fun savedTransactionFilterDao(): SavedTransactionFilterDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 13
+        const val CURRENT_SCHEMA_VERSION = 14
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -391,6 +395,29 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS saved_transaction_filters (
+                        id TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        normalizedName TEXT NOT NULL,
+                        query TEXT NOT NULL,
+                        transactionType TEXT NOT NULL,
+                        accountId TEXT,
+                        categoryId TEXT,
+                        startInclusive INTEGER,
+                        endExclusive INTEGER,
+                        tagId TEXT,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        PRIMARY KEY(id)
+                    )"""
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_saved_transaction_filters_normalizedName ON saved_transaction_filters(normalizedName)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
 
@@ -401,7 +428,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

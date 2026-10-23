@@ -12,10 +12,12 @@ import com.ralledger.domain.model.TransactionCorrection
 import com.ralledger.domain.model.TransactionFilter
 import com.ralledger.domain.model.TransactionTypeFilter
 import com.ralledger.domain.model.TransactionTag
+import com.ralledger.domain.model.SavedTransactionFilter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -30,6 +32,9 @@ class TransactionsViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val tags: StateFlow<List<TransactionTag>> = repository.transactionTagsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val savedFilters: StateFlow<List<SavedTransactionFilter>> = repository.savedTransactionFiltersFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _searchQuery = MutableStateFlow("")
@@ -48,15 +53,23 @@ class TransactionsViewModel(
     val operationMessage: StateFlow<String?> = _operationMessage
     private val _tagMessage = MutableStateFlow<String?>(null)
     val tagMessage: StateFlow<String?> = _tagMessage
+    private val _savedFilterMessage = MutableStateFlow<String?>(null)
+    val savedFilterMessage: StateFlow<String?> = _savedFilterMessage
 
-    private val filters = combine(_searchQuery, _typeFilter, _accountFilterId, _categoryFilterId, _dateRange) {
+    val activeFilter: StateFlow<TransactionFilter> = combine(_searchQuery, _typeFilter, _accountFilterId, _categoryFilterId, _dateRange) {
             query, type, accountId, categoryId, range ->
         TransactionFilter(query, type, accountId, categoryId, range.first, range.second)
     }.combine(_tagFilterId) { filter, tagId -> filter.copy(tagId = tagId) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TransactionFilter())
+
+    val canSaveActiveFilter: StateFlow<Boolean> = activeFilter.map { filter ->
+        filter.query.isNotBlank() || filter.type != TransactionTypeFilter.ALL || filter.accountId != null ||
+            filter.categoryId != null || filter.startInclusive != null || filter.endExclusive != null || filter.tagId != null
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val filteredTransactions: StateFlow<List<Transaction>> = combine(
         repository.transactionsFlow,
-        filters
+        activeFilter
     ) { txs, activeFilters ->
         txs.filter(activeFilters::matches)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -89,11 +102,42 @@ class TransactionsViewModel(
     }
 
     fun clearFilters() {
+        _searchQuery.value = ""
         _typeFilter.value = TransactionTypeFilter.ALL
         _accountFilterId.value = null
         _categoryFilterId.value = null
         _tagFilterId.value = null
         _dateRange.value = null to null
+    }
+
+    fun applySavedFilter(savedFilter: SavedTransactionFilter) {
+        val filter = savedFilter.filter
+        _searchQuery.value = filter.query
+        _typeFilter.value = filter.type
+        _accountFilterId.value = filter.accountId
+        _categoryFilterId.value = filter.categoryId
+        _tagFilterId.value = filter.tagId
+        _dateRange.value = filter.startInclusive to filter.endExclusive
+    }
+
+    fun saveActiveFilter(name: String) = runSavedFilterOperation("Saved filter created.") {
+        repository.createSavedTransactionFilter(name, activeFilter.value)
+    }
+
+    fun updateSavedFilter(id: String) = runSavedFilterOperation("Saved filter updated from current filters.") {
+        repository.updateSavedTransactionFilterCriteria(id, activeFilter.value)
+    }
+
+    fun renameSavedFilter(id: String, name: String) = runSavedFilterOperation("Saved filter renamed.") {
+        repository.renameSavedTransactionFilter(id, name)
+    }
+
+    fun deleteSavedFilter(id: String) = runSavedFilterOperation("Saved filter deleted.") {
+        repository.deleteSavedTransactionFilter(id)
+    }
+
+    fun clearSavedFilterMessage() {
+        _savedFilterMessage.value = null
     }
 
     fun createTag(name: String, colorHex: String) = runTagOperation("Label created.") {
@@ -200,6 +244,18 @@ class TransactionsViewModel(
                 _tagMessage.value = successMessage
             } catch (error: Exception) {
                 _tagMessage.value = error.localizedMessage ?: "The label could not be saved."
+            }
+        }
+    }
+
+    private fun runSavedFilterOperation(successMessage: String, action: suspend () -> Unit) {
+        viewModelScope.launch {
+            _savedFilterMessage.value = null
+            try {
+                action()
+                _savedFilterMessage.value = successMessage
+            } catch (error: Exception) {
+                _savedFilterMessage.value = error.localizedMessage ?: "The saved filter could not be changed."
             }
         }
     }

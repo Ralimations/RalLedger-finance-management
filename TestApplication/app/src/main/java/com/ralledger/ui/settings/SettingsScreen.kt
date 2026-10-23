@@ -198,7 +198,7 @@ fun SettingsScreen(
             ) {
                 Text("Encrypted Backup & Restore", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 Text(
-                    "The backup contains your accounts, categories, transaction labels, budgets, savings goals, interest records, journal, receivables, bills and loans, subscriptions, and histories. It is encrypted with a password you choose. Keep that password separately; it cannot be recovered.",
+                    "The backup contains your accounts, categories, transaction labels and saved filters, budgets, savings goals, interest records, journal, receivables, bills and loans, subscriptions, and histories. It is encrypted with a password you choose. Keep that password separately; it cannot be recovered.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 OutlinedTextField(
@@ -266,6 +266,7 @@ fun SettingsScreen(
                     Text("${preview.receivables} receivables · ${preview.payments} payments")
                     Text("${preview.writeOffs} receivable write-offs")
                     Text("${preview.transactionTags} transaction labels · ${preview.taggedJournalEntries} labeled journal entries")
+                    Text("${preview.savedTransactionFilters} saved transaction filters")
                     Text(
                         "Restoring replaces all current RalLedger records on this device.",
                         color = MaterialTheme.colorScheme.error

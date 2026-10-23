@@ -21,6 +21,7 @@ import com.ralledger.data.local.entity.InterestProductEntity
 import com.ralledger.data.local.entity.InterestCreditEntity
 import com.ralledger.data.local.entity.SubscriptionPaymentEntity
 import com.ralledger.data.local.entity.JournalEntryTagEntity
+import com.ralledger.data.local.entity.SavedTransactionFilterEntity
 import com.ralledger.data.local.entity.TransactionTagEntity
 import com.ralledger.data.importing.CsvImportExecutionResult
 import com.ralledger.data.importing.CsvImportedTransaction
@@ -62,6 +63,8 @@ import com.ralledger.domain.model.Transaction
 import com.ralledger.domain.model.TransactionCorrection
 import com.ralledger.domain.model.TransactionType
 import com.ralledger.domain.model.TransactionTag
+import com.ralledger.domain.model.SavedTransactionFilter
+import com.ralledger.domain.model.TransactionFilter
 import com.ralledger.domain.usecase.AccountingEngine
 import com.ralledger.domain.usecase.BudgetSpendingCalculator
 import com.ralledger.domain.usecase.BudgetSpendingKey
@@ -89,6 +92,7 @@ class RalLedgerRepository(
     private val interestDao = database.interestDao()
     private val subscriptionPaymentDao = database.subscriptionPaymentDao()
     private val transactionTagDao = database.transactionTagDao()
+    private val savedTransactionFilterDao = database.savedTransactionFilterDao()
 
     // Dynamically calculate ledger balances for all accounts from journal line aggregates
     val accountsFlow: Flow<List<Account>> = combine(
@@ -384,6 +388,79 @@ class RalLedgerRepository(
 
     val transactionTagsFlow: Flow<List<TransactionTag>> = transactionTagDao.getAllTagsFlow().map { tags ->
         tags.map(TransactionTagEntity::toDomainModel)
+    }
+
+    val savedTransactionFiltersFlow: Flow<List<SavedTransactionFilter>> =
+        savedTransactionFilterDao.getAllFlow().map { rows -> rows.map(SavedTransactionFilterEntity::toDomainModel) }
+
+    suspend fun createSavedTransactionFilter(name: String, filter: TransactionFilter): String {
+        validateSavedTransactionFilter(name, filter)
+        val normalizedName = normalizeSavedFilterName(name)
+        val now = System.currentTimeMillis()
+        val saved = SavedTransactionFilter(UUID.randomUUID().toString(), name.trim(), filter, now, now)
+        database.withTransaction {
+            require(savedTransactionFilterDao.getByNormalizedName(normalizedName) == null) {
+                "A saved filter with this name already exists"
+            }
+            savedTransactionFilterDao.insert(SavedTransactionFilterEntity.fromDomainModel(saved))
+        }
+        return saved.id
+    }
+
+    suspend fun updateSavedTransactionFilter(id: String, name: String, filter: TransactionFilter) {
+        validateSavedTransactionFilter(name, filter)
+        database.withTransaction { updateSavedTransactionFilterInTransaction(id, name, filter) }
+    }
+
+    suspend fun renameSavedTransactionFilter(id: String, name: String) {
+        require(name.isNotBlank()) { "Enter a saved filter name" }
+        require(name.trim().length <= 40) { "Use 40 characters or fewer for a saved filter name" }
+        database.withTransaction {
+            val current = savedTransactionFilterDao.getById(id)
+                ?: throw IllegalArgumentException("This saved filter no longer exists")
+            updateSavedTransactionFilterInTransaction(id, name, current.toDomainModel().filter)
+        }
+    }
+
+    suspend fun updateSavedTransactionFilterCriteria(id: String, filter: TransactionFilter) {
+        validateSavedTransactionFilter("Saved filter", filter)
+        database.withTransaction {
+            val current = savedTransactionFilterDao.getById(id)
+                ?: throw IllegalArgumentException("This saved filter no longer exists")
+            updateSavedTransactionFilterInTransaction(id, current.name, filter)
+        }
+    }
+
+    suspend fun deleteSavedTransactionFilter(id: String) {
+        database.withTransaction {
+            require(savedTransactionFilterDao.getById(id) != null) { "This saved filter no longer exists" }
+            savedTransactionFilterDao.delete(id)
+        }
+    }
+
+    private fun validateSavedTransactionFilter(name: String, filter: TransactionFilter) {
+        require(name.isNotBlank()) { "Enter a saved filter name" }
+        require(name.trim().length <= 40) { "Use 40 characters or fewer for a saved filter name" }
+        require(filter.query.length <= 200) { "Search text must be 200 characters or fewer to save this filter" }
+        require(filter.startInclusive == null || filter.endExclusive == null || filter.startInclusive < filter.endExclusive) {
+            "The saved filter start date must be before its end date"
+        }
+    }
+
+    private fun normalizeSavedFilterName(name: String) = name.trim().lowercase(java.util.Locale.ROOT)
+
+    private suspend fun updateSavedTransactionFilterInTransaction(id: String, name: String, filter: TransactionFilter) {
+        val current = savedTransactionFilterDao.getById(id)
+            ?: throw IllegalArgumentException("This saved filter no longer exists")
+        val normalizedName = normalizeSavedFilterName(name)
+        require(savedTransactionFilterDao.getByNormalizedName(normalizedName)?.id in setOf(null, id)) {
+            "A saved filter with this name already exists"
+        }
+        savedTransactionFilterDao.update(
+            SavedTransactionFilterEntity.fromDomainModel(
+                SavedTransactionFilter(id, name.trim(), filter, current.createdAt, System.currentTimeMillis())
+            )
+        )
     }
 
     suspend fun createTransactionTag(name: String, colorHex: String): String {

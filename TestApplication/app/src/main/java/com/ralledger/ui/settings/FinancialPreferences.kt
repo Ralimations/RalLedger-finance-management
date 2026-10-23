@@ -1,7 +1,9 @@
 package com.ralledger.ui.settings
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.ralledger.domain.usecase.InsightsPeriodType
@@ -15,7 +17,9 @@ data class FinancialSettings(
     val defaultInsightsPeriod: InsightsPeriodType = InsightsPeriodType.MONTH,
     val dateDisplayFormat: DateDisplayFormat = DateDisplayFormat.MONTH_DAY_YEAR,
     val transactionListDensity: TransactionListDensity = TransactionListDensity.COMFORTABLE,
-    val currencyDisplayFormat: CurrencyDisplayFormat = CurrencyDisplayFormat.SYMBOL
+    val currencyDisplayFormat: CurrencyDisplayFormat = CurrencyDisplayFormat.SYMBOL,
+    val subscriptionRemindersEnabled: Boolean = false,
+    val subscriptionReminderDaysBefore: Int = 1
 )
 
 class FinancialPreferences(context: Context) {
@@ -27,7 +31,9 @@ class FinancialPreferences(context: Context) {
             defaultInsightsPeriod = decodeDefaultInsightsPeriod(preferences[DEFAULT_PERIOD_KEY]),
             dateDisplayFormat = decodeDateDisplayFormat(preferences[DATE_FORMAT_KEY]),
             transactionListDensity = decodeTransactionListDensity(preferences[TRANSACTION_DENSITY_KEY]),
-            currencyDisplayFormat = decodeCurrencyDisplayFormat(preferences[CURRENCY_FORMAT_KEY])
+            currencyDisplayFormat = decodeCurrencyDisplayFormat(preferences[CURRENCY_FORMAT_KEY]),
+            subscriptionRemindersEnabled = preferences[SUBSCRIPTION_REMINDERS_KEY] ?: false,
+            subscriptionReminderDaysBefore = decodeSubscriptionReminderDaysBefore(preferences[SUBSCRIPTION_REMINDER_DAYS_KEY])
         )
     }
 
@@ -55,12 +61,23 @@ class FinancialPreferences(context: Context) {
         store.edit { preferences -> preferences[CURRENCY_FORMAT_KEY] = format.name }
     }
 
+    suspend fun setSubscriptionRemindersEnabled(enabled: Boolean) {
+        store.edit { preferences -> preferences[SUBSCRIPTION_REMINDERS_KEY] = enabled }
+    }
+
+    suspend fun setSubscriptionReminderDaysBefore(days: Int) {
+        require(days in SUBSCRIPTION_REMINDER_OPTIONS) { "Choose the billing day, 1 day before, or 3 days before" }
+        store.edit { preferences -> preferences[SUBSCRIPTION_REMINDER_DAYS_KEY] = days }
+    }
+
     private companion object {
         val DEFAULT_ACCOUNT_KEY = stringPreferencesKey("default_transaction_account")
         val DEFAULT_PERIOD_KEY = stringPreferencesKey("default_insights_period")
         val DATE_FORMAT_KEY = stringPreferencesKey("date_display_format")
         val TRANSACTION_DENSITY_KEY = stringPreferencesKey("transaction_list_density")
         val CURRENCY_FORMAT_KEY = stringPreferencesKey("currency_display_format")
+        val SUBSCRIPTION_REMINDERS_KEY = booleanPreferencesKey("subscription_reminders_enabled")
+        val SUBSCRIPTION_REMINDER_DAYS_KEY = intPreferencesKey("subscription_reminder_days_before")
     }
 }
 
@@ -79,3 +96,8 @@ internal fun decodeTransactionListDensity(value: String?): TransactionListDensit
 internal fun decodeCurrencyDisplayFormat(value: String?): CurrencyDisplayFormat =
     value?.let { encoded -> CurrencyDisplayFormat.entries.firstOrNull { it.name == encoded } }
         ?: CurrencyDisplayFormat.SYMBOL
+
+internal val SUBSCRIPTION_REMINDER_OPTIONS = setOf(0, 1, 3)
+
+internal fun decodeSubscriptionReminderDaysBefore(value: Int?): Int =
+    value?.takeIf { it in SUBSCRIPTION_REMINDER_OPTIONS } ?: 1

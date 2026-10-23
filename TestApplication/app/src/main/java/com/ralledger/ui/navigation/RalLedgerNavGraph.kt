@@ -277,6 +277,12 @@ fun RalLedgerMainScreen(
                     onTransactionListDensityChange = { density ->
                         scope.launch { appContainer.financialPreferences.setTransactionListDensity(density) }
                     },
+                    onSubscriptionRemindersChange = { enabled ->
+                        scope.launch { appContainer.financialPreferences.setSubscriptionRemindersEnabled(enabled) }
+                    },
+                    onSubscriptionReminderDaysBeforeChange = { days ->
+                        scope.launch { appContainer.financialPreferences.setSubscriptionReminderDaysBefore(days) }
+                    },
                     onManageCategories = { navController.navigate(Screen.Categories.route) }
                 )
             }

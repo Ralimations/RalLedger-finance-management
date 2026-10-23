@@ -63,6 +63,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.AccountType
@@ -249,11 +250,15 @@ private fun AccountItemCard(
                 }
             }
             Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Text(account.name, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
-                    if (account.isArchived) {
-                        Text("Archived", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
+                Text(
+                    account.name,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (account.isArchived) {
+                    Text("Archived", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 val subtitle = listOf(account.institution, account.accountType.displayName)
                     .filter { it.isNotBlank() }.joinToString(" · ")

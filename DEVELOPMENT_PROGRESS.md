@@ -273,4 +273,14 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Passed `:app:assembleDebug`, `:app:testDebugUnitTest` (51 tests, 0 failures), `:app:lintDebug` (24 warnings, 0 errors), Android-test Kotlin compilation, and `:app:connectedDebugAndroidTest` (22 tests, 0 failures).
 - Manually checked on `emulator-5554`: moved Net Worth above Available Money, hid Reserved savings, confirmed the Home layout, force-stopped and reopened the app, and confirmed the custom order and visibility persisted. Restored the default order and all-visible settings afterward. No financial records were created or changed.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (23,502,800 bytes; SHA-256 `48CE64F2E879A5DBD4337FF4E21E92BB5D5EE6022701DFC224B6ED15BE57909C`; built 2026-10-23; debug-signed, not release-signed).
-- The broader CRUD matrix and live-use release requirements remain incomplete. The local checkout has no Git remote, and the connected GitHub account did not expose a RalLedger repository; publishing source to `main` or uploading the APK awaits the destination repository URL/name.
+- The broader CRUD matrix and live-use release requirements remain incomplete. The local checkout has no Git remote, and the connected GitHub account did not expose a RalLedger repository; publishing source to `main` or uploading the APK requires the exact destination repository.
+
+## Account lifecycle emulator follow-up — 2026-10-23
+
+- Fixed the archived-account card layout: the account name is constrained to one line with ellipsis, and the Archived status is shown on a separate line so it cannot wrap vertically beside a long name.
+- Installed the rebuilt debug APK on `emulator-5554` and visually confirmed the archived badge is horizontal and the card height remains normal. The first layout attempt did not solve the wrap and was replaced before this verification.
+- Created a synthetic zero-balance account, archived it, restored it, and deleted it through the UI. The final screen confirmed permanent deletion; no user financial data was entered or changed.
+- Re-ran the full Android verification after the final layout patch: `:app:assembleDebug`, `:app:testDebugUnitTest` (51 tests, 0 failures), `:app:lintDebug` (24 warnings, 0 errors), Android-test Kotlin compilation, and `:app:connectedDebugAndroidTest` (22 tests, 0 failures, errors, or skips) all passed.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (23,502,800 bytes; SHA-256 `30D6DCED6D96D2526352B5A2C513963CFC585C58EBCA95675C939180A3FD2971`; debug-signed, not release-signed).
+- The user requested publishing to `main` and uploading the APK. This checkout has no configured Git remote; the connected GitHub account is `Ralimations`, where repository search found no RalLedger repository. The unrelated `Programming_Projects` repository is not a safe destination. Publishing is pending the exact repository URL/name and its intended APK delivery method.
+- The pre-existing local `TestApplication/.idea/deploymentTargetSelector.xml` change remains untouched and excluded from implementation commits.

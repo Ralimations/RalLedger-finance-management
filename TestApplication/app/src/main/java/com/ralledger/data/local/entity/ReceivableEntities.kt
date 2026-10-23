@@ -19,9 +19,15 @@ import com.ralledger.domain.model.ReceivableWriteOff
             parentColumns = ["id"],
             childColumns = ["linkedCategoryId"],
             onDelete = ForeignKey.RESTRICT
+        ),
+        ForeignKey(
+            entity = CounterpartyEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["counterpartyId"],
+            onDelete = ForeignKey.RESTRICT
         )
     ],
-    indices = [Index(value = ["linkedCategoryId"])]
+    indices = [Index(value = ["linkedCategoryId"]), Index(value = ["counterpartyId"])]
 )
 data class ReceivableEntity(
     @PrimaryKey val id: String,
@@ -33,15 +39,18 @@ data class ReceivableEntity(
     val linkedCategoryId: String?,
     val description: String,
     val status: String, // ReceivableStatus.name
-    @ColumnInfo(defaultValue = "0") val isArchived: Boolean = false
+    @ColumnInfo(defaultValue = "0") val isArchived: Boolean = false,
+    val counterpartyId: String? = null
 ) {
     fun toDomainModel(
         payments: List<ReceivablePayment>,
-        writeOffs: List<ReceivableWriteOff> = emptyList()
+        writeOffs: List<ReceivableWriteOff> = emptyList(),
+        counterpartyName: String? = null
     ): Receivable {
         return Receivable(
             id = id,
-            clientName = clientName,
+            clientName = counterpartyName ?: clientName,
+            counterpartyId = counterpartyId,
             originalAmount = Money(originalAmountCentavos),
             outstandingAmount = Money(outstandingAmountCentavos),
             recognitionDate = recognitionDate,

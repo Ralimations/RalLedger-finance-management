@@ -56,6 +56,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
+import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.ExpectedIncome
 import com.ralledger.domain.model.ExpectedIncomeStatus
 import com.ralledger.domain.model.Money
@@ -73,6 +74,7 @@ fun ExpectedIncomeScreen(
 ) {
     val items by viewModel.expectedIncome.collectAsState()
     val categories by viewModel.categories.collectAsState()
+    val counterparties by viewModel.counterparties.collectAsState()
     val message by viewModel.message.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var query by remember { mutableStateOf("") }
@@ -163,11 +165,12 @@ fun ExpectedIncomeScreen(
         ExpectedIncomeEditorDialog(
             item = editing,
             categories = categories,
+            counterparties = counterparties,
             onDismiss = { editorOpen = false },
-            onSave = { description, counterparty, amount, date, categoryId ->
+            onSave = { description, counterparty, amount, date, categoryId, counterpartyId ->
                 val existing = editing
-                if (existing == null) viewModel.create(description, counterparty, amount, date, categoryId)
-                else viewModel.update(existing, description, counterparty, amount, date, categoryId)
+                if (existing == null) viewModel.create(description, counterparty, amount, date, categoryId, counterpartyId)
+                else viewModel.update(existing, description, counterparty, amount, date, categoryId, counterpartyId)
                 editorOpen = false
             }
         )
@@ -283,8 +286,9 @@ private fun ExpectedIncomeCard(
 private fun ExpectedIncomeEditorDialog(
     item: ExpectedIncome?,
     categories: List<Category>,
+    counterparties: List<Counterparty>,
     onDismiss: () -> Unit,
-    onSave: (String, String, Money, Long, String) -> Unit
+    onSave: (String, String, Money, Long, String, String?) -> Unit
 ) {
     var description by remember(item?.id) { mutableStateOf(item?.description.orEmpty()) }
     var counterparty by remember(item?.id) { mutableStateOf(item?.counterparty.orEmpty()) }
@@ -293,6 +297,8 @@ private fun ExpectedIncomeEditorDialog(
     val incomeCategories = categories.filter { it.type == CategoryType.INCOME && (!it.isArchived || it.id == item?.incomeCategoryId) }
     var categoryId by remember(item?.id, incomeCategories) { mutableStateOf(item?.incomeCategoryId ?: incomeCategories.firstOrNull()?.id.orEmpty()) }
     var categoryExpanded by remember { mutableStateOf(false) }
+    var counterpartyExpanded by remember { mutableStateOf(false) }
+    var counterpartyId by remember(item?.id) { mutableStateOf(item?.counterpartyId) }
     var datePickerOpen by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val datePickerState = if (datePickerOpen) rememberDatePickerState(initialSelectedDateMillis = expectedDate) else null
@@ -306,7 +312,31 @@ private fun ExpectedIncomeEditorDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(description, { description = it; error = null }, label = { Text("Description") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(counterparty, { counterparty = it }, label = { Text("Payer or client (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(
+                    counterparty,
+                    { counterparty = it; counterpartyId = null },
+                    label = { Text("Payer or client (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
+                ExposedDropdownMenuBox(
+                    expanded = counterpartyExpanded,
+                    onExpandedChange = { counterpartyExpanded = !counterpartyExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = counterparties.firstOrNull { it.id == counterpartyId }?.name ?: "No saved client linked",
+                        onValueChange = {}, readOnly = true, label = { Text("Link saved client") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = counterpartyExpanded) },
+                        modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = counterpartyExpanded, onDismissRequest = { counterpartyExpanded = false }) {
+                        DropdownMenuItem(text = { Text("No saved client") }, onClick = { counterpartyId = null; counterpartyExpanded = false })
+                        counterparties.filter { !it.isArchived || it.id == item?.counterpartyId }.forEach { saved ->
+                            DropdownMenuItem(
+                                text = { Text(saved.name + if (saved.isArchived) " (archived)" else "") },
+                                onClick = { counterparty = saved.name; counterpartyId = saved.id; counterpartyExpanded = false }
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(
                     amountText, { amountText = it; error = null },
                     label = { Text("Expected amount (PHP)") },
@@ -338,7 +368,7 @@ private fun ExpectedIncomeEditorDialog(
                     description.isBlank() -> error = "Enter a description."
                     amount == null || !amount.isPositive -> error = "Enter an amount greater than zero."
                     categoryId.isBlank() -> error = "Choose an income source."
-                    else -> onSave(description.trim(), counterparty.trim(), amount, expectedDate, categoryId)
+                    else -> onSave(description.trim(), counterparty.trim(), amount, expectedDate, categoryId, counterpartyId)
                 }
             }) { Text(if (item == null) "Save forecast" else "Save changes") }
         },

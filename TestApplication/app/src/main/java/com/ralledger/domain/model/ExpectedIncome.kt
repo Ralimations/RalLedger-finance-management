@@ -17,5 +17,6 @@ data class ExpectedIncome(
     val status: ExpectedIncomeStatus,
     val convertedReceivableId: String? = null,
     val isArchived: Boolean = false,
-    val createdAt: Long
+    val createdAt: Long,
+    val counterpartyId: String? = null
 )

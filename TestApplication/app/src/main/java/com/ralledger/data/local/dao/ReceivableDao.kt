@@ -21,6 +21,9 @@ interface ReceivableDao {
     @Query("SELECT COUNT(*) FROM receivables WHERE linkedCategoryId = :categoryId")
     suspend fun countReceivablesForIncomeCategory(categoryId: String): Long
 
+    @Query("SELECT COUNT(*) FROM receivables WHERE counterpartyId = :counterpartyId")
+    suspend fun countCounterpartyReferences(counterpartyId: String): Long
+
     @Query("SELECT * FROM receivables ORDER BY id ASC")
     suspend fun getAllReceivables(): List<ReceivableEntity>
 
@@ -53,6 +56,9 @@ interface ReceivableDao {
 
     @Query("UPDATE receivables SET linkedCategoryId = :targetId WHERE linkedCategoryId = :sourceId")
     suspend fun reassignIncomeCategory(sourceId: String, targetId: String)
+
+    @Query("UPDATE receivables SET counterpartyId = :targetId WHERE counterpartyId = :sourceId")
+    suspend fun reassignCounterparty(sourceId: String, targetId: String)
 
     @Query("UPDATE receivable_write_offs SET expenseCategoryId = :targetId WHERE expenseCategoryId = :sourceId")
     suspend fun reassignWriteOffCategory(sourceId: String, targetId: String)

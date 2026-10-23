@@ -23,12 +23,19 @@ import com.ralledger.domain.model.Money
             parentColumns = ["id"],
             childColumns = ["convertedReceivableId"],
             onDelete = ForeignKey.RESTRICT
+        ),
+        ForeignKey(
+            entity = CounterpartyEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["counterpartyId"],
+            onDelete = ForeignKey.RESTRICT
         )
     ],
     indices = [
         Index(value = ["incomeCategoryId"]),
         Index(value = ["convertedReceivableId"], unique = true),
-        Index(value = ["expectedDate"])
+        Index(value = ["expectedDate"]),
+        Index(value = ["counterpartyId"])
     ]
 )
 data class ExpectedIncomeEntity(
@@ -41,12 +48,14 @@ data class ExpectedIncomeEntity(
     val status: String,
     val convertedReceivableId: String? = null,
     @ColumnInfo(defaultValue = "0") val isArchived: Boolean = false,
-    val createdAt: Long
+    val createdAt: Long,
+    val counterpartyId: String? = null
 ) {
-    fun toDomainModel(incomeSourceName: String) = ExpectedIncome(
+    fun toDomainModel(incomeSourceName: String, currentCounterpartyName: String? = null) = ExpectedIncome(
         id = id,
         description = description,
-        counterparty = counterparty,
+        counterparty = currentCounterpartyName ?: counterparty,
+        counterpartyId = counterpartyId,
         amount = Money(amountCentavos),
         expectedDate = expectedDate,
         incomeCategoryId = incomeCategoryId,

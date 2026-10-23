@@ -77,6 +77,7 @@ import com.ralledger.ui.planning.ExpectedIncomeViewModel
 import com.ralledger.ui.planning.DebtsViewModel
 import com.ralledger.ui.planning.SavingsGoalsViewModel
 import com.ralledger.ui.planning.InterestProductsViewModel
+import com.ralledger.ui.planning.CounterpartiesViewModel
 import com.ralledger.ui.receivables.ReceivablesViewModel
 import com.ralledger.ui.settings.SettingsScreen
 import com.ralledger.ui.settings.SettingsViewModel
@@ -225,6 +226,7 @@ fun RalLedgerMainScreen(
                 val debtsVm: DebtsViewModel = viewModel(factory = DebtsViewModel.Factory(appContainer.repository))
                 val savingsGoalsVm: SavingsGoalsViewModel = viewModel(factory = SavingsGoalsViewModel.Factory(appContainer.repository))
                 val interestProductsVm: InterestProductsViewModel = viewModel(factory = InterestProductsViewModel.Factory(appContainer.repository))
+                val counterpartiesVm: CounterpartiesViewModel = viewModel(factory = CounterpartiesViewModel.Factory(appContainer.repository))
                 PlanningScreen(
                     budgetsViewModel = budgetsVm,
                     receivablesViewModel = recVm,
@@ -232,7 +234,8 @@ fun RalLedgerMainScreen(
                     expectedIncomeViewModel = expectedIncomeVm,
                     debtsViewModel = debtsVm,
                     savingsGoalsViewModel = savingsGoalsVm,
-                    interestProductsViewModel = interestProductsVm
+                    interestProductsViewModel = interestProductsVm,
+                    counterpartiesViewModel = counterpartiesVm
                 )
             }
             composable(Screen.Insights.route) {

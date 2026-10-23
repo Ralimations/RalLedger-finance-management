@@ -5,6 +5,7 @@ import com.ralledger.data.local.RalLedgerDatabase
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
+import com.ralledger.data.local.entity.CounterpartyEntity
 import com.ralledger.data.local.entity.ExpectedIncomeEntity
 import com.ralledger.data.local.entity.DebtEntity
 import com.ralledger.data.local.entity.DebtPaymentEntity
@@ -37,6 +38,9 @@ import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.Budget
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
+import com.ralledger.domain.model.Counterparty
+import com.ralledger.domain.model.CounterpartyKind
+import com.ralledger.domain.model.normalizeCounterpartyName
 import com.ralledger.domain.model.BillingFrequency
 import com.ralledger.domain.model.DashboardSummary
 import com.ralledger.domain.model.Debt
@@ -93,6 +97,103 @@ class RalLedgerRepository(
     private val subscriptionPaymentDao = database.subscriptionPaymentDao()
     private val transactionTagDao = database.transactionTagDao()
     private val savedTransactionFilterDao = database.savedTransactionFilterDao()
+    private val counterpartyDao = database.counterpartyDao()
+
+    val counterpartiesFlow: Flow<List<Counterparty>> = counterpartyDao.getAllFlow()
+        .map { items -> items.map(CounterpartyEntity::toDomainModel) }
+
+    suspend fun createCounterparty(name: String, kind: CounterpartyKind, notes: String = ""): String {
+        val normalizedName = normalizeCounterpartyName(name)
+        require(normalizedName.isNotBlank()) { "Enter a counterparty name" }
+        val id = UUID.randomUUID().toString()
+        database.withTransaction {
+            require(counterpartyDao.getByNormalizedName(normalizedName) == null) {
+                "A counterparty with this name already exists"
+            }
+            counterpartyDao.insert(
+                CounterpartyEntity(
+                    id = id,
+                    name = name.trim().replace(Regex("\\s+"), " "),
+                    normalizedName = normalizedName,
+                    kind = kind.name,
+                    notes = notes.trim(),
+                    createdAt = System.currentTimeMillis()
+                )
+            )
+        }
+        return id
+    }
+
+    suspend fun updateCounterparty(id: String, name: String, kind: CounterpartyKind, notes: String) {
+        val normalizedName = normalizeCounterpartyName(name)
+        require(normalizedName.isNotBlank()) { "Enter a counterparty name" }
+        database.withTransaction {
+            val current = counterpartyDao.getById(id)
+                ?: throw IllegalArgumentException("This counterparty no longer exists")
+            val duplicate = counterpartyDao.getByNormalizedName(normalizedName)
+            require(duplicate == null || duplicate.id == id) { "A counterparty with this name already exists" }
+            counterpartyDao.update(
+                current.copy(
+                    name = name.trim().replace(Regex("\\s+"), " "),
+                    normalizedName = normalizedName,
+                    kind = kind.name,
+                    notes = notes.trim()
+                )
+            )
+        }
+    }
+
+    suspend fun setCounterpartyArchived(id: String, isArchived: Boolean) {
+        database.withTransaction {
+            val current = counterpartyDao.getById(id)
+                ?: throw IllegalArgumentException("This counterparty no longer exists")
+            counterpartyDao.update(current.copy(isArchived = isArchived))
+        }
+    }
+
+    suspend fun deleteCounterparty(id: String) {
+        database.withTransaction {
+            val current = counterpartyDao.getById(id)
+                ?: throw IllegalArgumentException("This counterparty no longer exists")
+            val receivableReferences = counterpartyDao.countReceivableReferences(id)
+            val expectedIncomeReferences = counterpartyDao.countExpectedIncomeReferences(id)
+            require(receivableReferences == 0L && expectedIncomeReferences == 0L) {
+                "${current.name} is linked to financial records. Merge it or archive it to preserve history."
+            }
+            counterpartyDao.delete(id)
+        }
+    }
+
+    suspend fun mergeCounterparties(sourceId: String, targetId: String) {
+        require(sourceId != targetId) { "Choose a different counterparty to merge into" }
+        database.withTransaction {
+            val source = counterpartyDao.getById(sourceId)
+                ?: throw IllegalArgumentException("The counterparty to merge no longer exists")
+            val target = counterpartyDao.getById(targetId)
+                ?: throw IllegalArgumentException("Choose an existing counterparty")
+            require(!target.isArchived) { "Restore the destination counterparty before merging" }
+            receivableDao.reassignCounterparty(source.id, target.id)
+            expectedIncomeDao.reassignCounterparty(source.id, target.id)
+            counterpartyDao.delete(source.id)
+        }
+    }
+
+    suspend fun getCounterpartyReferenceCount(id: String): Long = database.withTransaction {
+        counterpartyDao.countReceivableReferences(id) + counterpartyDao.countExpectedIncomeReferences(id)
+    }
+
+    private suspend fun validateCounterparty(
+        id: String?,
+        allowArchivedId: String? = null
+    ): CounterpartyEntity? {
+        if (id == null) return null
+        val item = counterpartyDao.getById(id)
+            ?: throw IllegalArgumentException("Choose a saved counterparty that still exists")
+        require(!item.isArchived || item.id == allowArchivedId) {
+            "Restore this counterparty before assigning it to a new record"
+        }
+        return item
+    }
 
     val journalHistoryFlow: Flow<List<JournalEntry>> = combine(
         journalDao.getAllJournalEntriesFlow(),
@@ -1694,10 +1795,17 @@ class RalLedgerRepository(
     // Expected income
     val expectedIncomeFlow: Flow<List<ExpectedIncome>> = combine(
         expectedIncomeDao.getAllExpectedIncomeFlow(),
-        categoryDao.getAllCategoriesFlow()
-    ) { records, categories ->
+        categoryDao.getAllCategoriesFlow(),
+        counterpartyDao.getAllFlow()
+    ) { records, categories, counterparties ->
         val names = categories.associate { it.id to it.name }
-        records.map { it.toDomainModel(names[it.incomeCategoryId] ?: "Income source") }
+        val counterpartyNames = counterparties.associate { it.id to it.name }
+        records.map {
+            it.toDomainModel(
+                names[it.incomeCategoryId] ?: "Income source",
+                it.counterpartyId?.let(counterpartyNames::get)
+            )
+        }
     }
 
     suspend fun createExpectedIncome(
@@ -1705,22 +1813,25 @@ class RalLedgerRepository(
         counterparty: String,
         amount: Money,
         expectedDate: Long,
-        incomeCategoryId: String
+        incomeCategoryId: String,
+        counterpartyId: String? = null
     ): String {
         validateExpectedIncomeValues(description, amount, expectedDate)
         val id = UUID.randomUUID().toString()
         database.withTransaction {
             validateExpectedIncomeCategory(incomeCategoryId)
+            val savedCounterparty = validateCounterparty(counterpartyId)
             expectedIncomeDao.insert(
                 ExpectedIncomeEntity(
                     id = id,
                     description = description.trim(),
-                    counterparty = counterparty.trim(),
+                    counterparty = savedCounterparty?.name ?: counterparty.trim(),
                     amountCentavos = amount.centavos,
                     expectedDate = expectedDate,
                     incomeCategoryId = incomeCategoryId,
                     status = ExpectedIncomeStatus.PLANNED.name,
-                    createdAt = System.currentTimeMillis()
+                    createdAt = System.currentTimeMillis(),
+                    counterpartyId = savedCounterparty?.id
                 )
             )
         }
@@ -1733,7 +1844,8 @@ class RalLedgerRepository(
         counterparty: String,
         amount: Money,
         expectedDate: Long,
-        incomeCategoryId: String
+        incomeCategoryId: String,
+        counterpartyId: String? = null
     ) {
         validateExpectedIncomeValues(description, amount, expectedDate)
         database.withTransaction {
@@ -1743,13 +1855,15 @@ class RalLedgerRepository(
                 "Only active planned income can be edited"
             }
             validateExpectedIncomeCategory(incomeCategoryId, allowArchivedId = current.incomeCategoryId)
+            val savedCounterparty = validateCounterparty(counterpartyId, allowArchivedId = current.counterpartyId)
             expectedIncomeDao.update(
                 current.copy(
                     description = description.trim(),
-                    counterparty = counterparty.trim(),
+                    counterparty = savedCounterparty?.name ?: counterparty.trim(),
                     amountCentavos = amount.centavos,
                     expectedDate = expectedDate,
-                    incomeCategoryId = incomeCategoryId
+                    incomeCategoryId = incomeCategoryId,
+                    counterpartyId = savedCounterparty?.id
                 )
             )
         }
@@ -1811,7 +1925,8 @@ class RalLedgerRepository(
         }
         val category = validateExpectedIncomeCategory(expected.incomeCategoryId)
         val receivableId = UUID.randomUUID().toString()
-        val clientName = expected.counterparty.ifBlank { category.name }
+        val savedCounterparty = expected.counterpartyId?.let { counterpartyId -> counterpartyDao.getById(counterpartyId) }
+        val clientName = savedCounterparty?.name ?: expected.counterparty.ifBlank { category.name }
         val description = expected.description.ifBlank { "Expected income from ${category.name}" }
         val receivable = ReceivableEntity(
             id = receivableId,
@@ -1822,7 +1937,8 @@ class RalLedgerRepository(
             dueDate = expected.expectedDate,
             linkedCategoryId = expected.incomeCategoryId,
             description = description,
-            status = ReceivableStatus.CONFIRMED.name
+            status = ReceivableStatus.CONFIRMED.name,
+            counterpartyId = expected.counterpartyId
         )
         val entry = AccountingEngine.createReceivableRecognitionEntry(
             receivableAccountId = receivableId,
@@ -1870,16 +1986,22 @@ class RalLedgerRepository(
     val receivablesFlow: Flow<List<Receivable>> = combine(
         receivableDao.getAllReceivablesFlow(),
         receivableDao.getAllPaymentsFlow(),
-        receivableDao.getAllWriteOffsFlow()
-    ) { receivables, allPayments, allWriteOffs ->
+        receivableDao.getAllWriteOffsFlow(),
+        counterpartyDao.getAllFlow()
+    ) { receivables, allPayments, allWriteOffs, counterparties ->
         val paymentGroup = allPayments.groupBy { it.receivableId }
         val writeOffGroup = allWriteOffs.groupBy { it.receivableId }
+        val counterpartyNames = counterparties.associate { it.id to it.name }
         val now = System.currentTimeMillis()
 
         receivables.map { recEntity ->
             val payments = paymentGroup[recEntity.id]?.map { it.toDomainModel() } ?: emptyList()
             val writeOffs = writeOffGroup[recEntity.id]?.map { it.toDomainModel() } ?: emptyList()
-            val receivable = recEntity.toDomainModel(payments, writeOffs)
+            val receivable = recEntity.toDomainModel(
+                payments,
+                writeOffs,
+                recEntity.counterpartyId?.let(counterpartyNames::get)
+            )
             if (recEntity.dueDate < now &&
                 receivable.status in setOf(ReceivableStatus.CONFIRMED, ReceivableStatus.PARTIALLY_PAID)
             ) {
@@ -1895,7 +2017,8 @@ class RalLedgerRepository(
         amount: Money,
         dueDate: Long,
         incomeCategoryId: String?,
-        description: String
+        description: String,
+        counterpartyId: String? = null
     ): Receivable {
         require(clientName.isNotBlank()) { "Client name is required" }
         require(amount.isPositive) { "Receivable amount must be positive" }
@@ -1906,25 +2029,28 @@ class RalLedgerRepository(
         require(category.type == CategoryType.INCOME.name && !category.isArchived) {
             "Receivable recognition requires an active income category"
         }
-        val id = UUID.randomUUID().toString()
-        val recEntity = ReceivableEntity(
-            id = id,
-            clientName = clientName,
-            originalAmountCentavos = amount.centavos,
-            outstandingAmountCentavos = amount.centavos,
-            recognitionDate = System.currentTimeMillis(),
-            dueDate = dueDate,
-            linkedCategoryId = categoryId,
-            description = description,
-            status = ReceivableStatus.CONFIRMED.name
-        )
-        val entry = AccountingEngine.createReceivableRecognitionEntry(
-            receivableAccountId = id,
-            incomeCategoryId = categoryId,
-            amount = amount,
-            description = description.ifBlank { "Receivable recognized: $clientName" }
-        )
-        database.withTransaction {
+        val receivable = database.withTransaction {
+            val savedCounterparty = validateCounterparty(counterpartyId)
+            val resolvedClientName = savedCounterparty?.name ?: clientName.trim()
+            val id = UUID.randomUUID().toString()
+            val recEntity = ReceivableEntity(
+                id = id,
+                clientName = resolvedClientName,
+                originalAmountCentavos = amount.centavos,
+                outstandingAmountCentavos = amount.centavos,
+                recognitionDate = System.currentTimeMillis(),
+                dueDate = dueDate,
+                linkedCategoryId = categoryId,
+                description = description.trim(),
+                status = ReceivableStatus.CONFIRMED.name,
+                counterpartyId = savedCounterparty?.id
+            )
+            val entry = AccountingEngine.createReceivableRecognitionEntry(
+                receivableAccountId = id,
+                incomeCategoryId = categoryId,
+                amount = amount,
+                description = description.ifBlank { "Receivable recognized: $resolvedClientName" }
+            )
             receivableDao.insertReceivable(recEntity)
             postJournalEntry(
                 entry = entry,
@@ -1932,10 +2058,11 @@ class RalLedgerRepository(
                 amount = amount,
                 primaryAccountId = id,
                 categoryId = categoryId,
-                counterparty = clientName
+                counterparty = resolvedClientName
             )
+            recEntity
         }
-        return recEntity.toDomainModel(emptyList())
+        return receivable.toDomainModel(emptyList())
     }
 
     suspend fun collectReceivable(
@@ -2003,18 +2130,26 @@ class RalLedgerRepository(
         }
     }
 
-    suspend fun updateReceivableDetails(id: String, clientName: String, dueDate: Long, description: String) {
+    suspend fun updateReceivableDetails(
+        id: String,
+        clientName: String,
+        dueDate: Long,
+        description: String,
+        counterpartyId: String? = null
+    ) {
         require(clientName.isNotBlank()) { "Client name is required" }
         require(dueDate > 0L) { "Choose a valid due date" }
         database.withTransaction {
             val current = receivableDao.getReceivableById(id)
                 ?: throw IllegalArgumentException("Receivable no longer exists")
             require(!current.isArchived) { "Restore this receivable before editing it" }
+            val savedCounterparty = validateCounterparty(counterpartyId, allowArchivedId = current.counterpartyId)
             val closedStatus = current.status.takeIf {
                 it in setOf(ReceivableStatus.PAID.name, ReceivableStatus.CANCELLED.name, ReceivableStatus.WRITTEN_OFF.name)
             }
             val updatedMetadata = current.copy(
-                clientName = clientName.trim(),
+                clientName = savedCounterparty?.name ?: clientName.trim(),
+                counterpartyId = savedCounterparty?.id,
                 dueDate = dueDate,
                 description = description.trim()
             )

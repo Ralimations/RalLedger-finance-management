@@ -13,9 +13,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,10 +28,16 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -47,11 +57,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Money
-import com.ralledger.domain.model.Transaction
-import com.ralledger.domain.model.TransactionType
+import com.ralledger.domain.usecase.InsightsCalculator
+import com.ralledger.domain.usecase.InsightsBucket
+import com.ralledger.domain.usecase.InsightsDateRange
+import com.ralledger.domain.usecase.InsightsPeriod
+import com.ralledger.domain.usecase.InsightsPeriodType
 import java.time.Instant
-import java.time.YearMonth
+import java.time.LocalDate
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.atan2
@@ -70,59 +84,44 @@ private val fallbackChartColors = listOf(
     Color(0xFF719746), Color(0xFF8B63B6), Color(0xFF398EA0), Color(0xFFAD633E)
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InsightsScreen(viewModel: InsightsViewModel) {
     val state by viewModel.uiState.collectAsState()
-    var selectedMonth by remember { mutableStateOf(YearMonth.now()) }
+    val today = remember { LocalDate.now() }
+    var selectedType by remember { mutableStateOf(InsightsPeriodType.MONTH) }
+    var anchorDate by remember { mutableStateOf(today) }
+    var customStart by remember { mutableStateOf(today.withDayOfMonth(1)) }
+    var customEnd by remember { mutableStateOf(today) }
     var selectedCategoryId by remember { mutableStateOf<String?>(null) }
-
-    val reversedEntries = remember(state.transactions) { state.transactions.mapNotNull { it.reversesEntryId }.toSet() }
-    val monthTransactions = remember(state.transactions, selectedMonth, reversedEntries) {
-        state.transactions.filter { transaction ->
-            transaction.journalEntryId !in reversedEntries &&
-                transaction.transactionType in setOf(TransactionType.INCOME, TransactionType.INTEREST_CREDIT, TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.RECEIVABLE_WRITEOFF) &&
-                transaction.belongsTo(selectedMonth)
-        }
+    var pickerTarget by remember { mutableStateOf<DatePickerTarget?>(null) }
+    val selectedPeriod = remember(selectedType, anchorDate, customStart, customEnd) {
+        InsightsPeriod(
+            type = selectedType,
+            anchorDate = anchorDate,
+            customRange = if (selectedType == InsightsPeriodType.CUSTOM) InsightsDateRange(customStart, customEnd) else null
+        )
     }
-    val monthIncome = monthTransactions.filter { it.transactionType in setOf(TransactionType.INCOME, TransactionType.INTEREST_CREDIT) }
-        .fold(Money.ZERO) { sum, transaction -> sum + transaction.amount }
-    val monthExpenses = monthTransactions.fold(Money.ZERO) { sum, transaction ->
-        sum + when (transaction.transactionType) {
-            TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.RECEIVABLE_WRITEOFF -> transaction.amount
-            TransactionType.INTEREST_CREDIT -> transaction.fee
-            else -> Money.ZERO
-        }
+    val calculation = remember(state.transactions, state.categories, selectedPeriod) {
+        InsightsCalculator.calculate(state.transactions, state.categories, selectedPeriod)
     }
-    val monthInterestNet = monthTransactions.filter { it.transactionType == TransactionType.INTEREST_CREDIT }
-        .fold(Money.ZERO) { sum, transaction -> sum + (transaction.amount - transaction.fee) }
-    val monthNet = monthIncome - monthExpenses
-
     val categoryById = remember(state.categories) { state.categories.associateBy { it.id } }
-    val slices = remember(monthTransactions, categoryById) {
-        val grouped = monthTransactions.flatMap { transaction ->
-            when (transaction.transactionType) {
-                TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.RECEIVABLE_WRITEOFF -> listOf(
-                    (transaction.categoryId ?: "uncategorized") to transaction.amount
-                )
-                TransactionType.INTEREST_CREDIT -> if (transaction.fee.isPositive) listOf(
-                    (transaction.secondaryCategoryId ?: "interest-tax") to transaction.fee
-                ) else emptyList()
-                else -> emptyList()
-            }
-        }.groupBy({ it.first }, { it.second })
-        grouped.entries.mapIndexed { index, (id, amounts) ->
-            val category = categoryById[id]
-            val amount = amounts.fold(Money.ZERO, Money::plus)
+    val slices = remember(calculation.categoryTotals, categoryById) {
+        calculation.categoryTotals.filter { it.amount.isPositive }.mapIndexed { index, total ->
+            val category = categoryById[total.id]
             CategorySlice(
-                id = id,
-                name = category?.name ?: if (id == "interest-tax") "Interest tax withheld" else "Uncategorized",
-                amount = amount,
+                id = total.id,
+                name = category?.name ?: total.name,
+                amount = total.amount,
                 color = category?.colorHex.toComposeColor() ?: fallbackChartColors[index % fallbackChartColors.size]
             )
-        }.sortedByDescending { it.amount.centavos }
+        }
     }
     val selectedSlice = slices.firstOrNull { it.id == selectedCategoryId } ?: slices.firstOrNull()
     val maxCategoryAmount = slices.maxOfOrNull { it.amount.centavos }?.coerceAtLeast(1L) ?: 1L
+    val categoryChartTotal = slices.fold(Money.ZERO) { total, slice -> total + slice.amount }
+    val zone = remember { ZoneId.systemDefault() }
+    val periodLabel = selectedPeriod.label(zone = zone, transactions = state.transactions)
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -130,30 +129,51 @@ fun InsightsScreen(viewModel: InsightsViewModel) {
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text("Your insights", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+            Text("Insights", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+        }
+
+        item {
+            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                InsightsPeriodType.values().forEach { type ->
+                    FilterChip(
+                        selected = selectedType == type,
+                        onClick = {
+                            selectedType = type
+                            if (type == InsightsPeriodType.CUSTOM && customEnd.isBefore(customStart)) customEnd = customStart
+                        },
+                        label = { Text(type.label) }
+                    )
+                }
             }
         }
 
         item {
             Card(shape = RoundedCornerShape(22.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    IconButton(onClick = { selectedMonth = selectedMonth.minusMonths(1) }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous month")
+                Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                        IconButton(onClick = { selectedPeriod.move(-1).also { anchorDate = it.anchorDate; customStart = it.customRange?.start ?: customStart; customEnd = it.customRange?.endInclusive ?: customEnd } }, enabled = selectedType != InsightsPeriodType.ALL_TIME) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous period")
+                        }
+                        Text(periodLabel, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                        IconButton(onClick = { selectedPeriod.move(1).also { anchorDate = it.anchorDate; customStart = it.customRange?.start ?: customStart; customEnd = it.customRange?.endInclusive ?: customEnd } }, enabled = selectedType != InsightsPeriodType.ALL_TIME) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next period")
+                        }
                     }
-                    Text(selectedMonth.format(DateTimeFormatter.ofPattern("MMMM yyyy", Locale.getDefault())), style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
-                    IconButton(onClick = { selectedMonth = selectedMonth.plusMonths(1) }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next month")
+                    if (selectedType == InsightsPeriodType.CUSTOM) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                            TextButton(onClick = { pickerTarget = DatePickerTarget.START }) { Text("From · ${customStart.format(DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault()))}") }
+                            TextButton(onClick = { pickerTarget = DatePickerTarget.END }) { Text("To · ${customEnd.format(DateTimeFormatter.ofPattern("d MMM yyyy", Locale.getDefault()))}") }
+                        }
                     }
                 }
             }
         }
 
-        item { MonthSummaryCard(monthIncome, monthExpenses, monthNet) }
+        item { PeriodSummaryCard(calculation.income, calculation.expenses, calculation.net) }
+
+        item {
+            CashFlowChart(calculation.buckets)
+        }
 
         item {
             Card(
@@ -166,8 +186,8 @@ fun InsightsScreen(viewModel: InsightsViewModel) {
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("Interest credited · net", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
-                    Text(monthInterestNet.format(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
+                    Text("Net interest", style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
+                    Text(calculation.netInterest.format(), style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.secondary)
                 }
             }
         }
@@ -184,11 +204,10 @@ fun InsightsScreen(viewModel: InsightsViewModel) {
                 ) {
                     Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                         Text("Spending by category", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
-                        Text("Tap a ring segment or category to explore.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     if (slices.isEmpty()) {
                         Spacer(Modifier.height(18.dp))
-                        Text("No expenses recorded this month yet.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("No category spending in this period.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Spacer(Modifier.height(18.dp))
                     } else {
                         Spacer(Modifier.height(14.dp))
@@ -196,14 +215,14 @@ fun InsightsScreen(viewModel: InsightsViewModel) {
                             slices = slices,
                             selectedId = selectedSlice?.id,
                             selectedAmount = selectedSlice?.amount ?: Money.ZERO,
-                            total = monthExpenses,
+                            total = categoryChartTotal,
                             onSelect = { selectedCategoryId = it }
                         )
                         Spacer(Modifier.height(12.dp))
                         slices.forEach { slice ->
                             CategoryBreakdownRow(
                                 slice = slice,
-                                total = monthExpenses,
+                                total = categoryChartTotal,
                                 maximum = maxCategoryAmount,
                                 selected = slice.id == selectedSlice?.id,
                                 onClick = { selectedCategoryId = slice.id }
@@ -216,9 +235,19 @@ fun InsightsScreen(viewModel: InsightsViewModel) {
 
         item {
             OverviewCard(
-                title = "Accounts",
+                title = "Income sources",
+                subtitle = periodLabel,
+                values = calculation.incomeSources.filter { !it.amount.isZero }.take(8).map { it.name to it.amount },
+                emptyMessage = "No income entries this period."
+            )
+        }
+
+        item {
+            OverviewCard(
+                title = "Asset accounts",
                 subtitle = "Current balance by account",
-                values = state.accountDistribution
+                values = state.accountDistribution,
+                emptyMessage = "No asset accounts yet."
             )
         }
 
@@ -244,25 +273,142 @@ fun InsightsScreen(viewModel: InsightsViewModel) {
             }
         }
     }
+
+    pickerTarget?.let { target ->
+        val currentDate = if (target == DatePickerTarget.START) customStart else customEnd
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = currentDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        )
+        DatePickerDialog(
+            onDismissRequest = { pickerTarget = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    pickerState.selectedDateMillis?.let { selectedMillis ->
+                        val selectedDate = Instant.ofEpochMilli(selectedMillis).atZone(ZoneOffset.UTC).toLocalDate()
+                        if (target == DatePickerTarget.START) {
+                            customStart = selectedDate
+                            if (customEnd.isBefore(selectedDate)) customEnd = selectedDate
+                        } else {
+                            customEnd = selectedDate
+                            if (customStart.isAfter(selectedDate)) customStart = selectedDate
+                        }
+                        anchorDate = customStart
+                        selectedType = InsightsPeriodType.CUSTOM
+                    }
+                    pickerTarget = null
+                }) { Text("Set date") }
+            },
+            dismissButton = { TextButton(onClick = { pickerTarget = null }) { Text("Cancel") } }
+        ) { DatePicker(state = pickerState, showModeToggle = false) }
+    }
 }
 
-private fun Transaction.belongsTo(month: YearMonth): Boolean = runCatching {
-    YearMonth.from(Instant.ofEpochMilli(timestamp).atZone(ZoneId.systemDefault()).toLocalDate()) == month
-}.getOrDefault(false)
+private enum class DatePickerTarget { START, END }
 
 private fun String?.toComposeColor(): Color? = runCatching {
     this?.let { Color(AndroidColor.parseColor(it)) }
 }.getOrNull()
 
 @Composable
-private fun MonthSummaryCard(income: Money, expenses: Money, net: Money) {
+private fun CashFlowChart(buckets: List<InsightsBucket>) {
+    var selectedStart by remember(buckets) { mutableStateOf(buckets.firstOrNull()?.start) }
+    val selectedBucket = buckets.firstOrNull { it.start == selectedStart }
+    val maximum = buckets.maxOfOrNull {
+        maxOf(kotlin.math.abs(it.income.centavos.toDouble()), kotlin.math.abs(it.expenses.centavos.toDouble()))
+    }?.coerceAtLeast(1.0) ?: 1.0
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Income vs expenses", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                ChartLegend("Income", MaterialTheme.colorScheme.primary)
+                ChartLegend("Expenses", MaterialTheme.colorScheme.error)
+            }
+            if (buckets.isEmpty()) {
+                Text("No records in this period.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    buckets.forEach { bucket ->
+                        Column(
+                            modifier = Modifier.width(46.dp)
+                                .clickable(role = Role.Button) { selectedStart = bucket.start }
+                                .semantics {
+                                    contentDescription = "${bucket.label}: income ${bucket.income.format()}, expenses ${bucket.expenses.format()}"
+                                }
+                                .background(
+                                    if (bucket.start == selectedStart) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f) else Color.Transparent,
+                                    RoundedCornerShape(9.dp)
+                                )
+                                .padding(vertical = 4.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.Bottom) {
+                                CashFlowBar(bucket.income, maximum, MaterialTheme.colorScheme.primary)
+                                CashFlowBar(bucket.expenses, maximum, MaterialTheme.colorScheme.error)
+                            }
+                            Text(bucket.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                        }
+                    }
+                }
+                selectedBucket?.let { bucket ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(bucket.label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Income", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                            Text(bucket.income.format(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+                        }
+                        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text("Expenses", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error)
+                            Text(bucket.expenses.format(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ChartLegend(label: String, tint: Color) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(9.dp).background(tint, CircleShape))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun CashFlowBar(value: Money, maximum: Double, tint: Color) {
+    val magnitude = (kotlin.math.abs(value.centavos.toDouble()) / maximum).toFloat().coerceIn(0f, 1f)
+    val color = if (value.isNegative) tint.copy(alpha = 0.42f) else tint
+    Box(
+        modifier = Modifier.width(16.dp).height(90.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f), RoundedCornerShape(5.dp)),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Box(
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(magnitude)
+                .background(color, RoundedCornerShape(5.dp))
+        )
+    }
+}
+
+@Composable
+private fun PeriodSummaryCard(income: Money, expenses: Money, net: Money) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
     ) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Monthly cash flow", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onPrimaryContainer)
+            Text("Period summary", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold), color = MaterialTheme.colorScheme.onPrimaryContainer)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 SummaryAmount("Income", income, MaterialTheme.colorScheme.primary)
                 SummaryAmount("Expenses", expenses, MaterialTheme.colorScheme.error)
@@ -368,7 +514,7 @@ private fun CategoryBreakdownRow(
 }
 
 @Composable
-private fun OverviewCard(title: String, subtitle: String, values: List<Pair<String, Money>>) {
+private fun OverviewCard(title: String, subtitle: String, values: List<Pair<String, Money>>, emptyMessage: String) {
     Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp)) {
         Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -376,7 +522,7 @@ private fun OverviewCard(title: String, subtitle: String, values: List<Pair<Stri
                 Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (values.isEmpty()) {
-                Text("No accounts yet.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(emptyMessage, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 values.forEach { (name, amount) ->
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

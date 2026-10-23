@@ -7,17 +7,13 @@ import com.ralledger.data.repository.RalLedgerRepository
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Transaction
-import com.ralledger.domain.model.TransactionType
+import com.ralledger.domain.model.AccountType
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 
 data class InsightsUiState(
-    val totalIncome: Money = Money.ZERO,
-    val totalExpenses: Money = Money.ZERO,
-    val netSavings: Money = Money.ZERO,
-    val spendingByCategory: Map<String, Money> = emptyMap(),
     val accountDistribution: List<Pair<String, Money>> = emptyList(),
     val totalReceivablesAging: Map<String, Money> = emptyMap(),
     val activeSubscriptionTotal: Money = Money.ZERO,
@@ -37,46 +33,6 @@ class InsightsViewModel(
         repository.subscriptionsFlow,
         repository.categoriesFlow
     ) { transactions, accounts, receivables, subscriptions, categories ->
-        val reversedJournalIds = transactions.mapNotNull { it.reversesEntryId }.toSet()
-        val validTransactions = transactions.filter {
-            it.journalEntryId !in reversedJournalIds &&
-                it.transactionType in setOf(
-                    TransactionType.INCOME, TransactionType.INTEREST_CREDIT, TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.RECEIVABLE_WRITEOFF,
-                    TransactionType.PAYABLE_RECOGNITION, TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT
-                )
-        }
-
-        val totalIncome = validTransactions
-            .filter { it.transactionType in setOf(TransactionType.INCOME, TransactionType.INTEREST_CREDIT) }
-            .fold(Money.ZERO) { total, transaction -> total + transaction.amount }
-        val totalExpenses = validTransactions
-            .fold(Money.ZERO) { total, transaction ->
-                total + when (transaction.transactionType) {
-                    TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION -> transaction.amount
-                    TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> transaction.fee
-                    TransactionType.INTEREST_CREDIT -> transaction.fee
-                    else -> Money.ZERO
-                }
-            }
-
-        val categoryMap = categories.associateBy { it.id }
-        val categorizedExpenses = validTransactions.flatMap { transaction ->
-            when (transaction.transactionType) {
-                TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION -> listOf(
-                    (transaction.categoryId?.let { categoryMap[it]?.name } ?: transaction.categoryName ?: "Uncategorized") to transaction.amount
-                )
-                TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> listOf(
-                    (transaction.categoryId?.let { categoryMap[it]?.name } ?: transaction.categoryName ?: "Uncategorized") to transaction.fee
-                )
-                TransactionType.INTEREST_CREDIT -> if (transaction.fee.isPositive) listOf(
-                    (transaction.secondaryCategoryId?.let { categoryMap[it]?.name } ?: transaction.secondaryCategoryName ?: "Interest tax withheld") to transaction.fee
-                ) else emptyList()
-                else -> emptyList()
-            }
-        }
-        val spendingByCategory = categorizedExpenses.groupBy({ it.first }, { it.second })
-            .mapValues { (_, amounts) -> amounts.fold(Money.ZERO, Money::plus) }
-
         val receivablesAging = receivables
             .groupBy { it.status.name }
             .mapValues { (_, entries) -> entries.fold(Money.ZERO) { total, receivable -> total + receivable.outstandingAmount } }
@@ -86,11 +42,9 @@ class InsightsViewModel(
             .fold(Money.ZERO) { total, subscription -> total + subscription.normalizedMonthlyCost() }
 
         InsightsUiState(
-            totalIncome = totalIncome,
-            totalExpenses = totalExpenses,
-            netSavings = totalIncome - totalExpenses,
-            spendingByCategory = spendingByCategory,
-            accountDistribution = accounts.filter { !it.isArchived }.map { it.name to it.currentLedgerBalance },
+            accountDistribution = accounts.filter {
+                !it.isArchived && it.accountType.isAsset && it.accountType != AccountType.ACCOUNTS_RECEIVABLE
+            }.map { it.name to it.currentLedgerBalance },
             totalReceivablesAging = receivablesAging,
             activeSubscriptionTotal = activeSubTotal,
             transactions = transactions,

@@ -52,4 +52,19 @@ class TransactionFilterTest {
         val reversal = transfer.copy(transactionType = TransactionType.REVERSAL)
         assertTrue(TransactionFilter(type = TransactionTypeFilter.OTHER).matches(reversal))
     }
+
+    @Test
+    fun expenseFilterIncludesReceivableWriteOffs() {
+        val writeOff = Transaction(
+            id = "writeoff",
+            journalEntryId = "writeoff",
+            transactionType = TransactionType.RECEIVABLE_WRITEOFF,
+            amount = Money(500L),
+            accountId = "receivable",
+            categoryId = "bad-debt"
+        )
+
+        assertTrue(TransactionFilter(type = TransactionTypeFilter.EXPENSE).matches(writeOff))
+        assertFalse(TransactionFilter(type = TransactionTypeFilter.OTHER).matches(writeOff))
+    }
 }

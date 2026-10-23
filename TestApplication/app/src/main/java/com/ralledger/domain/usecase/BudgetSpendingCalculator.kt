@@ -14,7 +14,7 @@ object BudgetSpendingCalculator {
             if (transaction.isReversed) return@forEach
             val categoryId = transaction.categoryId ?: return@forEach
             val amount = when (transaction.transactionType) {
-                TransactionType.EXPENSE -> transaction.amount.centavos
+                TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF -> transaction.amount.centavos
                 TransactionType.TRANSFER -> transaction.fee.centavos
                 else -> 0L
             }

@@ -76,7 +76,9 @@ class DashboardSummaryCalculatorTest {
             transaction("income", TransactionType.INCOME, 50_000L),
             transaction("income_reversal", TransactionType.REVERSAL, 30_000L, reverses = "income"),
             transaction("expense", TransactionType.EXPENSE, 15_000L),
-            transaction("expense_reversal", TransactionType.REVERSAL, 5_000L, reverses = "expense")
+            transaction("expense_reversal", TransactionType.REVERSAL, 5_000L, reverses = "expense"),
+            transaction("receivable_writeoff", TransactionType.RECEIVABLE_WRITEOFF, 4_000L),
+            transaction("writeoff_reversal", TransactionType.REVERSAL, 1_000L, reverses = "receivable_writeoff")
         )
 
         val summary = DashboardSummaryCalculator.calculate(

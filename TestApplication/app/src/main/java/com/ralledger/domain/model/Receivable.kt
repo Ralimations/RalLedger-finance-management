@@ -10,6 +10,17 @@ enum class ReceivableStatus(val displayName: String) {
     WRITTEN_OFF("Written Off")
 }
 
+data class ReceivableWriteOff(
+    val id: String,
+    val receivableId: String,
+    val journalEntryId: String,
+    val amount: Money,
+    val expenseCategoryId: String,
+    val date: Long,
+    val notes: String = "",
+    val reversedAt: Long? = null
+)
+
 data class ReceivablePayment(
     val id: String,
     val receivableId: String,
@@ -31,5 +42,7 @@ data class Receivable(
     val linkedCategoryId: String? = null,
     val description: String = "",
     val status: ReceivableStatus = ReceivableStatus.CONFIRMED,
-    val payments: List<ReceivablePayment> = emptyList()
+    val payments: List<ReceivablePayment> = emptyList(),
+    val writeOffs: List<ReceivableWriteOff> = emptyList(),
+    val isArchived: Boolean = false
 )

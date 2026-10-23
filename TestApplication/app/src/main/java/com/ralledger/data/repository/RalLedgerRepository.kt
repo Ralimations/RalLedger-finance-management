@@ -9,6 +9,7 @@ import com.ralledger.data.local.entity.JournalEntryEntity
 import com.ralledger.data.local.entity.JournalLineEntity
 import com.ralledger.data.local.entity.ReceivableEntity
 import com.ralledger.data.local.entity.ReceivablePaymentEntity
+import com.ralledger.data.local.entity.ReceivableWriteOffEntity
 import com.ralledger.data.local.entity.ReconciliationEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.Account
@@ -327,14 +328,18 @@ class RalLedgerRepository(
     val transactionsFlow: Flow<List<Transaction>> = combine(
         journalDao.getAllJournalEntriesFlow(),
         accountDao.getAllAccountsFlow(),
-        categoryDao.getAllCategoriesFlow()
-    ) { entries, accounts, categories ->
+        categoryDao.getAllCategoriesFlow(),
+        receivableDao.getAllReceivablesFlow()
+    ) { entries, accounts, categories, receivables ->
         val accountMap = accounts.associateBy { it.id }
         val categoryMap = categories.associateBy { it.id }
+        val receivableMap = receivables.associateBy { it.id }
         val reversedEntryIds = entries.mapNotNull { it.reversesEntryId }.toSet()
 
         entries.map { entry ->
-            val accountName = accountMap[entry.primaryAccountId]?.name ?: "Account"
+            val accountName = accountMap[entry.primaryAccountId]?.name
+                ?: receivableMap[entry.primaryAccountId]?.clientName?.let { "Receivable · $it" }
+                ?: "Account"
             val destAccountName = entry.destinationAccountId?.let { accountMap[it]?.name }
             val catName = entry.categoryId?.let { categoryMap[it]?.name }
 
@@ -698,33 +703,74 @@ class RalLedgerRepository(
                     require(payment.reversedAt == null) { "This payment has already been reversed" }
                     val receivable = receivableDao.getReceivableById(payment.receivableId)
                         ?: throw IllegalStateException("Linked receivable is missing")
+                    require(!receivable.isArchived) { "Restore this receivable before reversing a collection" }
                     val restoredOutstanding = Math.addExact(receivable.outstandingAmountCentavos, payment.amountCentavos)
                     require(restoredOutstanding <= receivable.originalAmountCentavos) {
                         "Reversing this payment would exceed the original receivable balance"
                     }
-                    val restoredStatus = when {
-                        receivable.dueDate < System.currentTimeMillis() -> ReceivableStatus.OVERDUE.name
-                        restoredOutstanding == receivable.originalAmountCentavos -> ReceivableStatus.CONFIRMED.name
-                        else -> ReceivableStatus.PARTIALLY_PAID.name
-                    }
                     receivableDao.updatePayment(payment.copy(reversedAt = System.currentTimeMillis()))
+                    val remainingPayments = receivableDao.getPaymentsForReceivable(receivable.id)
+                        .filter { it.id != payment.id && it.reversedAt == null }
+                    val activeWriteOffs = receivableDao.getWriteOffsForReceivable(receivable.id)
+                        .filter { it.reversedAt == null }
                     receivableDao.updateReceivable(
                         receivable.copy(
                             outstandingAmountCentavos = restoredOutstanding,
-                            status = restoredStatus
+                            status = statusForReceivableBalance(
+                                receivable,
+                                restoredOutstanding,
+                                remainingPayments.isNotEmpty(),
+                                activeWriteOffs.isNotEmpty()
+                            )
                         )
                     )
                 }
                 TransactionType.RECEIVABLE_RECOGNITION -> {
                     val receivable = receivableDao.getReceivableById(originalEntity.primaryAccountId)
                         ?: throw IllegalStateException("Linked receivable is missing")
+                    require(!receivable.isArchived) { "Restore this receivable before cancelling it" }
                     val activePayments = receivableDao.getPaymentsForReceivable(receivable.id)
                         .any { it.reversedAt == null }
-                    require(!activePayments) { "Reverse active collections before cancelling this receivable" }
+                    val activeWriteOffs = receivableDao.getWriteOffsForReceivable(receivable.id)
+                        .any { it.reversedAt == null }
+                    require(!activePayments && !activeWriteOffs) {
+                        "Reverse active collections and write-offs before cancelling this receivable"
+                    }
                     receivableDao.updateReceivable(
                         receivable.copy(
                             outstandingAmountCentavos = 0L,
                             status = ReceivableStatus.CANCELLED.name
+                        )
+                    )
+                }
+                TransactionType.RECEIVABLE_WRITEOFF -> {
+                    val writeOff = receivableDao.getWriteOffByJournalEntryId(journalEntryId)
+                        ?: throw IllegalStateException("Receivable write-off history is missing")
+                    require(writeOff.reversedAt == null) { "This write-off has already been reversed" }
+                    val receivable = receivableDao.getReceivableById(writeOff.receivableId)
+                        ?: throw IllegalStateException("Linked receivable is missing")
+                    require(!receivable.isArchived) { "Restore this receivable before reversing a write-off" }
+                    receivableDao.updateWriteOff(writeOff.copy(reversedAt = System.currentTimeMillis()))
+                    val paymentsAfterReversal = receivableDao.getPaymentsForReceivable(receivable.id)
+                        .filter { it.reversedAt == null }
+                    val writeOffsAfterReversal = receivableDao.getWriteOffsForReceivable(receivable.id)
+                        .filter { it.reversedAt == null }
+                    val activePaymentTotal = paymentsAfterReversal.fold(0L) { total, row -> Math.addExact(total, row.amountCentavos) }
+                    val activeWriteOffTotal = writeOffsAfterReversal.fold(0L) { total, row -> Math.addExact(total, row.amountCentavos) }
+                    val restoredOutstanding = Math.subtractExact(
+                        Math.subtractExact(receivable.originalAmountCentavos, activePaymentTotal),
+                        activeWriteOffTotal
+                    )
+                    require(restoredOutstanding >= 0L) { "Reversing this write-off would make the receivable invalid" }
+                    receivableDao.updateReceivable(
+                        receivable.copy(
+                            outstandingAmountCentavos = restoredOutstanding,
+                            status = statusForReceivableBalance(
+                                receivable,
+                                restoredOutstanding,
+                                paymentsAfterReversal.isNotEmpty(),
+                                writeOffsAfterReversal.isNotEmpty()
+                            )
                         )
                     )
                 }
@@ -748,14 +794,17 @@ class RalLedgerRepository(
     // Receivables
     val receivablesFlow: Flow<List<Receivable>> = combine(
         receivableDao.getAllReceivablesFlow(),
-        receivableDao.getAllPaymentsFlow()
-    ) { receivables, allPayments ->
+        receivableDao.getAllPaymentsFlow(),
+        receivableDao.getAllWriteOffsFlow()
+    ) { receivables, allPayments, allWriteOffs ->
         val paymentGroup = allPayments.groupBy { it.receivableId }
+        val writeOffGroup = allWriteOffs.groupBy { it.receivableId }
         val now = System.currentTimeMillis()
 
         receivables.map { recEntity ->
             val payments = paymentGroup[recEntity.id]?.map { it.toDomainModel() } ?: emptyList()
-            val receivable = recEntity.toDomainModel(payments)
+            val writeOffs = writeOffGroup[recEntity.id]?.map { it.toDomainModel() } ?: emptyList()
+            val receivable = recEntity.toDomainModel(payments, writeOffs)
             if (recEntity.dueDate < now &&
                 receivable.status in setOf(ReceivableStatus.CONFIRMED, ReceivableStatus.PARTIALLY_PAID)
             ) {
@@ -775,11 +824,12 @@ class RalLedgerRepository(
     ): Receivable {
         require(clientName.isNotBlank()) { "Client name is required" }
         require(amount.isPositive) { "Receivable amount must be positive" }
+        require(dueDate > 0L) { "Choose a valid due date" }
         val categoryId = incomeCategoryId ?: "cat_other_income"
         val category = categoryDao.getCategoryById(categoryId)
             ?: throw IllegalArgumentException("Select a valid income category")
-        require(category.type == com.ralledger.domain.model.CategoryType.INCOME.name) {
-            "Receivable recognition requires an income category"
+        require(category.type == CategoryType.INCOME.name && !category.isArchived) {
+            "Receivable recognition requires an active income category"
         }
         val id = UUID.randomUUID().toString()
         val recEntity = ReceivableEntity(
@@ -876,6 +926,144 @@ class RalLedgerRepository(
                 )
             )
         }
+    }
+
+    suspend fun updateReceivableDetails(id: String, clientName: String, dueDate: Long, description: String) {
+        require(clientName.isNotBlank()) { "Client name is required" }
+        require(dueDate > 0L) { "Choose a valid due date" }
+        database.withTransaction {
+            val current = receivableDao.getReceivableById(id)
+                ?: throw IllegalArgumentException("Receivable no longer exists")
+            require(!current.isArchived) { "Restore this receivable before editing it" }
+            val closedStatus = current.status.takeIf {
+                it in setOf(ReceivableStatus.PAID.name, ReceivableStatus.CANCELLED.name, ReceivableStatus.WRITTEN_OFF.name)
+            }
+            val updatedMetadata = current.copy(
+                clientName = clientName.trim(),
+                dueDate = dueDate,
+                description = description.trim()
+            )
+            val activePayments = receivableDao.getPaymentsForReceivable(id).any { it.reversedAt == null }
+            val activeWriteOffs = receivableDao.getWriteOffsForReceivable(id).any { it.reversedAt == null }
+            receivableDao.updateReceivable(
+                updatedMetadata.copy(
+                    status = closedStatus ?: statusForReceivableBalance(
+                        updatedMetadata,
+                        current.outstandingAmountCentavos,
+                        activePayments,
+                        activeWriteOffs
+                    )
+                )
+            )
+        }
+    }
+
+    suspend fun cancelReceivable(id: String) {
+        database.withTransaction {
+            val receivable = receivableDao.getReceivableById(id)
+                ?: throw IllegalArgumentException("Receivable no longer exists")
+            require(!receivable.isArchived) { "Restore this receivable before cancelling it" }
+            require(receivable.status !in setOf(ReceivableStatus.PAID.name, ReceivableStatus.CANCELLED.name, ReceivableStatus.WRITTEN_OFF.name)) {
+                "A settled receivable cannot be cancelled. Write off any remaining uncollectible balance instead."
+            }
+            val hasActivePayments = receivableDao.getPaymentsForReceivable(id).any { it.reversedAt == null }
+            val hasActiveWriteOffs = receivableDao.getWriteOffsForReceivable(id).any { it.reversedAt == null }
+            require(!hasActivePayments && !hasActiveWriteOffs) {
+                "Reverse active collections and write-offs before cancelling this receivable"
+            }
+            require(receivable.outstandingAmountCentavos == receivable.originalAmountCentavos) {
+                "Reverse all financial history before cancelling this receivable"
+            }
+            val recognition = journalDao.getFirstEntryByTypeAndPrimaryAccount(
+                TransactionType.RECEIVABLE_RECOGNITION.name,
+                id
+            ) ?: throw IllegalStateException("Receivable recognition history is missing")
+            reverseTransactionInCurrentTransaction(recognition.id)
+        }
+    }
+
+    suspend fun writeOffReceivable(id: String, amount: Money, expenseCategoryId: String, notes: String) {
+        require(amount.isPositive) { "Write-off amount must be greater than zero" }
+        database.withTransaction {
+            val receivable = receivableDao.getReceivableById(id)
+                ?: throw IllegalArgumentException("Receivable no longer exists")
+            require(!receivable.isArchived) { "Restore this receivable before writing off its balance" }
+            require(receivable.status != ReceivableStatus.CANCELLED.name) { "A cancelled receivable cannot be written off" }
+            val outstanding = Money(receivable.outstandingAmountCentavos)
+            require(outstanding.isPositive) { "There is no outstanding balance to write off" }
+            require(amount <= outstanding) { "Write-off cannot exceed the outstanding balance" }
+            val category = categoryDao.getCategoryById(expenseCategoryId)
+                ?: throw IllegalArgumentException("Select a valid expense category")
+            require(category.type == CategoryType.EXPENSE.name && !category.isArchived) {
+                "Write-offs require an active expense category"
+            }
+
+            val timestamp = System.currentTimeMillis()
+            val entry = AccountingEngine.createExpenseEntry(
+                accountId = receivable.id,
+                expenseCategoryId = expenseCategoryId,
+                amount = amount,
+                description = "Write-off: ${receivable.clientName}",
+                timestamp = timestamp
+            )
+            postJournalEntry(
+                entry = entry,
+                transactionType = TransactionType.RECEIVABLE_WRITEOFF,
+                amount = amount,
+                primaryAccountId = receivable.id,
+                categoryId = expenseCategoryId,
+                counterparty = receivable.clientName,
+                notes = notes.trim()
+            )
+            receivableDao.insertWriteOff(
+                ReceivableWriteOffEntity(
+                    id = UUID.randomUUID().toString(),
+                    receivableId = id,
+                    journalEntryId = entry.id,
+                    amountCentavos = amount.centavos,
+                    expenseCategoryId = expenseCategoryId,
+                    date = timestamp,
+                    notes = notes.trim()
+                )
+            )
+            val newOutstanding = (outstanding - amount).centavos
+            val activePayments = receivableDao.getPaymentsForReceivable(id).any { it.reversedAt == null }
+            val activeWriteOffs = receivableDao.getWriteOffsForReceivable(id).any { it.reversedAt == null }
+            receivableDao.updateReceivable(
+                receivable.copy(
+                    outstandingAmountCentavos = newOutstanding,
+                    status = statusForReceivableBalance(receivable, newOutstanding, activePayments, activeWriteOffs)
+                )
+            )
+        }
+    }
+
+    suspend fun setReceivableArchived(id: String, isArchived: Boolean) {
+        database.withTransaction {
+            val receivable = receivableDao.getReceivableById(id)
+                ?: throw IllegalArgumentException("Receivable no longer exists")
+            if (isArchived) {
+                require(receivable.outstandingAmountCentavos == 0L && receivable.status in setOf(
+                    ReceivableStatus.PAID.name,
+                    ReceivableStatus.CANCELLED.name,
+                    ReceivableStatus.WRITTEN_OFF.name
+                )) { "Only settled, cancelled, or written-off receivables can be archived" }
+            }
+            receivableDao.updateReceivable(receivable.copy(isArchived = isArchived))
+        }
+    }
+
+    private fun statusForReceivableBalance(
+        receivable: ReceivableEntity,
+        outstandingCentavos: Long,
+        hasActivePayments: Boolean,
+        hasActiveWriteOffs: Boolean
+    ): String = when {
+        outstandingCentavos == 0L && hasActiveWriteOffs -> ReceivableStatus.WRITTEN_OFF.name
+        outstandingCentavos == 0L -> ReceivableStatus.PAID.name
+        receivable.dueDate < System.currentTimeMillis() -> ReceivableStatus.OVERDUE.name
+        hasActivePayments || hasActiveWriteOffs -> ReceivableStatus.PARTIALLY_PAID.name
+        else -> ReceivableStatus.CONFIRMED.name
     }
 
     // Subscriptions

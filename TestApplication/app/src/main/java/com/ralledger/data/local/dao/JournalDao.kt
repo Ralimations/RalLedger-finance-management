@@ -47,6 +47,9 @@ interface JournalDao {
     @Query("SELECT * FROM journal_entries WHERE id = :id")
     suspend fun getJournalEntryById(id: String): JournalEntryEntity?
 
+    @Query("SELECT * FROM journal_entries WHERE transactionType = :transactionType AND primaryAccountId = :primaryAccountId ORDER BY timestamp ASC LIMIT 1")
+    suspend fun getFirstEntryByTypeAndPrimaryAccount(transactionType: String, primaryAccountId: String): JournalEntryEntity?
+
     @Query("SELECT * FROM journal_entries WHERE reversesEntryId = :entryId LIMIT 1")
     suspend fun getReversalForEntry(entryId: String): JournalEntryEntity?
 

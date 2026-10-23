@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Update
 import com.ralledger.data.local.entity.ReceivableEntity
 import com.ralledger.data.local.entity.ReceivablePaymentEntity
+import com.ralledger.data.local.entity.ReceivableWriteOffEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -35,6 +36,18 @@ interface ReceivableDao {
     @Query("SELECT * FROM receivable_payments ORDER BY paymentDate DESC")
     fun getAllPaymentsFlow(): Flow<List<ReceivablePaymentEntity>>
 
+    @Query("SELECT * FROM receivable_write_offs ORDER BY date DESC")
+    fun getAllWriteOffsFlow(): Flow<List<ReceivableWriteOffEntity>>
+
+    @Query("SELECT * FROM receivable_write_offs ORDER BY id ASC")
+    suspend fun getAllWriteOffs(): List<ReceivableWriteOffEntity>
+
+    @Query("SELECT * FROM receivable_write_offs WHERE receivableId = :receivableId ORDER BY date DESC")
+    suspend fun getWriteOffsForReceivable(receivableId: String): List<ReceivableWriteOffEntity>
+
+    @Query("SELECT * FROM receivable_write_offs WHERE journalEntryId = :journalEntryId LIMIT 1")
+    suspend fun getWriteOffByJournalEntryId(journalEntryId: String): ReceivableWriteOffEntity?
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertReceivable(receivable: ReceivableEntity)
 
@@ -53,8 +66,20 @@ interface ReceivableDao {
     @Update
     suspend fun updatePayment(payment: ReceivablePaymentEntity)
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertWriteOff(writeOff: ReceivableWriteOffEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertWriteOffs(writeOffs: List<ReceivableWriteOffEntity>)
+
+    @Update
+    suspend fun updateWriteOff(writeOff: ReceivableWriteOffEntity)
+
     @Query("DELETE FROM receivable_payments")
     suspend fun clearPayments()
+
+    @Query("DELETE FROM receivable_write_offs")
+    suspend fun clearWriteOffs()
 
     @Query("DELETE FROM receivables")
     suspend fun clearReceivables()

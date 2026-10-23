@@ -85,6 +85,21 @@ class FinancialIntegrityInstrumentedTest {
             )
             repository.collectReceivable(receivable.id, "wallet_test", Money(2500L), "Partial test payment")
 
+            val writtenOffReceivable = repository.createReceivable(
+                clientName = "Synthetic uncollectible client",
+                amount = Money(4_000L),
+                dueDate = System.currentTimeMillis() + 86_400_000L,
+                incomeCategoryId = "cat_test_income",
+                description = "Synthetic write-off backup record"
+            )
+            repository.writeOffReceivable(
+                writtenOffReceivable.id,
+                Money(4_000L),
+                "cat_test_expense",
+                "Synthetic backup write-off"
+            )
+            repository.setReceivableArchived(writtenOffReceivable.id, true)
+
             val concurrentResults = coroutineScope {
                 listOf(
                     async { runCatching { repository.collectReceivable(receivable.id, "wallet_test", Money(4000L), "Concurrent test A") } },
@@ -102,6 +117,7 @@ class FinancialIntegrityInstrumentedTest {
             val preview = destinationBackupRepository.prepareRestore(encryptedBackup!!, password)
             assertTrue(preview.canRestore)
             assertEquals(1, preview.budgets)
+            assertEquals(1, preview.writeOffs)
             destinationBackupRepository.restorePreparedBackup()
 
             assertEquals(source.accountDao().getAllAccounts(), destination.accountDao().getAllAccounts())
@@ -111,10 +127,13 @@ class FinancialIntegrityInstrumentedTest {
             assertEquals(source.journalDao().getAllJournalLines(), destination.journalDao().getAllJournalLines())
             assertEquals(source.receivableDao().getAllReceivables(), destination.receivableDao().getAllReceivables())
             assertEquals(source.receivableDao().getAllPayments(), destination.receivableDao().getAllPayments())
+            assertEquals(source.receivableDao().getAllWriteOffs(), destination.receivableDao().getAllWriteOffs())
+            assertEquals(source.receivableDao().getAllReceivables(), destination.receivableDao().getAllReceivables())
+            assertTrue(destination.receivableDao().getReceivableById(writtenOffReceivable.id)!!.isArchived)
             assertEquals(source.subscriptionDao().getAllSubscriptions(), destination.subscriptionDao().getAllSubscriptions())
             assertTrue(destination.subscriptionDao().getAllSubscriptions().single().isArchived)
             assertEquals(source.journalDao().getBalanceAggregateForAccount("wallet_test"), destination.journalDao().getBalanceAggregateForAccount("wallet_test"))
-            assertEquals(7500L, destination.receivableDao().getAllReceivables().single().outstandingAmountCentavos)
+            assertEquals(7500L, destination.receivableDao().getReceivableById(receivable.id)?.outstandingAmountCentavos)
             assertTrue(destination.receivableDao().getAllPayments().single { it.id == concurrentPayment.id }.reversedAt != null)
         } finally {
             encryptedBackup?.fill(0)

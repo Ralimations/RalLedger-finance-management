@@ -40,19 +40,19 @@ class InsightsViewModel(
         val reversedJournalIds = transactions.mapNotNull { it.reversesEntryId }.toSet()
         val validTransactions = transactions.filter {
             it.journalEntryId !in reversedJournalIds &&
-                it.transactionType in setOf(TransactionType.INCOME, TransactionType.EXPENSE)
+                it.transactionType in setOf(TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF)
         }
 
         val totalIncome = validTransactions
             .filter { it.transactionType == TransactionType.INCOME }
             .fold(Money.ZERO) { total, transaction -> total + transaction.amount }
         val totalExpenses = validTransactions
-            .filter { it.transactionType == TransactionType.EXPENSE }
+            .filter { it.transactionType in setOf(TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF) }
             .fold(Money.ZERO) { total, transaction -> total + transaction.amount }
 
         val categoryMap = categories.associateBy { it.id }
         val spendingByCategory = validTransactions
-            .filter { it.transactionType == TransactionType.EXPENSE }
+            .filter { it.transactionType in setOf(TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF) }
             .groupBy { transaction ->
                 transaction.categoryId?.let { categoryMap[it]?.name } ?: transaction.categoryName ?: "Uncategorized"
             }
@@ -63,7 +63,7 @@ class InsightsViewModel(
             .mapValues { (_, entries) -> entries.fold(Money.ZERO) { total, receivable -> total + receivable.outstandingAmount } }
 
         val activeSubTotal = subscriptions
-            .filter { it.status.name == "ACTIVE" }
+            .filter { it.status.name == "ACTIVE" && !it.isArchived }
             .fold(Money.ZERO) { total, subscription -> total + subscription.normalizedMonthlyCost() }
 
         InsightsUiState(

@@ -17,6 +17,8 @@ class BudgetSpendingCalculatorTest {
         val previousMonth = timestamp(previousPeriod.year, previousPeriod.monthValue, day = 12)
         val transactions = listOf(
             transaction("expense", TransactionType.EXPENSE, 6_000L, currentMonth, "food"),
+            transaction("receivable-writeoff", TransactionType.RECEIVABLE_WRITEOFF, 1_200L, currentMonth, "food"),
+            transaction("reversed-writeoff", TransactionType.RECEIVABLE_WRITEOFF, 2_000L, currentMonth, "food", reversed = true),
             transaction("reversed-expense", TransactionType.EXPENSE, 9_000L, currentMonth, "food", reversed = true),
             transaction("reversal", TransactionType.REVERSAL, 9_000L, currentMonth, "food"),
             transaction("transfer-fee", TransactionType.TRANSFER, 20_000L, currentMonth, "food", fee = 500L),
@@ -27,7 +29,7 @@ class BudgetSpendingCalculatorTest {
 
         val totals = BudgetSpendingCalculator.aggregate(transactions)
 
-        assertEquals(Money(6_500L), totals[BudgetSpendingKey("food", period.year, period.monthValue)])
+        assertEquals(Money(7_700L), totals[BudgetSpendingKey("food", period.year, period.monthValue)])
         assertEquals(Money(7_000L), totals[BudgetSpendingKey("home", period.year, period.monthValue)])
         assertEquals(Money(4_000L), totals[BudgetSpendingKey("food", previousPeriod.year, previousPeriod.monthValue)])
     }

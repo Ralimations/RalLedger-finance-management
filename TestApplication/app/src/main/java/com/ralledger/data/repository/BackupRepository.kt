@@ -9,6 +9,7 @@ import com.ralledger.data.local.entity.JournalEntryEntity
 import com.ralledger.data.local.entity.JournalLineEntity
 import com.ralledger.data.local.entity.ReceivableEntity
 import com.ralledger.data.local.entity.ReceivablePaymentEntity
+import com.ralledger.data.local.entity.ReceivableWriteOffEntity
 import com.ralledger.data.local.entity.ReconciliationEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.LineType
@@ -36,6 +37,7 @@ data class BackupPreview(
     val journalLines: Int,
     val receivables: Int,
     val payments: Int,
+    val writeOffs: Int,
     val subscriptions: Int,
     val reconciliations: Int,
     val validationErrors: List<String>
@@ -89,6 +91,7 @@ class BackupRepository(
             // Clear child rows first. Room rolls this entire replacement back if any insert or
             // the verification step fails.
             receivables.clearPayments()
+            receivables.clearWriteOffs()
             journals.clearJournalLines()
             journals.clearJournalEntries()
             receivables.clearReceivables()
@@ -105,6 +108,7 @@ class BackupRepository(
             if (snapshot.lines.isNotEmpty()) journals.insertJournalLinesForRestore(snapshot.lines)
             if (snapshot.receivables.isNotEmpty()) receivables.insertReceivables(snapshot.receivables)
             if (snapshot.payments.isNotEmpty()) receivables.insertPayments(snapshot.payments)
+            if (snapshot.writeOffs.isNotEmpty()) receivables.insertWriteOffs(snapshot.writeOffs)
             if (snapshot.subscriptions.isNotEmpty()) subscriptions.insertSubscriptions(snapshot.subscriptions)
             if (snapshot.reconciliations.isNotEmpty()) reconciliations.insertReconciliations(snapshot.reconciliations)
 
@@ -142,6 +146,7 @@ class BackupRepository(
         lines = database.journalDao().getAllJournalLines(),
         receivables = database.receivableDao().getAllReceivables(),
         payments = database.receivableDao().getAllPayments(),
+        writeOffs = database.receivableDao().getAllWriteOffs(),
         subscriptions = database.subscriptionDao().getAllSubscriptions(),
         reconciliations = database.reconciliationDao().getAllReconciliations()
     )
@@ -223,6 +228,7 @@ class BackupRepository(
         val lines: List<JournalLineEntity>,
         val receivables: List<ReceivableEntity>,
         val payments: List<ReceivablePaymentEntity>,
+        val writeOffs: List<ReceivableWriteOffEntity>,
         val subscriptions: List<SubscriptionEntity>,
         val reconciliations: List<ReconciliationEntity>
     ) {
@@ -238,6 +244,7 @@ class BackupRepository(
             put("journalLines", JSONArray().also { array -> lines.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("receivables", JSONArray().also { array -> receivables.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("receivablePayments", JSONArray().also { array -> payments.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("receivableWriteOffs", JSONArray().also { array -> writeOffs.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("subscriptions", JSONArray().also { array -> subscriptions.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("reconciliations", JSONArray().also { array -> reconciliations.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
         }
@@ -254,6 +261,7 @@ class BackupRepository(
             checkUnique("journal line", lines) { it.id }
             checkUnique("receivable", receivables) { it.id }
             checkUnique("payment", payments) { it.id }
+            checkUnique("receivable write-off", writeOffs) { it.id }
             checkUnique("subscription", subscriptions) { it.id }
             checkUnique("reconciliation", reconciliations) { it.id }
 
@@ -321,8 +329,12 @@ class BackupRepository(
 
             val receivableById = receivables.associateBy { it.id }
             val paymentsByReceivable = payments.groupBy { it.receivableId }
+            val writeOffsByReceivable = writeOffs.groupBy { it.receivableId }
             if (payments.any { it.receivableId !in receivableById || it.journalEntryId !in entryIds }) {
                 errors += "Payment history references a missing receivable or journal entry"
+            }
+            if (writeOffs.any { it.receivableId !in receivableById || it.journalEntryId !in entryIds }) {
+                errors += "Write-off history references a missing receivable or journal entry"
             }
             if (payments.any { payment ->
                     val paymentEntry = entryById[payment.journalEntryId]
@@ -334,6 +346,18 @@ class BackupRepository(
             if (payments.any { it.destinationAccountId !in accountIds }) {
                 errors += "Payment history references a missing destination account"
             }
+            if (writeOffs.any { it.expenseCategoryId !in categoryIds || categoriesById[it.expenseCategoryId]?.type != "EXPENSE" }) {
+                errors += "Write-off history references a missing or non-expense category"
+            }
+            if (writeOffs.any { writeOff ->
+                    val entry = entryById[writeOff.journalEntryId]
+                    writeOff.amountCentavos <= 0L || entry?.transactionType != "RECEIVABLE_WRITEOFF" ||
+                        entry.primaryAccountId != writeOff.receivableId || entry.categoryId != writeOff.expenseCategoryId ||
+                        entry.amountCentavos != writeOff.amountCentavos ||
+                        (writeOff.reversedAt == null && entries.any { it.reversesEntryId == writeOff.journalEntryId }) ||
+                        (writeOff.reversedAt != null && entries.none { it.reversesEntryId == writeOff.journalEntryId })
+                }
+            ) errors += "Write-off history does not match its journal and reversal entries"
             if (subscriptions.any { it.assignedAccountId !in accountIds }) {
                 errors += "Subscription references a missing account"
             }
@@ -345,13 +369,21 @@ class BackupRepository(
                 val activePayments = activePaymentRows.fold(java.math.BigInteger.ZERO) { sum, payment ->
                     sum + java.math.BigInteger.valueOf(payment.amountCentavos)
                 }
+                val activeWriteOffRows = writeOffsByReceivable[receivable.id].orEmpty().filter { it.reversedAt == null }
+                val activeWriteOffs = activeWriteOffRows.fold(java.math.BigInteger.ZERO) { sum, writeOff ->
+                    sum + java.math.BigInteger.valueOf(writeOff.amountCentavos)
+                }
                 val original = java.math.BigInteger.valueOf(receivable.originalAmountCentavos)
                 val outstanding = java.math.BigInteger.valueOf(receivable.outstandingAmountCentavos)
-                val closedWithoutCollectionBalance = receivable.status == "CANCELLED" || receivable.status == "WRITTEN_OFF"
+                val cancelled = receivable.status == "CANCELLED"
+                val writtenOff = receivable.status == "WRITTEN_OFF"
                 if (receivable.originalAmountCentavos <= 0L || receivable.outstandingAmountCentavos < 0L ||
                     activePaymentRows.any { it.amountCentavos <= 0L } ||
-                    (!closedWithoutCollectionBalance && outstanding + activePayments != original) ||
-                    (closedWithoutCollectionBalance && receivable.outstandingAmountCentavos != 0L)
+                    activeWriteOffRows.any { it.amountCentavos <= 0L } ||
+                    (cancelled && (receivable.outstandingAmountCentavos != 0L || activePayments.signum() != 0 || activeWriteOffs.signum() != 0)) ||
+                    (!cancelled && outstanding + activePayments + activeWriteOffs != original) ||
+                    (writtenOff && (receivable.outstandingAmountCentavos != 0L || activeWriteOffs.signum() == 0)) ||
+                    (receivable.isArchived && (receivable.outstandingAmountCentavos != 0L || receivable.status !in setOf("PAID", "CANCELLED", "WRITTEN_OFF")))
                 ) {
                     errors += "Receivable ${receivable.id} does not reconcile to its active payment history"
                 }
@@ -366,6 +398,7 @@ class BackupRepository(
                 journalLines = lines.size,
                 receivables = receivables.size,
                 payments = payments.size,
+                writeOffs = writeOffs.size,
                 subscriptions = subscriptions.size,
                 reconciliations = reconciliations.size,
                 validationErrors = errors.distinct()
@@ -389,6 +422,7 @@ class BackupRepository(
                     lines = json.getJSONArray("journalLines").objects().map { it.toJournalLine() },
                     receivables = json.getJSONArray("receivables").objects().map { it.toReceivable() },
                     payments = json.getJSONArray("receivablePayments").objects().map { it.toPayment() },
+                    writeOffs = json.optJSONArray("receivableWriteOffs")?.objects()?.map { it.toReceivableWriteOff() }.orEmpty(),
                     subscriptions = json.getJSONArray("subscriptions").objects().map { it.toSubscription() },
                     reconciliations = json.getJSONArray("reconciliations").objects().map { it.toReconciliation() }
                 )
@@ -478,12 +512,13 @@ private fun ReceivableEntity.toJson() = JSONObject().apply {
     put("id", id); put("clientName", clientName); put("originalAmountCentavos", originalAmountCentavos)
     put("outstandingAmountCentavos", outstandingAmountCentavos); put("recognitionDate", recognitionDate)
     put("dueDate", dueDate); putNullable("linkedCategoryId", linkedCategoryId); put("description", description); put("status", status)
+    put("isArchived", isArchived)
 }
 private fun JSONObject.toReceivable() = ReceivableEntity(
     id = getString("id"), clientName = getString("clientName"), originalAmountCentavos = getLong("originalAmountCentavos"),
     outstandingAmountCentavos = getLong("outstandingAmountCentavos"), recognitionDate = getLong("recognitionDate"),
     dueDate = getLong("dueDate"), linkedCategoryId = stringOrNull("linkedCategoryId"),
-    description = getString("description"), status = getString("status")
+    description = getString("description"), status = getString("status"), isArchived = optBoolean("isArchived", false)
 )
 
 private fun ReceivablePaymentEntity.toJson() = JSONObject().apply {
@@ -495,6 +530,17 @@ private fun JSONObject.toPayment() = ReceivablePaymentEntity(
     id = getString("id"), receivableId = getString("receivableId"), journalEntryId = getString("journalEntryId"),
     amountCentavos = getLong("amountCentavos"), destinationAccountId = getString("destinationAccountId"),
     paymentDate = getLong("paymentDate"), notes = getString("notes"), reversedAt = longOrNull("reversedAt")
+)
+
+private fun ReceivableWriteOffEntity.toJson() = JSONObject().apply {
+    put("id", id); put("receivableId", receivableId); put("journalEntryId", journalEntryId)
+    put("amountCentavos", amountCentavos); put("expenseCategoryId", expenseCategoryId)
+    put("date", date); put("notes", notes); putNullable("reversedAt", reversedAt)
+}
+private fun JSONObject.toReceivableWriteOff() = ReceivableWriteOffEntity(
+    id = getString("id"), receivableId = getString("receivableId"), journalEntryId = getString("journalEntryId"),
+    amountCentavos = getLong("amountCentavos"), expenseCategoryId = getString("expenseCategoryId"),
+    date = getLong("date"), notes = getString("notes"), reversedAt = longOrNull("reversedAt")
 )
 
 private fun SubscriptionEntity.toJson() = JSONObject().apply {

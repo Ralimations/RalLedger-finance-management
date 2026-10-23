@@ -24,7 +24,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 val preview = backupRepository.writeEncryptedBackupToDocument(password, writeDocument)
-                _backupStatus.value = "Encrypted backup saved. ${preview.journalEntries} journal entries, ${preview.budgets} budgets, and ${preview.accounts} accounts included."
+                _backupStatus.value = "Encrypted backup saved. ${preview.accounts} accounts, ${preview.journalEntries} journal entries, and ${preview.receivables} receivables with ${preview.payments} payments and ${preview.writeOffs} write-offs included."
             } catch (e: Exception) {
                 _backupStatus.value = "Backup failed: ${e.localizedMessage}"
             }
@@ -55,7 +55,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 val preview = backupRepository.restorePreparedBackup()
-                _backupStatus.value = "Restore complete. ${preview.journalEntries} journal entries, ${preview.budgets} budgets, and ${preview.accounts} accounts restored."
+                _backupStatus.value = "Restore complete. ${preview.accounts} accounts, ${preview.journalEntries} journal entries, and ${preview.receivables} receivables with ${preview.payments} payments and ${preview.writeOffs} write-offs restored."
                 _restorePreview.value = null
             } catch (e: Exception) {
                 _backupStatus.value = "Restore failed; existing data was retained: ${e.localizedMessage}"

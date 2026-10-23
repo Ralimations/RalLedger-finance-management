@@ -6,6 +6,7 @@ enum class TransactionType(val displayName: String) {
     TRANSFER("Transfer"),
     RECEIVABLE_RECOGNITION("Receivable Recognized"),
     RECEIVABLE_COLLECTION("Receivable Collection"),
+    RECEIVABLE_WRITEOFF("Receivable Write-off"),
     LOAN_DISBURSEMENT("Loan Disbursement"),
     LOAN_REPAYMENT("Loan Repayment"),
     OPENING_BALANCE("Opening Balance"),

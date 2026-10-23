@@ -20,10 +20,13 @@ data class TransactionFilter(
         val matchesType = when (type) {
             TransactionTypeFilter.ALL -> true
             TransactionTypeFilter.INCOME -> transaction.transactionType == TransactionType.INCOME
-            TransactionTypeFilter.EXPENSE -> transaction.transactionType == TransactionType.EXPENSE
+            TransactionTypeFilter.EXPENSE -> transaction.transactionType in setOf(
+                TransactionType.EXPENSE,
+                TransactionType.RECEIVABLE_WRITEOFF
+            )
             TransactionTypeFilter.TRANSFER -> transaction.transactionType == TransactionType.TRANSFER
             TransactionTypeFilter.OTHER -> transaction.transactionType !in setOf(
-                TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.TRANSFER
+                TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.TRANSFER
             )
         }
         val matchesAccount = accountId == null ||

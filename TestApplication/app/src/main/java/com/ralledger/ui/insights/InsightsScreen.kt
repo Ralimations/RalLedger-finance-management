@@ -80,19 +80,19 @@ fun InsightsScreen(viewModel: InsightsViewModel) {
     val monthTransactions = remember(state.transactions, selectedMonth, reversedEntries) {
         state.transactions.filter { transaction ->
             transaction.journalEntryId !in reversedEntries &&
-                transaction.transactionType in setOf(TransactionType.INCOME, TransactionType.EXPENSE) &&
+                transaction.transactionType in setOf(TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF) &&
                 transaction.belongsTo(selectedMonth)
         }
     }
     val monthIncome = monthTransactions.filter { it.transactionType == TransactionType.INCOME }
         .fold(Money.ZERO) { sum, transaction -> sum + transaction.amount }
-    val monthExpenses = monthTransactions.filter { it.transactionType == TransactionType.EXPENSE }
+    val monthExpenses = monthTransactions.filter { it.transactionType in setOf(TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF) }
         .fold(Money.ZERO) { sum, transaction -> sum + transaction.amount }
     val monthNet = monthIncome - monthExpenses
 
     val categoryById = remember(state.categories) { state.categories.associateBy { it.id } }
     val slices = remember(monthTransactions, categoryById) {
-        val grouped = monthTransactions.filter { it.transactionType == TransactionType.EXPENSE }
+        val grouped = monthTransactions.filter { it.transactionType in setOf(TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF) }
             .groupBy { it.categoryId ?: "uncategorized" }
         grouped.entries.mapIndexed { index, (id, entries) ->
             val category = categoryById[id]

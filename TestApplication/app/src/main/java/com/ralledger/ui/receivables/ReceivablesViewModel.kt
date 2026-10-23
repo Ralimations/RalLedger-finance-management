@@ -38,7 +38,7 @@ class ReceivablesViewModel(
         incomeCategoryId: String?,
         description: String
     ) {
-        runOperation { repository.createReceivable(clientName, amount, dueDate, incomeCategoryId, description) }
+        runOperation("Receivable created.") { repository.createReceivable(clientName, amount, dueDate, incomeCategoryId, description) }
     }
 
     fun collectReceivable(
@@ -47,18 +47,46 @@ class ReceivablesViewModel(
         amount: Money,
         notes: String
     ) {
-        runOperation { repository.collectReceivable(receivableId, destinationAccountId, amount, notes) }
+        runOperation("Payment recorded.") { repository.collectReceivable(receivableId, destinationAccountId, amount, notes) }
+    }
+
+    fun updateReceivable(id: String, clientName: String, dueDate: Long, description: String) {
+        runOperation("Receivable details updated.") {
+            repository.updateReceivableDetails(id, clientName, dueDate, description)
+        }
+    }
+
+    fun cancelReceivable(receivable: Receivable) {
+        runOperation("Receivable cancelled with a reversing journal entry.") {
+            repository.cancelReceivable(receivable.id)
+        }
+    }
+
+    fun writeOffReceivable(id: String, amount: Money, expenseCategoryId: String, notes: String) {
+        runOperation("Write-off recorded.") {
+            repository.writeOffReceivable(id, amount, expenseCategoryId, notes)
+        }
+    }
+
+    fun reverseEntry(journalEntryId: String) {
+        runOperation("Reversal recorded.") { repository.reverseTransaction(journalEntryId) }
+    }
+
+    fun setArchived(receivable: Receivable, isArchived: Boolean) {
+        runOperation(if (isArchived) "Receivable archived." else "Receivable restored.") {
+            repository.setReceivableArchived(receivable.id, isArchived)
+        }
     }
 
     fun clearOperationMessage() {
         _operationMessage.value = null
     }
 
-    private fun runOperation(action: suspend () -> Unit) {
+    private fun runOperation(successMessage: String, action: suspend () -> Unit) {
         viewModelScope.launch {
             try {
                 action()
-                _operationMessage.value = null
+                _operationMessage.value = successMessage
             } catch (error: Exception) {
                 _operationMessage.value = error.localizedMessage ?: "The receivable could not be saved."
             }

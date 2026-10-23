@@ -21,6 +21,7 @@ import com.ralledger.data.local.entity.JournalEntryEntity
 import com.ralledger.data.local.entity.JournalLineEntity
 import com.ralledger.data.local.entity.ReceivableEntity
 import com.ralledger.data.local.entity.ReceivablePaymentEntity
+import com.ralledger.data.local.entity.ReceivableWriteOffEntity
 import com.ralledger.data.local.entity.ReconciliationEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.AccountCategory
@@ -39,10 +40,11 @@ import kotlinx.coroutines.launch
         CategoryEntity::class,
         ReceivableEntity::class,
         ReceivablePaymentEntity::class,
+        ReceivableWriteOffEntity::class,
         SubscriptionEntity::class,
         ReconciliationEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -56,7 +58,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun reconciliationDao(): ReconciliationDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 6
+        const val CURRENT_SCHEMA_VERSION = 7
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -109,6 +111,31 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE receivables ADD COLUMN isArchived INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS receivable_write_offs (
+                        id TEXT NOT NULL,
+                        receivableId TEXT NOT NULL,
+                        journalEntryId TEXT NOT NULL,
+                        amountCentavos INTEGER NOT NULL,
+                        expenseCategoryId TEXT NOT NULL,
+                        date INTEGER NOT NULL,
+                        notes TEXT NOT NULL,
+                        reversedAt INTEGER,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(receivableId) REFERENCES receivables(id)
+                            ON UPDATE NO ACTION ON DELETE CASCADE,
+                        FOREIGN KEY(journalEntryId) REFERENCES journal_entries(id)
+                            ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_receivable_write_offs_receivableId ON receivable_write_offs(receivableId)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_receivable_write_offs_journalEntryId ON receivable_write_offs(journalEntryId)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
 
@@ -119,7 +146,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

@@ -411,7 +411,7 @@ private fun TransactionRow(
                 Text(
                     text = "${when (transaction.transactionType) {
                         TransactionType.INCOME, TransactionType.RECEIVABLE_COLLECTION -> "+"
-                        TransactionType.EXPENSE, TransactionType.LOAN_REPAYMENT -> "−"
+                        TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.LOAN_REPAYMENT -> "−"
                         TransactionType.OPENING_BALANCE, TransactionType.REVERSAL, TransactionType.TRANSFER,
                         TransactionType.BALANCE_ADJUSTMENT, TransactionType.RECEIVABLE_RECOGNITION,
                         TransactionType.LOAN_DISBURSEMENT -> ""

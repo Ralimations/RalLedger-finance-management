@@ -202,6 +202,7 @@ fun SettingsScreen(
                     Text("${preview.budgets} budgets")
                     Text("${preview.journalEntries} journal entries · ${preview.journalLines} journal lines")
                     Text("${preview.receivables} receivables · ${preview.payments} payments")
+                    Text("${preview.writeOffs} receivable write-offs")
                     Text("${preview.subscriptions} subscriptions · ${preview.reconciliations} reconciliations")
                     Text(
                         "Restoring replaces all current RalLedger records on this device.",

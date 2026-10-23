@@ -39,7 +39,7 @@ import kotlinx.coroutines.launch
         SubscriptionEntity::class,
         ReconciliationEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -52,7 +52,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun reconciliationDao(): ReconciliationDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 2
+        const val CURRENT_SCHEMA_VERSION = 3
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -62,6 +62,12 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_journal_entries_reversesEntryId ON journal_entries(reversesEntryId)")
                 db.execSQL("ALTER TABLE receivable_payments ADD COLUMN reversedAt INTEGER")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_receivable_payments_journalEntryId ON receivable_payments(journalEntryId)")
+            }
+        }
+
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE accounts ADD COLUMN description TEXT NOT NULL DEFAULT ''")
             }
         }
 
@@ -75,7 +81,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

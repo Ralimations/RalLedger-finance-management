@@ -13,5 +13,6 @@ data class Account(
     val createdAt: Long = System.currentTimeMillis(),
     val isArchived: Boolean = false,
     val includeInDashboardTotals: Boolean = true,
-    val lastReconciledAt: Long? = null
+    val lastReconciledAt: Long? = null,
+    val description: String = ""
 )

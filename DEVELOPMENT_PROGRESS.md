@@ -25,11 +25,18 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Simplified the dashboard header to a single `Overview` label and removed the redundant tagline and supporting sentence.
 - Removed the marked extra dashboard section heading/captions and the Insights tagline while keeping the money summaries.
 - Insights now total only income and expense activity for the selected month, omit reversed entries from the original period, and show category shares and normalized subscription commitments.
+- Expanded account management into a complete safe lifecycle slice: search, optional archived-account view, edit of name/institution/description/icon/color/dashboard inclusion, per-account transaction history, archive/restore, and confirmed delete-if-unused.
+- Account edits now update metadata only; account type, currency, opening balance, ledger balance, creation time and reconciliation metadata are protected from accidental edits.
+- Permanent account deletion checks journal entries/lines, reconciliation records, receivable-payment destinations, and subscription links atomically. Used accounts remain available for archive; system accounts are protected.
+- Added Room schema migration 2→3 for account descriptions and included descriptions in encrypted backups. Schema-2 encrypted backups remain readable with an empty description.
+- Added `FEATURE_CRUD_MATRIX.md` to distinguish working lifecycle controls from create-only or repository-only functionality, and documented the reported MyMoney permission without assuming rights to specific assets or source code.
+- Added emulator instrumentation for account metadata persistence, unchanged ledger/journal values, archive/restore, safe deletion, and refusal to delete an account with journal history.
+- Fixed a centavo-unit mismatch in the existing concurrency/backup instrumentation assertion; the test had searched for 400,000 centavos after posting 4,000.
 
 ## Verification
 
 - Environment: JDK 25.0.4.1 Temurin was downloaded from the official Adoptium API, SHA-256 checked against its official metadata, and placed in ignored `.ralledger-local/jdk25` so no project Java/Gradle versions needed changing. The installed SDK already includes API 35/37, build-tools 36.0.0, platform-tools, emulator, and an API 37 x86_64 system image.
-- Passed: `:app:assembleDebug`
+- Passed: `:app:assembleDebug` after the account CRUD and schema changes.
 - Passed after the visual redesign: fresh `:app:assembleDebug --rerun-tasks` (all 38 tasks executed; no test tasks run in this UI pass).
 - Passed after the FAB overlap fix: `:app:assembleDebug` (incremental debug rebuild).
 - Passed after trimming dashboard copy: `:app:assembleDebug`.
@@ -37,16 +44,19 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Passed: `:app:testDebugUnitTest` — 14 tests, 0 failures, 0 errors.
 - Passed: `:app:lintDebug` — task succeeds; lint reports 20 guidance findings, mostly available SDK/dependency updates and target API guidance.
 - Passed: `:app:compileDebugAndroidTestKotlin` — the new database/backup instrumentation test source compiles.
-- Not run: `connectedDebugAndroidTest`. `adb devices -l` returned no devices, and `emulator -list-avds` returned no configured AVD. Do not treat database/backup instrumentation as runtime verified.
+- Passed: `:app:compileDebugAndroidTestKotlin` including the new account lifecycle coverage.
+- Passed: `:app:connectedDebugAndroidTest` on the connected `Medium_Phone(AVD) - 17` emulator — 4 tests, 0 failures, including schema-2→3 migration, account lifecycle, backup round-trip with account description, and receivable reversal/concurrency.
+- Passed: schema-2 fixture migration preserves the existing account and opening balance while adding a blank description. Schema-1→2 migration is still not covered by an upgrade fixture.
+- Android Studio emulator visual workflow checks remain outstanding. One offline emulator was skipped; `emulator-5554` ran the tests.
 - Debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`.
-- Gradle verification used the locally cached Gradle 9.6.0 distribution directly. The wrapper attempted to reach `services.gradle.org` and network access was blocked in the non-escalated run; the project wrapper and Gradle configuration were not changed.
+- Gradle verification used the cached Gradle 9.6.0 distribution copied into ignored `.ralledger-local` plus the local JDK 25. Repository access was needed to resolve Foojay and Android plugins. Project settings/wrapper versions were restored unchanged after diagnosis.
 
 ## Module readiness
 
 | Module | Status | Limits |
 |---|---|---|
 | Money input and accounting engine | Implemented and unit-tested | Android screens still need hands-on validation |
-| Accounts | Basic create, opening balance, archive, and ledger balances implemented | Edit, custom currency/icon/color, account history, and account-detail reconciliation are incomplete |
+| Accounts | Create, opening balance, metadata edit, icon/color, dashboard inclusion, search, transaction history, archive/restore, guarded unused delete, encrypted backup; repository lifecycle and schema-2→3 migration tests pass | Currency/type/opening balance intentionally immutable after creation; full screen interactions still need manual QA |
 | Transactions | Income, expense, transfers/fees, search, and reversals implemented | Edit, duplicate, date/account/category filters, attachments/tags, refunds, and loan UI are incomplete |
 | Receivables | Recognition, partial collection, due-date status, history records, and reversal logic implemented | Cancellation, write-off, editable due dates, and full payment-history UI are incomplete; instrumentation has not run |
 | Reconciliation | Atomic adjustments for asset/liability accounts implemented and unit-tested | Screen accessibility is limited; unmatched-transaction workflow is incomplete |
@@ -66,7 +76,8 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 - [ ] Open the project with JDK 25 and perform a clean debug build.
 - [ ] Install and launch the debug APK on an emulator/device; confirm current user data remains intact after migration.
-- [ ] Create an asset and liability account with opening balances; check balances and income reports.
+- [ ] Create an asset and liability account with opening balances; edit metadata and verify type/opening balances and journal history remain unchanged.
+- [ ] Search accounts, inspect transaction history, archive/restore an account, delete an unused account, and confirm a used account cannot be deleted.
 - [ ] Record an income, expense, transfer with fee, and reversal; inspect ledger and month totals.
 - [ ] Create a receivable, collect partially, attempt overcollection, reverse a collection, and inspect outstanding/payment history.
 - [ ] Reconcile an asset and a liability with both positive and negative differences.
@@ -79,9 +90,9 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Next development steps
 
-1. Execute the instrumentation suite on an Android Studio emulator and verify schema migration with a v1 database.
-2. Add idempotency tokens for user-submitted financial actions and expand repository-level failure/concurrency tests.
-3. Complete account/category editing, budget CRUD, payables/debts, savings goals, expected income, and time deposits.
-4. Implement transaction filters/editing, CSV import/export, richer reports, and complete statistics.
-5. Continue the remaining screen polish and implement real home-screen widgets after the relevant data actions and widget scope are defined.
-6. Re-run build, unit tests, lint, and instrumentation after each milestone; update this file before continuing.
+1. Complete category and income-source lifecycle management with archive/delete safety and history-preserving reassignment.
+2. Add transaction date/category/description correction, duplication and filters; preserve finalized journals through reversal-based amount/account corrections.
+3. Verify Room migrations 1→2→3 against a real schema-v1 fixture, then continue budgets, payables/debts, savings goals, expected income, and time deposits.
+4. Implement CSV import/export, expanded reports/statistics, and complete backup coverage as new modules are added.
+5. Finish subscriptions lifecycle/UI safeguards, optional app lock, privacy controls and home-screen widgets after the underlying data/actions exist.
+6. Continue emulator workflow checks and re-run build, unit tests, lint and instrumentation after each milestone; update this file before continuing.

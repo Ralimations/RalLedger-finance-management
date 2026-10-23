@@ -117,12 +117,64 @@ class RalLedgerRepository(
         }
     }
 
-    suspend fun updateAccount(account: Account) {
-        accountDao.updateAccount(AccountEntity.fromDomainModel(account))
+    suspend fun updateAccountMetadata(
+        id: String,
+        name: String,
+        institution: String,
+        description: String,
+        iconName: String,
+        colorHex: String,
+        includeInDashboardTotals: Boolean
+    ) {
+        require(name.isNotBlank()) { "Account name is required" }
+        require(colorHex.matches(Regex("^#[0-9A-Fa-f]{6}$"))) { "Choose a valid account color" }
+        database.withTransaction {
+            val current = accountDao.getAccountById(id)
+                ?: throw IllegalArgumentException("This account no longer exists")
+            require(!isSystemAccount(id)) { "System accounts cannot be edited" }
+            accountDao.updateAccount(
+                current.copy(
+                    name = name.trim(),
+                    institution = institution.trim(),
+                    description = description.trim(),
+                    iconName = iconName,
+                    colorHex = colorHex.uppercase(),
+                    includeInDashboardTotals = includeInDashboardTotals
+                )
+            )
+        }
     }
 
     suspend fun setAccountArchived(id: String, isArchived: Boolean) {
-        accountDao.setArchived(id, isArchived)
+        database.withTransaction {
+            require(!isSystemAccount(id)) { "System accounts cannot be changed" }
+            require(accountDao.getAccountById(id) != null) { "This account no longer exists" }
+            accountDao.setArchived(id, isArchived)
+        }
+    }
+
+    suspend fun deleteUnusedAccount(id: String) {
+        database.withTransaction {
+            require(!isSystemAccount(id)) { "System accounts cannot be deleted" }
+            val account = accountDao.getAccountById(id)
+                ?: throw IllegalArgumentException("This account no longer exists")
+            val referenceCount = journalDao.countAccountReferences(id) +
+                reconciliationDao.countAccountReferences(id) +
+                receivableDao.countPaymentsForAccount(id) +
+                subscriptionDao.countAccountReferences(id)
+            require(referenceCount == 0L && account.openingBalanceCentavos == 0L) {
+                "This account has financial history or linked records and cannot be permanently deleted. Archive it to keep its history safe."
+            }
+            accountDao.deleteAccount(id)
+        }
+    }
+
+    private fun isSystemAccount(id: String): Boolean =
+        id == RalLedgerDatabase.SYSTEM_OPENING_EQUITY_ACCOUNT_ID ||
+            id == RalLedgerDatabase.SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID
+
+    fun getAccountTransactionsFlow(accountId: String): Flow<List<Transaction>> = transactionsFlow.map { transactions ->
+        transactions.filter { it.accountId == accountId || it.destinationAccountId == accountId }
     }
 
     // Categories

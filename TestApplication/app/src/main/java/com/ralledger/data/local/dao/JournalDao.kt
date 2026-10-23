@@ -68,6 +68,13 @@ interface JournalDao {
     """)
     suspend fun getBalanceAggregateForAccount(accountId: String): List<AccountBalanceAggregate>
 
+    @Query("""
+        SELECT
+            (SELECT COUNT(*) FROM journal_entries WHERE primaryAccountId = :accountId OR destinationAccountId = :accountId) +
+            (SELECT COUNT(*) FROM journal_lines WHERE accountId = :accountId)
+    """)
+    suspend fun countAccountReferences(accountId: String): Long
+
     @Query("DELETE FROM journal_entries WHERE id = :entryId")
     suspend fun deleteJournalEntry(entryId: String)
 }

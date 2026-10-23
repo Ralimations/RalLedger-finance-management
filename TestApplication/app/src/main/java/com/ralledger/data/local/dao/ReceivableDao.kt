@@ -23,6 +23,9 @@ interface ReceivableDao {
     @Query("SELECT * FROM receivable_payments ORDER BY id ASC")
     suspend fun getAllPayments(): List<ReceivablePaymentEntity>
 
+    @Query("SELECT COUNT(*) FROM receivable_payments WHERE destinationAccountId = :accountId")
+    suspend fun countPaymentsForAccount(accountId: String): Long
+
     @Query("SELECT * FROM receivable_payments WHERE receivableId = :receivableId ORDER BY paymentDate DESC")
     suspend fun getPaymentsForReceivable(receivableId: String): List<ReceivablePaymentEntity>
 

@@ -15,6 +15,9 @@ interface ReconciliationDao {
     @Query("SELECT * FROM reconciliations ORDER BY id ASC")
     suspend fun getAllReconciliations(): List<ReconciliationEntity>
 
+    @Query("SELECT COUNT(*) FROM reconciliations WHERE accountId = :accountId")
+    suspend fun countAccountReferences(accountId: String): Long
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertReconciliation(reconciliation: ReconciliationEntity)
 

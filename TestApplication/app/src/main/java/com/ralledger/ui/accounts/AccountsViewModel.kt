@@ -7,6 +7,7 @@ import com.ralledger.data.repository.RalLedgerRepository
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.Money
+import com.ralledger.domain.model.Transaction
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,13 +30,22 @@ class AccountsViewModel(
             initialValue = emptyList()
         )
 
+    val transactions: StateFlow<List<Transaction>> = repository.transactionsFlow
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
     fun createAccount(
         name: String,
         institution: String,
         accountType: AccountType,
         openingBalance: Money,
         iconName: String,
-        colorHex: String
+        colorHex: String,
+        description: String,
+        includeInDashboardTotals: Boolean
     ) {
         viewModelScope.launch {
             try {
@@ -46,12 +56,35 @@ class AccountsViewModel(
                     accountType = accountType,
                     openingBalance = openingBalance,
                     iconName = iconName,
-                    colorHex = colorHex
+                    colorHex = colorHex,
+                    description = description,
+                    includeInDashboardTotals = includeInDashboardTotals
                 )
                 repository.createAccount(account)
                 _operationMessage.value = "Account created."
             } catch (error: Exception) {
                 _operationMessage.value = error.localizedMessage ?: "Account could not be created."
+            }
+        }
+    }
+
+    fun updateAccountMetadata(
+        id: String,
+        name: String,
+        institution: String,
+        description: String,
+        iconName: String,
+        colorHex: String,
+        includeInDashboardTotals: Boolean
+    ) {
+        viewModelScope.launch {
+            try {
+                repository.updateAccountMetadata(
+                    id, name, institution, description, iconName, colorHex, includeInDashboardTotals
+                )
+                _operationMessage.value = "Account updated."
+            } catch (error: Exception) {
+                _operationMessage.value = error.localizedMessage ?: "Account could not be updated."
             }
         }
     }
@@ -63,6 +96,17 @@ class AccountsViewModel(
                 _operationMessage.value = if (isArchived) "Account archived." else "Account restored."
             } catch (error: Exception) {
                 _operationMessage.value = error.localizedMessage ?: "Account status could not be changed."
+            }
+        }
+    }
+
+    fun deleteUnusedAccount(id: String) {
+        viewModelScope.launch {
+            try {
+                repository.deleteUnusedAccount(id)
+                _operationMessage.value = "Account permanently deleted."
+            } catch (error: Exception) {
+                _operationMessage.value = error.localizedMessage ?: "Account could not be deleted."
             }
         }
     }

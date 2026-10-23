@@ -1,6 +1,7 @@
 package com.ralledger.data.local.entity
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.PrimaryKey
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.AccountType
@@ -19,7 +20,8 @@ data class AccountEntity(
     val createdAt: Long,
     val isArchived: Boolean,
     val includeInDashboardTotals: Boolean,
-    val lastReconciledAt: Long?
+    val lastReconciledAt: Long?,
+    @ColumnInfo(defaultValue = "''") val description: String = ""
 ) {
     fun toDomainModel(calculatedLedgerBalance: Money): Account {
         return Account(
@@ -35,7 +37,8 @@ data class AccountEntity(
             createdAt = createdAt,
             isArchived = isArchived,
             includeInDashboardTotals = includeInDashboardTotals,
-            lastReconciledAt = lastReconciledAt
+            lastReconciledAt = lastReconciledAt,
+            description = description
         )
     }
 
@@ -53,7 +56,8 @@ data class AccountEntity(
                 createdAt = account.createdAt,
                 isArchived = account.isArchived,
                 includeInDashboardTotals = account.includeInDashboardTotals,
-                lastReconciledAt = account.lastReconciledAt
+                lastReconciledAt = account.lastReconciledAt,
+                description = account.description
             )
         }
     }

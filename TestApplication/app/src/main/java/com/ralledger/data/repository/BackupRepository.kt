@@ -349,7 +349,8 @@ class BackupRepository(
             fun fromJson(json: JSONObject): BackupSnapshot {
                 require(json.getString("appName") == "RalLedger") { "Backup belongs to another application" }
                 require(json.getInt("backupVersion") == BACKUP_VERSION) { "Unsupported backup version" }
-                require(json.getInt("schemaVersion") == RalLedgerDatabase.CURRENT_SCHEMA_VERSION) {
+                val schemaVersion = json.getInt("schemaVersion")
+                require(schemaVersion in 2..RalLedgerDatabase.CURRENT_SCHEMA_VERSION) {
                     "Backup database schema is not supported by this release"
                 }
                 return BackupSnapshot(
@@ -392,13 +393,15 @@ private fun AccountEntity.toJson() = JSONObject().apply {
     put("currency", currency); put("openingBalanceCentavos", openingBalanceCentavos); put("iconName", iconName)
     put("colorHex", colorHex); put("createdAt", createdAt); put("isArchived", isArchived)
     put("includeInDashboardTotals", includeInDashboardTotals); putNullable("lastReconciledAt", lastReconciledAt)
+    put("description", description)
 }
 private fun JSONObject.toAccount() = AccountEntity(
     id = getString("id"), name = getString("name"), institution = getString("institution"),
     accountType = getString("accountType"), currency = getString("currency"),
     openingBalanceCentavos = getLong("openingBalanceCentavos"), iconName = getString("iconName"),
     colorHex = getString("colorHex"), createdAt = getLong("createdAt"), isArchived = getBoolean("isArchived"),
-    includeInDashboardTotals = getBoolean("includeInDashboardTotals"), lastReconciledAt = longOrNull("lastReconciledAt")
+    includeInDashboardTotals = getBoolean("includeInDashboardTotals"), lastReconciledAt = longOrNull("lastReconciledAt"),
+    description = optString("description", "")
 )
 
 private fun CategoryEntity.toJson() = JSONObject().apply {

@@ -37,6 +37,9 @@ interface AccountDao {
     @Query("UPDATE accounts SET isArchived = :isArchived WHERE id = :id")
     suspend fun setArchived(id: String, isArchived: Boolean)
 
+    @Query("DELETE FROM accounts WHERE id = :id")
+    suspend fun deleteAccount(id: String)
+
     @Query("UPDATE accounts SET lastReconciledAt = :timestamp WHERE id = :id")
     suspend fun updateLastReconciledAt(id: String, timestamp: Long)
 }

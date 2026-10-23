@@ -20,6 +20,9 @@ interface SubscriptionDao {
     @Query("SELECT * FROM subscriptions ORDER BY id ASC")
     suspend fun getAllSubscriptions(): List<SubscriptionEntity>
 
+    @Query("SELECT COUNT(*) FROM subscriptions WHERE assignedAccountId = :accountId")
+    suspend fun countAccountReferences(accountId: String): Long
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertSubscription(subscription: SubscriptionEntity)
 

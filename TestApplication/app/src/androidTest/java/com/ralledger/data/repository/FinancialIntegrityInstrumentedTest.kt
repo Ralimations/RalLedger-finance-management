@@ -43,7 +43,8 @@ class FinancialIntegrityInstrumentedTest {
                     createdAt = 1L,
                     isArchived = false,
                     includeInDashboardTotals = true,
-                    lastReconciledAt = null
+                    lastReconciledAt = null,
+                    description = "Synthetic account backup metadata"
                 )
             )
             source.categoryDao().insertCategories(
@@ -73,7 +74,7 @@ class FinancialIntegrityInstrumentedTest {
             assertEquals("Only one concurrent collection may fit the remaining balance", 1, concurrentResults.count { it.isSuccess })
             assertEquals(1, concurrentResults.count { it.isFailure })
 
-            val concurrentPayment = source.receivableDao().getAllPayments().single { it.amountCentavos == 400_000L }
+            val concurrentPayment = source.receivableDao().getAllPayments().single { it.amountCentavos == 4_000L }
             repository.reverseTransaction(concurrentPayment.journalEntryId)
 
             encryptedBackup = BackupRepository(source).createEncryptedBackup(password)

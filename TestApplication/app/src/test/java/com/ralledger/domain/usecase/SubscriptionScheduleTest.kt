@@ -8,6 +8,20 @@ import java.util.Calendar
 
 class SubscriptionScheduleTest {
     @Test
+    fun overdueDailyScheduleSkipsPaidOccurrences() {
+        val scheduled = timestamp(2026, Calendar.JANUARY, 1)
+        val payment = timestamp(2026, Calendar.JANUARY, 4) + 60 * 60 * 1000L
+
+        val nextDate = SubscriptionSchedule.nextBillingDateAfterPayment(
+            scheduled,
+            payment,
+            BillingFrequency.DAILY
+        )
+
+        assertEquals(timestamp(2026, Calendar.JANUARY, 5), nextDate)
+    }
+
+    @Test
     fun overdueMonthlyScheduleAdvancesFromOriginalMonthEndWithoutDateDrift() {
         val scheduled = timestamp(2026, Calendar.JANUARY, 31)
         val payment = timestamp(2026, Calendar.MARCH, 1)

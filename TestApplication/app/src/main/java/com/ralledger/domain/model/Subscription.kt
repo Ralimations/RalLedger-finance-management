@@ -4,6 +4,7 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 
 enum class BillingFrequency(val displayName: String) {
+    DAILY("Daily"),
     WEEKLY("Weekly"),
     MONTHLY("Monthly"),
     QUARTERLY("Quarterly"),
@@ -32,11 +33,15 @@ data class Subscription(
     val isArchived: Boolean = false,
     val payments: List<SubscriptionPayment> = emptyList()
 ) {
-    /** Average monthly commitment using a 52-week year and exact centavo rounding. */
+    /** Average monthly commitment using 365 days or 52 weeks per year and centavo rounding. */
     fun normalizedMonthlyCost(): Money {
-        val multiplier = if (billingFrequency == BillingFrequency.WEEKLY) 52L else 1L
+        val multiplier = when (billingFrequency) {
+            BillingFrequency.DAILY -> 365L
+            BillingFrequency.WEEKLY -> 52L
+            else -> 1L
+        }
         val divisor = when (billingFrequency) {
-            BillingFrequency.WEEKLY, BillingFrequency.ANNUALLY -> 12L
+            BillingFrequency.DAILY, BillingFrequency.WEEKLY, BillingFrequency.ANNUALLY -> 12L
             BillingFrequency.QUARTERLY -> 3L
             BillingFrequency.MONTHLY -> 1L
         }

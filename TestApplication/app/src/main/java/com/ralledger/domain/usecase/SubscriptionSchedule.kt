@@ -19,6 +19,7 @@ object SubscriptionSchedule {
             // permanently to the 28th (or 29th).
             val calendar = Calendar.getInstance().apply { timeInMillis = scheduledDate }
             when (frequency) {
+                BillingFrequency.DAILY -> calendar.add(Calendar.DAY_OF_YEAR, periods)
                 BillingFrequency.WEEKLY -> calendar.add(Calendar.DAY_OF_YEAR, Math.multiplyExact(7, periods))
                 BillingFrequency.MONTHLY -> calendar.add(Calendar.MONTH, periods)
                 BillingFrequency.QUARTERLY -> calendar.add(Calendar.MONTH, Math.multiplyExact(3, periods))

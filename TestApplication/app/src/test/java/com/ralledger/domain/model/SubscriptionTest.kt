@@ -15,6 +15,7 @@ class SubscriptionTest {
             nextBillingDate = 0L
         )
 
+        assertEquals(Money(304167L), subscription(10000L, BillingFrequency.DAILY).normalizedMonthlyCost())
         assertEquals(Money(43333L), subscription(10000L, BillingFrequency.WEEKLY).normalizedMonthlyCost())
         assertEquals(Money(10000L), subscription(10000L, BillingFrequency.MONTHLY).normalizedMonthlyCost())
         assertEquals(Money(3333L), subscription(10000L, BillingFrequency.QUARTERLY).normalizedMonthlyCost())

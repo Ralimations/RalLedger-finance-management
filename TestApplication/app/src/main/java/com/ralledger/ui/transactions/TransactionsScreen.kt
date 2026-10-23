@@ -367,6 +367,7 @@ private fun TransactionRow(
     val dateFormat = remember { SimpleDateFormat("MMM dd, yyyy HH:mm", Locale.getDefault()) }
     val isPositive = transaction.transactionType == TransactionType.INCOME ||
         transaction.transactionType == TransactionType.RECEIVABLE_COLLECTION ||
+        transaction.transactionType == TransactionType.LOAN_DISBURSEMENT ||
         transaction.transactionType == TransactionType.OPENING_BALANCE
     val amountColor = when {
         isPositive -> MaterialTheme.colorScheme.secondary
@@ -410,11 +411,11 @@ private fun TransactionRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "${when (transaction.transactionType) {
-                        TransactionType.INCOME, TransactionType.RECEIVABLE_COLLECTION -> "+"
-                        TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.LOAN_REPAYMENT -> "−"
+                        TransactionType.INCOME, TransactionType.RECEIVABLE_COLLECTION, TransactionType.LOAN_DISBURSEMENT -> "+"
+                        TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> "−"
                         TransactionType.OPENING_BALANCE, TransactionType.REVERSAL, TransactionType.TRANSFER,
                         TransactionType.BALANCE_ADJUSTMENT, TransactionType.RECEIVABLE_RECOGNITION,
-                        TransactionType.LOAN_DISBURSEMENT -> ""
+                        TransactionType.PAYABLE_RECOGNITION -> ""
                     }}${transaction.amount.format()}",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = amountColor

@@ -11,6 +11,7 @@ import com.ralledger.data.local.dao.AccountDao
 import com.ralledger.data.local.dao.BudgetDao
 import com.ralledger.data.local.dao.CategoryDao
 import com.ralledger.data.local.dao.ExpectedIncomeDao
+import com.ralledger.data.local.dao.DebtDao
 import com.ralledger.data.local.dao.JournalDao
 import com.ralledger.data.local.dao.ReceivableDao
 import com.ralledger.data.local.dao.ReconciliationDao
@@ -19,6 +20,8 @@ import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
 import com.ralledger.data.local.entity.ExpectedIncomeEntity
+import com.ralledger.data.local.entity.DebtEntity
+import com.ralledger.data.local.entity.DebtPaymentEntity
 import com.ralledger.data.local.entity.JournalEntryEntity
 import com.ralledger.data.local.entity.JournalLineEntity
 import com.ralledger.data.local.entity.ReceivableEntity
@@ -44,10 +47,12 @@ import kotlinx.coroutines.launch
         ReceivablePaymentEntity::class,
         ReceivableWriteOffEntity::class,
         ExpectedIncomeEntity::class,
+        DebtEntity::class,
+        DebtPaymentEntity::class,
         SubscriptionEntity::class,
         ReconciliationEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -57,12 +62,13 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun journalDao(): JournalDao
     abstract fun categoryDao(): CategoryDao
     abstract fun expectedIncomeDao(): ExpectedIncomeDao
+    abstract fun debtDao(): DebtDao
     abstract fun receivableDao(): ReceivableDao
     abstract fun subscriptionDao(): SubscriptionDao
     abstract fun reconciliationDao(): ReconciliationDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 8
+        const val CURRENT_SCHEMA_VERSION = 9
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -167,6 +173,60 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS debts (
+                        id TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        counterparty TEXT NOT NULL,
+                        kind TEXT NOT NULL,
+                        originalAmountCentavos INTEGER NOT NULL,
+                        outstandingAmountCentavos INTEGER NOT NULL,
+                        dueDate INTEGER NOT NULL,
+                        categoryId TEXT,
+                        fundingAccountId TEXT,
+                        recognitionJournalEntryId TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        isArchived INTEGER NOT NULL DEFAULT 0,
+                        createdAt INTEGER NOT NULL,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(recognitionJournalEntryId) REFERENCES journal_entries(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(categoryId) REFERENCES categories(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(fundingAccountId) REFERENCES accounts(id) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_debts_recognitionJournalEntryId ON debts(recognitionJournalEntryId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_debts_categoryId ON debts(categoryId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_debts_fundingAccountId ON debts(fundingAccountId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_debts_dueDate ON debts(dueDate)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_debts_kind_status ON debts(kind, status)")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS debt_payments (
+                        id TEXT NOT NULL,
+                        debtId TEXT NOT NULL,
+                        journalEntryId TEXT NOT NULL,
+                        paymentAccountId TEXT NOT NULL,
+                        principalCentavos INTEGER NOT NULL,
+                        interestCentavos INTEGER NOT NULL,
+                        interestCategoryId TEXT,
+                        paymentDate INTEGER NOT NULL,
+                        notes TEXT NOT NULL,
+                        reversedAt INTEGER,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(debtId) REFERENCES debts(id) ON UPDATE NO ACTION ON DELETE CASCADE,
+                        FOREIGN KEY(journalEntryId) REFERENCES journal_entries(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(paymentAccountId) REFERENCES accounts(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(interestCategoryId) REFERENCES categories(id) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_debt_payments_debtId ON debt_payments(debtId)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_debt_payments_journalEntryId ON debt_payments(journalEntryId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_debt_payments_paymentAccountId ON debt_payments(paymentAccountId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_debt_payments_interestCategoryId ON debt_payments(interestCategoryId)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
 
@@ -177,7 +237,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

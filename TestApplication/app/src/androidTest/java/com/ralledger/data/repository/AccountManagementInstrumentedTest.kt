@@ -7,6 +7,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ralledger.data.local.RalLedgerDatabase
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.CategoryEntity
+import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
@@ -83,7 +84,7 @@ class AccountManagementInstrumentedTest {
         }
 
         val migrated = Room.databaseBuilder(context, RalLedgerDatabase::class.java, databaseName)
-            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8)
+            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9)
             .build()
         try {
             runBlocking {
@@ -121,7 +122,7 @@ class AccountManagementInstrumentedTest {
                 assertEquals("legacy_reconciliation", reconciliation.id)
                 assertEquals(-500L, reconciliation.differenceCentavos)
             }
-            assertEquals(8, migrated.openHelper.readableDatabase.version)
+            assertEquals(9, migrated.openHelper.readableDatabase.version)
         } finally {
             migrated.close()
             context.deleteDatabase(databaseName)
@@ -153,7 +154,7 @@ class AccountManagementInstrumentedTest {
         }
 
         val migrated = Room.databaseBuilder(context, RalLedgerDatabase::class.java, databaseName)
-            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8)
+            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9)
             .build()
         try {
             val account = kotlinx.coroutines.runBlocking { migrated.accountDao().getAccountById("legacy_account") }
@@ -163,7 +164,7 @@ class AccountManagementInstrumentedTest {
             val category = kotlinx.coroutines.runBlocking { migrated.categoryDao().getCategoryById("legacy_category") }
             assertEquals(null, category?.parentCategoryId)
             assertFalse(category?.isArchived ?: true)
-            assertEquals(8, migrated.openHelper.readableDatabase.version)
+            assertEquals(9, migrated.openHelper.readableDatabase.version)
         } finally {
             migrated.close()
             context.deleteDatabase(databaseName)
@@ -250,6 +251,53 @@ class AccountManagementInstrumentedTest {
             repository.deleteUnusedAccount("account_unused")
             assertNull(database.accountDao().getAccountById("account_unused"))
             assertEquals(1, database.journalDao().getAllJournalEntries().size)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun accountReconciliation_correctsAssetAndLiabilityBalancesWithoutRewritingOpeningEntries() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, RalLedgerDatabase::class.java).build()
+        try {
+            val repository = RalLedgerRepository(database)
+            val scenarios = listOf(
+                Triple("asset_increase", AccountType.E_WALLET, Money(13_000L)),
+                Triple("asset_decrease", AccountType.TRADITIONAL_BANK, Money(8_000L)),
+                Triple("liability_increase", AccountType.LIABILITY_ACCOUNT, Money(13_000L)),
+                Triple("liability_decrease", AccountType.ACCOUNTS_PAYABLE, Money(8_000L))
+            )
+            scenarios.forEach { (id, type, actualBalance) ->
+                repository.createAccount(
+                    Account(
+                        id = id,
+                        name = id,
+                        accountType = type,
+                        openingBalance = Money(10_000L)
+                    )
+                )
+            }
+            val originalOpeningEntries = database.journalDao().getAllJournalEntries().toList()
+            assertEquals(4, originalOpeningEntries.size)
+
+            scenarios.forEach { (id, _, actualBalance) ->
+                repository.reconcileAccount(id, actualBalance, "Statement correction")
+                assertEquals(actualBalance, repository.getAccountById(id)!!.currentLedgerBalance)
+            }
+
+            val entriesAfterAdjustments = database.journalDao().getAllJournalEntries()
+            assertEquals(8, entriesAfterAdjustments.size)
+            assertTrue(originalOpeningEntries.all { original -> entriesAfterAdjustments.contains(original) })
+            val reconciliations = database.reconciliationDao().getAllReconciliations()
+            assertEquals(4, reconciliations.size)
+            assertEquals(setOf(3_000L, -2_000L), reconciliations
+                .filter { it.accountId.startsWith("asset_") }
+                .map { it.differenceCentavos }.toSet())
+            assertEquals(setOf(3_000L, -2_000L), reconciliations
+                .filter { it.accountId.startsWith("liability_") || it.accountId == "liability_decrease" }
+                .map { it.differenceCentavos }.toSet())
+            assertTrue(reconciliations.all { it.journalEntryId != null })
         } finally {
             database.close()
         }

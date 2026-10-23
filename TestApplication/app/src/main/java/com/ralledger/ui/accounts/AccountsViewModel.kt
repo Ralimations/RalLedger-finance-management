@@ -111,6 +111,17 @@ class AccountsViewModel(
         }
     }
 
+    fun reconcileAccount(id: String, actualBalance: Money, reason: String) {
+        viewModelScope.launch {
+            try {
+                repository.reconcileAccount(id, actualBalance, reason)
+                _operationMessage.value = "Account balance reconciled. The adjustment is recorded in the account history."
+            } catch (error: Exception) {
+                _operationMessage.value = error.localizedMessage ?: "Account balance could not be reconciled."
+            }
+        }
+    }
+
     fun clearOperationMessage() {
         _operationMessage.value = null
     }

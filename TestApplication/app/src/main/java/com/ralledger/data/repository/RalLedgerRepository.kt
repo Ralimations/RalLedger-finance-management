@@ -6,6 +6,9 @@ import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
 import com.ralledger.data.local.entity.ExpectedIncomeEntity
+import com.ralledger.data.local.entity.DebtEntity
+import com.ralledger.data.local.entity.DebtPaymentEntity
+import com.ralledger.data.local.entity.toDomainModel
 import com.ralledger.data.local.entity.JournalEntryEntity
 import com.ralledger.data.local.entity.JournalLineEntity
 import com.ralledger.data.local.entity.ReceivableEntity
@@ -20,6 +23,9 @@ import com.ralledger.domain.model.Budget
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.DashboardSummary
+import com.ralledger.domain.model.Debt
+import com.ralledger.domain.model.DebtKind
+import com.ralledger.domain.model.DebtStatus
 import com.ralledger.domain.model.ExpectedIncome
 import com.ralledger.domain.model.ExpectedIncomeStatus
 import com.ralledger.domain.model.JournalEntry
@@ -51,6 +57,7 @@ class RalLedgerRepository(
     private val journalDao = database.journalDao()
     private val categoryDao = database.categoryDao()
     private val expectedIncomeDao = database.expectedIncomeDao()
+    private val debtDao = database.debtDao()
     private val receivableDao = database.receivableDao()
     private val subscriptionDao = database.subscriptionDao()
     private val reconciliationDao = database.reconciliationDao()
@@ -172,6 +179,8 @@ class RalLedgerRepository(
             val referenceCount = journalDao.countAccountReferences(id) +
                 reconciliationDao.countAccountReferences(id) +
                 receivableDao.countPaymentsForAccount(id) +
+                debtDao.countPaymentsForAccount(id) +
+                debtDao.countDebtsForFundingAccount(id) +
                 subscriptionDao.countAccountReferences(id)
             require(referenceCount == 0L && account.openingBalanceCentavos == 0L) {
                 "This account has financial history or linked records and cannot be permanently deleted. Archive it to keep its history safe."
@@ -252,6 +261,7 @@ class RalLedgerRepository(
             requireEditableCategory(category)
             require(journalDao.countCategoryReferences(id) == 0L &&
                 budgetDao.countCategoryReferences(id) == 0L && expectedIncomeDao.countCategoryReferences(id) == 0L &&
+                debtDao.countDebtsForCategory(id) == 0L && debtDao.countPaymentsForCategory(id) == 0L &&
                 categoryDao.countChildren(id) == 0L
             ) {
                 "This category has transaction history, budgets, expected income, or subcategories. Archive it to preserve its history."
@@ -282,6 +292,8 @@ class RalLedgerRepository(
             journalDao.reassignCategoryLedgerLines(sourceId, targetId)
             budgetDao.reassignCategory(sourceId, targetId)
             expectedIncomeDao.reassignCategory(sourceId, targetId)
+            debtDao.reassignDebtCategory(sourceId, targetId)
+            debtDao.reassignPaymentCategory(sourceId, targetId)
             receivableDao.reassignIncomeCategory(sourceId, targetId)
             receivableDao.reassignWriteOffCategory(sourceId, targetId)
             categoryDao.moveChildren(sourceId, targetId)
@@ -332,23 +344,177 @@ class RalLedgerRepository(
         transactions.filter { it.categoryId == categoryId }
     }
 
+    suspend fun createBill(title: String, counterparty: String, amount: Money, dueDate: Long, expenseCategoryId: String): String {
+        validateDebtFields(title, amount, dueDate)
+        val id = UUID.randomUUID().toString()
+        database.withTransaction {
+            validateCategory(expenseCategoryId, CategoryType.EXPENSE)
+            val recordedAt = System.currentTimeMillis()
+            val entry = AccountingEngine.createPayableRecognitionEntry(id, expenseCategoryId, amount, title.trim(), recordedAt)
+            postJournalEntry(
+                entry, TransactionType.PAYABLE_RECOGNITION, amount, primaryAccountId = id,
+                categoryId = expenseCategoryId, counterparty = counterparty.trim(), notes = "Bill recorded"
+            )
+            debtDao.insertDebt(DebtEntity(
+                id = id, title = title.trim(), counterparty = counterparty.trim(), kind = DebtKind.BILL.name,
+                originalAmountCentavos = amount.centavos, outstandingAmountCentavos = amount.centavos,
+                dueDate = dueDate, categoryId = expenseCategoryId, fundingAccountId = null,
+                recognitionJournalEntryId = entry.id, status = DebtStatus.OPEN.name,
+                createdAt = recordedAt
+            ))
+        }
+        return id
+    }
+
+    suspend fun createLoan(title: String, lender: String, amount: Money, dueDate: Long, fundingAccountId: String): String {
+        validateDebtFields(title, amount, dueDate)
+        val id = UUID.randomUUID().toString()
+        database.withTransaction {
+            validateFinancialAccount(fundingAccountId)
+            val receivedAt = System.currentTimeMillis()
+            val entry = AccountingEngine.createLoanDisbursementEntry(fundingAccountId, id, amount, title.trim(), receivedAt)
+            postJournalEntry(
+                entry, TransactionType.LOAN_DISBURSEMENT, amount,
+                primaryAccountId = fundingAccountId, destinationAccountId = id,
+                counterparty = lender.trim(), notes = "Loan funds received"
+            )
+            debtDao.insertDebt(DebtEntity(
+                id = id, title = title.trim(), counterparty = lender.trim(), kind = DebtKind.LOAN.name,
+                originalAmountCentavos = amount.centavos, outstandingAmountCentavos = amount.centavos,
+                dueDate = dueDate, categoryId = null, fundingAccountId = fundingAccountId,
+                recognitionJournalEntryId = entry.id, status = DebtStatus.OPEN.name,
+                createdAt = receivedAt
+            ))
+        }
+        return id
+    }
+
+    suspend fun updateDebtMetadata(id: String, title: String, counterparty: String, dueDate: Long) {
+        require(title.isNotBlank()) { "Enter a name or description" }
+        require(dueDate > 0L) { "Choose a due date" }
+        database.withTransaction {
+            val debt = debtDao.getDebtById(id) ?: throw IllegalArgumentException("This bill or loan no longer exists")
+            require(!debt.isArchived && debt.status !in setOf(DebtStatus.CANCELLED.name, DebtStatus.PAID.name)) {
+                "Only an active bill or loan can be edited"
+            }
+            debtDao.updateDebt(debt.copy(title = title.trim(), counterparty = counterparty.trim(), dueDate = dueDate))
+        }
+    }
+
+    suspend fun recordDebtPayment(
+        debtId: String,
+        paymentAccountId: String,
+        principal: Money,
+        interest: Money,
+        interestCategoryId: String?,
+        paymentDate: Long,
+        notes: String = ""
+    ) {
+        require(!principal.isNegative && !interest.isNegative && (principal.isPositive || interest.isPositive)) {
+            "Enter principal or interest greater than zero"
+        }
+        require(paymentDate > 0L) { "Choose a payment date" }
+        database.withTransaction {
+            val debt = debtDao.getDebtById(debtId) ?: throw IllegalArgumentException("This bill or loan no longer exists")
+            require(!debt.isArchived && debt.status !in setOf(DebtStatus.PAID.name, DebtStatus.CANCELLED.name)) {
+                "Restore or reopen this bill or loan before recording a payment"
+            }
+            require(principal.centavos <= debt.outstandingAmountCentavos) { "Principal cannot exceed the outstanding balance" }
+            validateFinancialAccount(paymentAccountId)
+            if (interest.isPositive) validateCategory(interestCategoryId ?: "", CategoryType.EXPENSE)
+            val recognizedInterestCategory = if (interest.isPositive) interestCategoryId else null
+            val entry = AccountingEngine.createDebtPaymentEntry(
+                paymentAccountId, debtId, principal, interest, recognizedInterestCategory,
+                "Payment · ${debt.title}", paymentDate
+            )
+            val type = if (debt.kind == DebtKind.LOAN.name) TransactionType.LOAN_REPAYMENT else TransactionType.PAYABLE_PAYMENT
+            postJournalEntry(
+                entry = entry, transactionType = type, amount = principal + interest, fee = interest,
+                primaryAccountId = paymentAccountId, destinationAccountId = debtId,
+                categoryId = recognizedInterestCategory, counterparty = debt.counterparty, notes = notes.trim()
+            )
+            val outstanding = Math.subtractExact(debt.outstandingAmountCentavos, principal.centavos)
+            debtDao.insertPayment(DebtPaymentEntity(
+                id = UUID.randomUUID().toString(), debtId = debtId, journalEntryId = entry.id,
+                paymentAccountId = paymentAccountId, principalCentavos = principal.centavos,
+                interestCentavos = interest.centavos, interestCategoryId = recognizedInterestCategory,
+                paymentDate = paymentDate, notes = notes.trim()
+            ))
+            debtDao.updateDebt(debt.copy(
+                outstandingAmountCentavos = outstanding,
+                status = if (outstanding == 0L) DebtStatus.PAID.name
+                    else if (outstanding < debt.originalAmountCentavos) DebtStatus.PARTIALLY_PAID.name
+                    else DebtStatus.OPEN.name
+            ))
+        }
+    }
+
+    suspend fun cancelDebt(id: String) {
+        database.withTransaction {
+            val debt = debtDao.getDebtById(id) ?: throw IllegalArgumentException("This bill or loan no longer exists")
+            require(!debt.isArchived && debt.status !in setOf(DebtStatus.PAID.name, DebtStatus.CANCELLED.name)) {
+                "Only an open bill or loan can be cancelled"
+            }
+            require(debtDao.getPaymentsForDebt(id).none { it.reversedAt == null }) {
+                "Reverse active payments before cancelling this bill or loan"
+            }
+            reverseTransactionInCurrentTransaction(debt.recognitionJournalEntryId)
+        }
+    }
+
+    suspend fun setDebtArchived(id: String, isArchived: Boolean) {
+        database.withTransaction {
+            val debt = debtDao.getDebtById(id) ?: throw IllegalArgumentException("This bill or loan no longer exists")
+            require(debt.status in setOf(DebtStatus.PAID.name, DebtStatus.CANCELLED.name)) {
+                "Pay or cancel this bill or loan before archiving it"
+            }
+            debtDao.updateDebt(debt.copy(isArchived = isArchived))
+        }
+    }
+
+    private fun validateDebtFields(title: String, amount: Money, dueDate: Long) {
+        require(title.isNotBlank()) { "Enter a name or description" }
+        require(amount.isPositive) { "Enter an amount greater than zero" }
+        require(dueDate > 0L) { "Choose a due date" }
+    }
+
+    val debtsFlow: Flow<List<Debt>> = combine(
+        debtDao.getAllDebtsFlow(),
+        debtDao.getAllPaymentsFlow(),
+        categoryDao.getAllCategoriesFlow()
+    ) { debts, payments, categories ->
+        val categoryNames = categories.associate { it.id to it.name }
+        val paymentsByDebt = payments.groupBy { it.debtId }
+        debts.map { debt ->
+            debt.toDomainModel(
+                categoryName = debt.categoryId?.let(categoryNames::get),
+                payments = paymentsByDebt[debt.id].orEmpty().map { it.toDomainModel() }
+            )
+        }
+    }
+
     // Transactions
     val transactionsFlow: Flow<List<Transaction>> = combine(
         journalDao.getAllJournalEntriesFlow(),
         accountDao.getAllAccountsFlow(),
         categoryDao.getAllCategoriesFlow(),
-        receivableDao.getAllReceivablesFlow()
-    ) { entries, accounts, categories, receivables ->
+        receivableDao.getAllReceivablesFlow(),
+        debtDao.getAllDebtsFlow()
+    ) { entries, accounts, categories, receivables, debts ->
         val accountMap = accounts.associateBy { it.id }
         val categoryMap = categories.associateBy { it.id }
         val receivableMap = receivables.associateBy { it.id }
+        val debtMap = debts.associateBy { it.id }
         val reversedEntryIds = entries.mapNotNull { it.reversesEntryId }.toSet()
 
         entries.map { entry ->
             val accountName = accountMap[entry.primaryAccountId]?.name
                 ?: receivableMap[entry.primaryAccountId]?.clientName?.let { "Receivable · $it" }
+                ?: debtMap[entry.primaryAccountId]?.title?.let { "Payable · $it" }
                 ?: "Account"
-            val destAccountName = entry.destinationAccountId?.let { accountMap[it]?.name }
+            val destAccountName = entry.destinationAccountId?.let { id ->
+                accountMap[id]?.name ?: debtMap[id]?.title?.let { "Payable · $it" }
+            }
             val catName = entry.categoryId?.let { categoryMap[it]?.name }
 
             Transaction(
@@ -781,6 +947,39 @@ class RalLedgerRepository(
                             )
                         )
                     )
+                }
+                TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> {
+                    val payment = debtDao.getPaymentByJournalEntryId(journalEntryId)
+                        ?: throw IllegalStateException("Debt payment history is missing")
+                    require(payment.reversedAt == null) { "This payment has already been reversed" }
+                    val debt = debtDao.getDebtById(payment.debtId)
+                        ?: throw IllegalStateException("Linked bill or loan is missing")
+                    require(!debt.isArchived && debt.status != DebtStatus.CANCELLED.name) {
+                        "Restore this bill or loan before reversing a payment"
+                    }
+                    debtDao.updatePayment(payment.copy(reversedAt = System.currentTimeMillis()))
+                    val activePayments = debtDao.getPaymentsForDebt(debt.id).filter { it.reversedAt == null }
+                    val principalPaid = activePayments.fold(0L) { total, row -> Math.addExact(total, row.principalCentavos) }
+                    val outstanding = Math.subtractExact(debt.originalAmountCentavos, principalPaid)
+                    require(outstanding >= 0L) { "Reversing this payment would make the balance invalid" }
+                    debtDao.updateDebt(debt.copy(
+                        outstandingAmountCentavos = outstanding,
+                        status = if (outstanding == 0L) DebtStatus.PAID.name
+                            else if (outstanding < debt.originalAmountCentavos) DebtStatus.PARTIALLY_PAID.name
+                            else DebtStatus.OPEN.name
+                    ))
+                }
+                TransactionType.PAYABLE_RECOGNITION, TransactionType.LOAN_DISBURSEMENT -> {
+                    val debt = if (originalType == TransactionType.PAYABLE_RECOGNITION) {
+                        debtDao.getDebtById(originalEntity.primaryAccountId)
+                    } else {
+                        originalEntity.destinationAccountId?.let { debtDao.getDebtById(it) }
+                    } ?: throw IllegalStateException("Linked bill or loan is missing")
+                    require(!debt.isArchived) { "Restore this bill or loan before cancelling it" }
+                    require(debtDao.getPaymentsForDebt(debt.id).none { it.reversedAt == null }) {
+                        "Reverse active payments before cancelling this bill or loan"
+                    }
+                    debtDao.updateDebt(debt.copy(outstandingAmountCentavos = 0L, status = DebtStatus.CANCELLED.name))
                 }
                 else -> Unit
             }
@@ -1386,14 +1585,16 @@ class RalLedgerRepository(
         accountsFlow,
         receivablesFlow,
         subscriptionsFlow,
-        transactionsFlow
-    ) { accounts, receivables, subscriptions, transactions ->
+        transactionsFlow,
+        debtsFlow
+    ) { accounts, receivables, subscriptions, transactions, debts ->
         DashboardSummaryCalculator.calculate(
             accounts = accounts,
             receivables = receivables,
             subscriptions = subscriptions,
             transactions = transactions,
-            startOfMonthTimestamp = getStartOfMonthTimestamp()
+            startOfMonthTimestamp = getStartOfMonthTimestamp(),
+            debts = debts
         )
     }
 

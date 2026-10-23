@@ -201,6 +201,7 @@ fun SettingsScreen(
                     Text("${preview.accounts} accounts · ${preview.categories} categories")
                     Text("${preview.budgets} budgets")
                     Text("${preview.expectedIncome} expected-income records")
+                    Text("${preview.debts} bills and loans · ${preview.debtPayments} debt payments")
                     Text("${preview.journalEntries} journal entries · ${preview.journalLines} journal lines")
                     Text("${preview.receivables} receivables · ${preview.payments} payments")
                     Text("${preview.writeOffs} receivable write-offs")

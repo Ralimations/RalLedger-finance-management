@@ -6,6 +6,8 @@ import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
 import com.ralledger.data.local.entity.ExpectedIncomeEntity
+import com.ralledger.data.local.entity.DebtEntity
+import com.ralledger.data.local.entity.DebtPaymentEntity
 import com.ralledger.data.local.entity.JournalEntryEntity
 import com.ralledger.data.local.entity.JournalLineEntity
 import com.ralledger.data.local.entity.ReceivableEntity
@@ -35,6 +37,8 @@ data class BackupPreview(
     val categories: Int,
     val budgets: Int,
     val expectedIncome: Int,
+    val debts: Int,
+    val debtPayments: Int,
     val journalEntries: Int,
     val journalLines: Int,
     val receivables: Int,
@@ -86,6 +90,7 @@ class BackupRepository(
             val budgets = database.budgetDao()
             val categories = database.categoryDao()
             val expectedIncome = database.expectedIncomeDao()
+            val debts = database.debtDao()
             val journals = database.journalDao()
             val receivables = database.receivableDao()
             val subscriptions = database.subscriptionDao()
@@ -96,6 +101,8 @@ class BackupRepository(
             receivables.clearPayments()
             receivables.clearWriteOffs()
             expectedIncome.clear()
+            debts.clearPayments()
+            debts.clearDebts()
             journals.clearJournalLines()
             journals.clearJournalEntries()
             receivables.clearReceivables()
@@ -112,6 +119,8 @@ class BackupRepository(
             if (snapshot.lines.isNotEmpty()) journals.insertJournalLinesForRestore(snapshot.lines)
             if (snapshot.receivables.isNotEmpty()) receivables.insertReceivables(snapshot.receivables)
             if (snapshot.expectedIncome.isNotEmpty()) expectedIncome.insertAll(snapshot.expectedIncome)
+            if (snapshot.debts.isNotEmpty()) debts.insertDebts(snapshot.debts)
+            if (snapshot.debtPayments.isNotEmpty()) debts.insertPayments(snapshot.debtPayments)
             if (snapshot.payments.isNotEmpty()) receivables.insertPayments(snapshot.payments)
             if (snapshot.writeOffs.isNotEmpty()) receivables.insertWriteOffs(snapshot.writeOffs)
             if (snapshot.subscriptions.isNotEmpty()) subscriptions.insertSubscriptions(snapshot.subscriptions)
@@ -148,6 +157,8 @@ class BackupRepository(
         categories = database.categoryDao().getAllCategories(),
         budgets = database.budgetDao().getAllBudgets(),
         expectedIncome = database.expectedIncomeDao().getAllExpectedIncome(),
+        debts = database.debtDao().getAllDebts(),
+        debtPayments = database.debtDao().getAllPayments(),
         entries = database.journalDao().getAllJournalEntries(),
         lines = database.journalDao().getAllJournalLines(),
         receivables = database.receivableDao().getAllReceivables(),
@@ -231,6 +242,8 @@ class BackupRepository(
         val categories: List<CategoryEntity>,
         val budgets: List<BudgetEntity>,
         val expectedIncome: List<ExpectedIncomeEntity>,
+        val debts: List<DebtEntity>,
+        val debtPayments: List<DebtPaymentEntity>,
         val entries: List<JournalEntryEntity>,
         val lines: List<JournalLineEntity>,
         val receivables: List<ReceivableEntity>,
@@ -248,6 +261,8 @@ class BackupRepository(
             put("categories", JSONArray().also { array -> categories.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("budgets", JSONArray().also { array -> budgets.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("expectedIncome", JSONArray().also { array -> expectedIncome.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("debts", JSONArray().also { array -> debts.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("debtPayments", JSONArray().also { array -> debtPayments.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalEntries", JSONArray().also { array -> entries.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalLines", JSONArray().also { array -> lines.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("receivables", JSONArray().also { array -> receivables.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
@@ -266,6 +281,8 @@ class BackupRepository(
             checkUnique("category", categories) { it.id }
             checkUnique("budget", budgets) { it.id }
             checkUnique("expected income", expectedIncome) { it.id }
+            checkUnique("debt", debts) { it.id }
+            checkUnique("debt payment", debtPayments) { it.id }
             checkUnique("journal entry", entries) { it.id }
             checkUnique("journal line", lines) { it.id }
             checkUnique("receivable", receivables) { it.id }
@@ -275,14 +292,17 @@ class BackupRepository(
             checkUnique("reconciliation", reconciliations) { it.id }
 
             val entryIds = entries.map { it.id }.toSet()
+            val entryById = entries.associateBy { it.id }
+            val reversals = entries.filter { it.transactionType == "REVERSAL" }
             val linesByEntry = lines.groupBy { it.journalEntryId }
             if (lines.any { it.journalEntryId !in entryIds }) errors += "Journal line references a missing journal entry"
             val categoryIds = categories.map { it.id }.toSet()
             val receivableIds = receivables.map { it.id }.toSet()
+            val debtIds = debts.map { it.id }.toSet()
             val accountIds = accounts.map { it.id }.toSet()
-            val validLineAccounts = accountIds + categoryIds + receivableIds
+            val validLineAccounts = accountIds + categoryIds + receivableIds + debtIds
             if (lines.any { it.accountId !in validLineAccounts }) {
-                errors += "Journal line references a missing account, category, or receivable"
+                errors += "Journal line references a missing account, category, receivable, or payable"
             }
             if (entries.any { entry ->
                     entry.primaryAccountId !in validLineAccounts ||
@@ -321,6 +341,74 @@ class BackupRepository(
                 errors += "Multiple expected income records reference the same receivable"
             }
             val receivablesById = receivables.associateBy { it.id }
+            val debtsById = debts.associateBy { it.id }
+            val accountsById = accounts.associateBy { it.id }
+            if (debts.any { debt ->
+                    val kind = runCatching { com.ralledger.domain.model.DebtKind.valueOf(debt.kind) }.getOrNull()
+                    val status = runCatching { com.ralledger.domain.model.DebtStatus.valueOf(debt.status) }.getOrNull()
+                    val category = debt.categoryId?.let(categoriesById::get)
+                    val funding = debt.fundingAccountId?.let(accountsById::get)
+                    val recognition = entryById[debt.recognitionJournalEntryId]
+                    val recognitionReversed = reversals.any { it.reversesEntryId == debt.recognitionJournalEntryId }
+                    kind == null || status == null || debt.originalAmountCentavos <= 0L || debt.outstandingAmountCentavos < 0L ||
+                        debt.dueDate <= 0L || debt.createdAt <= 0L || debt.title.isBlank() || recognition == null ||
+                        recognition.amountCentavos != debt.originalAmountCentavos ||
+                        (status == com.ralledger.domain.model.DebtStatus.CANCELLED) != recognitionReversed ||
+                        (kind == com.ralledger.domain.model.DebtKind.BILL &&
+                            (category?.type != "EXPENSE" || debt.fundingAccountId != null || recognition.transactionType != "PAYABLE_RECOGNITION" ||
+                                recognition.primaryAccountId != debt.id || recognition.categoryId != debt.categoryId)) ||
+                        (kind == com.ralledger.domain.model.DebtKind.LOAN &&
+                            (debt.categoryId != null || funding == null ||
+                                runCatching { com.ralledger.domain.model.AccountType.valueOf(funding.accountType) }.getOrNull()?.isAsset != true ||
+                                recognition.transactionType != "LOAN_DISBURSEMENT" || recognition.primaryAccountId != debt.fundingAccountId ||
+                                recognition.destinationAccountId != debt.id))
+                }
+            ) errors += "Bill or loan record has invalid type, account, category, amount, or recognition entry"
+            if (debtPayments.any { payment ->
+                    val debt = debtsById[payment.debtId]
+                    val entry = entryById[payment.journalEntryId]
+                    val category = payment.interestCategoryId?.let(categoriesById::get)
+                    val account = accountsById[payment.paymentAccountId]
+                    val expectedType = if (debt?.kind == "LOAN") "LOAN_REPAYMENT" else "PAYABLE_PAYMENT"
+                    payment.principalCentavos < 0L || payment.interestCentavos < 0L ||
+                        (payment.principalCentavos == 0L && payment.interestCentavos == 0L) ||
+                        payment.paymentDate <= 0L || (payment.reversedAt != null && payment.reversedAt <= 0L) ||
+                        debt == null || account == null ||
+                        runCatching { com.ralledger.domain.model.AccountType.valueOf(account.accountType) }.getOrNull()?.isAsset != true || entry == null ||
+                        (payment.interestCentavos > 0L && category?.type != "EXPENSE") ||
+                        (payment.interestCentavos == 0L && payment.interestCategoryId != null) ||
+                        entry.transactionType != expectedType || entry.primaryAccountId != payment.paymentAccountId ||
+                        entry.destinationAccountId != payment.debtId ||
+                        java.math.BigInteger.valueOf(entry.amountCentavos) != java.math.BigInteger.valueOf(payment.principalCentavos).add(java.math.BigInteger.valueOf(payment.interestCentavos)) ||
+                        entry.feeCentavos != payment.interestCentavos || entry.categoryId != payment.interestCategoryId ||
+                        (payment.reversedAt == null && reversals.any { it.reversesEntryId == payment.journalEntryId }) ||
+                        (payment.reversedAt != null && reversals.none { it.reversesEntryId == payment.journalEntryId })
+                }
+            ) errors += "Bill or loan payment history does not match its journal and reversal entries"
+            val debtPaymentsById = debtPayments.groupBy { it.debtId }
+            debts.forEach { debt ->
+                val rows = debtPaymentsById[debt.id].orEmpty()
+                val activeRows = rows.filter { it.reversedAt == null }
+                val activePrincipal = activeRows.fold(java.math.BigInteger.ZERO) { sum, payment ->
+                    sum + java.math.BigInteger.valueOf(payment.principalCentavos)
+                }
+                val original = java.math.BigInteger.valueOf(debt.originalAmountCentavos)
+                val outstanding = java.math.BigInteger.valueOf(debt.outstandingAmountCentavos)
+                val cancelled = debt.status == "CANCELLED"
+                val expectedStatus = when {
+                    cancelled -> "CANCELLED"
+                    outstanding.signum() == 0 -> "PAID"
+                    activePrincipal.signum() == 0 -> "OPEN"
+                    else -> "PARTIALLY_PAID"
+                }
+                if (activeRows.any { it.principalCentavos < 0L || it.interestCentavos < 0L } ||
+                    debtPayments.any { it.debtId == debt.id && it.journalEntryId !in entryIds } ||
+                    (cancelled && (debt.outstandingAmountCentavos != 0L || activeRows.isNotEmpty())) ||
+                    (!cancelled && outstanding + activePrincipal != original) ||
+                    debt.status != expectedStatus ||
+                    (debt.isArchived && debt.status !in setOf("PAID", "CANCELLED"))
+                ) errors += "Bill or loan ${debt.id} does not reconcile to its active payment history"
+            }
             if (expectedIncome.any { expected ->
                     val converted = expected.status == "CONVERTED"
                     val linkedReceivable = expected.convertedReceivableId?.let(receivablesById::get)
@@ -343,8 +431,6 @@ class BackupRepository(
                 } ||
                 entries.any { runCatching { com.ralledger.domain.model.TransactionType.valueOf(it.transactionType) }.isFailure }
             ) errors += "Backup contains an unsupported financial record type"
-            val entryById = entries.associateBy { it.id }
-            val reversals = entries.filter { it.transactionType == "REVERSAL" }
             if (reversals.any { reversal ->
                     val original = reversal.reversesEntryId?.let(entryById::get)
                     original == null || original.transactionType == "REVERSAL"
@@ -430,6 +516,8 @@ class BackupRepository(
                 categories = categories.size,
                 budgets = budgets.size,
                 expectedIncome = expectedIncome.size,
+                debts = debts.size,
+                debtPayments = debtPayments.size,
                 journalEntries = entries.size,
                 journalLines = lines.size,
                 receivables = receivables.size,
@@ -455,6 +543,8 @@ class BackupRepository(
                     categories = json.getJSONArray("categories").objects().map { it.toCategory() },
                     budgets = json.optJSONArray("budgets")?.objects()?.map { it.toBudget() }.orEmpty(),
                     expectedIncome = json.optJSONArray("expectedIncome")?.objects()?.map { it.toExpectedIncome() }.orEmpty(),
+                    debts = json.optJSONArray("debts")?.objects()?.map { it.toDebt() }.orEmpty(),
+                    debtPayments = json.optJSONArray("debtPayments")?.objects()?.map { it.toDebtPayment() }.orEmpty(),
                     entries = json.getJSONArray("journalEntries").objects().map { it.toJournalEntry() },
                     lines = json.getJSONArray("journalLines").objects().map { it.toJournalLine() },
                     receivables = json.getJSONArray("receivables").objects().map { it.toReceivable() },
@@ -536,6 +626,34 @@ private fun JSONObject.toExpectedIncome() = ExpectedIncomeEntity(
     incomeCategoryId = getString("incomeCategoryId"), status = getString("status"),
     convertedReceivableId = stringOrNull("convertedReceivableId"), isArchived = optBoolean("isArchived", false),
     createdAt = getLong("createdAt")
+)
+
+private fun DebtEntity.toJson() = JSONObject().apply {
+    put("id", id); put("title", title); put("counterparty", counterparty); put("kind", kind)
+    put("originalAmountCentavos", originalAmountCentavos); put("outstandingAmountCentavos", outstandingAmountCentavos)
+    put("dueDate", dueDate); putNullable("categoryId", categoryId); putNullable("fundingAccountId", fundingAccountId)
+    put("recognitionJournalEntryId", recognitionJournalEntryId); put("status", status)
+    put("isArchived", isArchived); put("createdAt", createdAt)
+}
+private fun JSONObject.toDebt() = DebtEntity(
+    id = getString("id"), title = getString("title"), counterparty = getString("counterparty"), kind = getString("kind"),
+    originalAmountCentavos = getLong("originalAmountCentavos"), outstandingAmountCentavos = getLong("outstandingAmountCentavos"),
+    dueDate = getLong("dueDate"), categoryId = stringOrNull("categoryId"), fundingAccountId = stringOrNull("fundingAccountId"),
+    recognitionJournalEntryId = getString("recognitionJournalEntryId"), status = getString("status"),
+    isArchived = optBoolean("isArchived", false), createdAt = getLong("createdAt")
+)
+
+private fun DebtPaymentEntity.toJson() = JSONObject().apply {
+    put("id", id); put("debtId", debtId); put("journalEntryId", journalEntryId); put("paymentAccountId", paymentAccountId)
+    put("principalCentavos", principalCentavos); put("interestCentavos", interestCentavos)
+    putNullable("interestCategoryId", interestCategoryId); put("paymentDate", paymentDate); put("notes", notes)
+    putNullable("reversedAt", reversedAt)
+}
+private fun JSONObject.toDebtPayment() = DebtPaymentEntity(
+    id = getString("id"), debtId = getString("debtId"), journalEntryId = getString("journalEntryId"),
+    paymentAccountId = getString("paymentAccountId"), principalCentavos = getLong("principalCentavos"),
+    interestCentavos = getLong("interestCentavos"), interestCategoryId = stringOrNull("interestCategoryId"),
+    paymentDate = getLong("paymentDate"), notes = optString("notes", ""), reversedAt = longOrNull("reversedAt")
 )
 
 private fun JournalEntryEntity.toJson() = JSONObject().apply {

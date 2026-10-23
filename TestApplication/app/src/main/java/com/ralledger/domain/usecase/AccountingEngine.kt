@@ -231,6 +231,55 @@ object AccountingEngine {
         return entry
     }
 
+    fun createPayableRecognitionEntry(
+        payableAccountId: String,
+        expenseCategoryId: String,
+        amount: Money,
+        description: String,
+        timestamp: Long = System.currentTimeMillis()
+    ): JournalEntry {
+        require(amount.isPositive) { "Bill amount must be positive" }
+        val entryId = UUID.randomUUID().toString()
+        return JournalEntry(
+            id = entryId,
+            timestamp = timestamp,
+            description = description.ifBlank { "Bill recorded" },
+            lines = listOf(
+                JournalLine(UUID.randomUUID().toString(), entryId, expenseCategoryId, LineType.DEBIT, amount),
+                JournalLine(UUID.randomUUID().toString(), entryId, payableAccountId, LineType.CREDIT, amount)
+            )
+        ).also { check(it.isBalanced()) { "Bill recognition journal entry must be balanced" } }
+    }
+
+    fun createDebtPaymentEntry(
+        sourceAccountId: String,
+        payableAccountId: String,
+        principal: Money,
+        interest: Money,
+        interestCategoryId: String?,
+        description: String,
+        timestamp: Long = System.currentTimeMillis()
+    ): JournalEntry {
+        require(!principal.isNegative && !interest.isNegative && (principal.isPositive || interest.isPositive)) {
+            "Enter a positive principal or interest payment"
+        }
+        require(interest.isZero || !interestCategoryId.isNullOrBlank()) {
+            "Choose an expense category for interest"
+        }
+        val entryId = UUID.randomUUID().toString()
+        val lines = buildList {
+            if (principal.isPositive) add(JournalLine(UUID.randomUUID().toString(), entryId, payableAccountId, LineType.DEBIT, principal))
+            if (interest.isPositive) add(JournalLine(UUID.randomUUID().toString(), entryId, interestCategoryId!!, LineType.DEBIT, interest))
+            add(JournalLine(UUID.randomUUID().toString(), entryId, sourceAccountId, LineType.CREDIT, principal + interest))
+        }
+        return JournalEntry(
+            id = entryId,
+            timestamp = timestamp,
+            description = description.ifBlank { "Debt payment" },
+            lines = lines
+        ).also { check(it.isBalanced()) { "Debt payment journal entry must be balanced" } }
+    }
+
     fun createReconciliationAdjustmentEntry(
         accountId: String,
         accountType: AccountType,

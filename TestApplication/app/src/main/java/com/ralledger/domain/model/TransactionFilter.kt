@@ -22,7 +22,8 @@ data class TransactionFilter(
             TransactionTypeFilter.INCOME -> transaction.transactionType == TransactionType.INCOME
             TransactionTypeFilter.EXPENSE -> transaction.transactionType in setOf(
                 TransactionType.EXPENSE,
-                TransactionType.RECEIVABLE_WRITEOFF
+                TransactionType.RECEIVABLE_WRITEOFF,
+                TransactionType.PAYABLE_RECOGNITION
             )
             TransactionTypeFilter.TRANSFER -> transaction.transactionType == TransactionType.TRANSFER
             TransactionTypeFilter.OTHER -> transaction.transactionType !in setOf(

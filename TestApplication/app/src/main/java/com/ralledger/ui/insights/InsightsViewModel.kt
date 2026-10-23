@@ -40,23 +40,38 @@ class InsightsViewModel(
         val reversedJournalIds = transactions.mapNotNull { it.reversesEntryId }.toSet()
         val validTransactions = transactions.filter {
             it.journalEntryId !in reversedJournalIds &&
-                it.transactionType in setOf(TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF)
+                it.transactionType in setOf(
+                    TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF,
+                    TransactionType.PAYABLE_RECOGNITION, TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT
+                )
         }
 
         val totalIncome = validTransactions
             .filter { it.transactionType == TransactionType.INCOME }
             .fold(Money.ZERO) { total, transaction -> total + transaction.amount }
         val totalExpenses = validTransactions
-            .filter { it.transactionType in setOf(TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF) }
-            .fold(Money.ZERO) { total, transaction -> total + transaction.amount }
+            .fold(Money.ZERO) { total, transaction ->
+                total + when (transaction.transactionType) {
+                    TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION -> transaction.amount
+                    TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> transaction.fee
+                    else -> Money.ZERO
+                }
+            }
 
         val categoryMap = categories.associateBy { it.id }
         val spendingByCategory = validTransactions
-            .filter { it.transactionType in setOf(TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF) }
+            .filter { it.transactionType in setOf(
+                TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION,
+                TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT
+            ) }
             .groupBy { transaction ->
                 transaction.categoryId?.let { categoryMap[it]?.name } ?: transaction.categoryName ?: "Uncategorized"
             }
-            .mapValues { (_, entries) -> entries.fold(Money.ZERO) { total, transaction -> total + transaction.amount } }
+            .mapValues { (_, entries) -> entries.fold(Money.ZERO) { total, transaction ->
+                total + if (transaction.transactionType in setOf(TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT)) {
+                    transaction.fee
+                } else transaction.amount
+            } }
 
         val receivablesAging = receivables
             .groupBy { it.status.name }

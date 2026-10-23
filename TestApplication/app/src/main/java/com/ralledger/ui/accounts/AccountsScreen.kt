@@ -87,6 +87,7 @@ fun AccountsScreen(viewModel: AccountsViewModel) {
     var showAddDialog by remember { mutableStateOf(false) }
     var editingAccount by remember { mutableStateOf<Account?>(null) }
     var historyAccount by remember { mutableStateOf<Account?>(null) }
+    var reconcilingAccount by remember { mutableStateOf<Account?>(null) }
     var deletingAccount by remember { mutableStateOf<Account?>(null) }
     var search by remember { mutableStateOf("") }
     var showArchived by remember { mutableStateOf(false) }
@@ -142,6 +143,7 @@ fun AccountsScreen(viewModel: AccountsViewModel) {
                             account = account,
                             onEdit = { editingAccount = account },
                             onHistory = { historyAccount = account },
+                            onReconcile = { reconcilingAccount = account },
                             onArchiveToggle = { viewModel.setArchived(account.id, !account.isArchived) },
                             onDelete = { deletingAccount = account }
                         )
@@ -180,6 +182,16 @@ fun AccountsScreen(viewModel: AccountsViewModel) {
             onDismiss = { historyAccount = null }
         )
     }
+    reconcilingAccount?.let { account ->
+        AccountReconciliationDialog(
+            account = account,
+            onDismiss = { reconcilingAccount = null },
+            onSave = { actualBalance, reason ->
+                viewModel.reconcileAccount(account.id, actualBalance, reason)
+                reconcilingAccount = null
+            }
+        )
+    }
     deletingAccount?.let { account ->
         AlertDialog(
             onDismissRequest = { deletingAccount = null },
@@ -211,6 +223,7 @@ private fun AccountItemCard(
     account: Account,
     onEdit: () -> Unit,
     onHistory: () -> Unit,
+    onReconcile: () -> Unit,
     onArchiveToggle: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -263,6 +276,9 @@ private fun AccountItemCard(
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
                     DropdownMenuItem(text = { Text("View history") }, onClick = { menuExpanded = false; onHistory() })
+                    if (!account.isArchived && (account.accountType.isAsset || account.accountType.isLiability)) {
+                        DropdownMenuItem(text = { Text("Reconcile balance") }, onClick = { menuExpanded = false; onReconcile() })
+                    }
                     DropdownMenuItem(text = { Text("Edit account") }, onClick = { menuExpanded = false; onEdit() })
                     DropdownMenuItem(
                         text = { Text(if (account.isArchived) "Restore" else "Archive") },
@@ -273,6 +289,56 @@ private fun AccountItemCard(
             }
         }
     }
+}
+
+@Composable
+private fun AccountReconciliationDialog(
+    account: Account,
+    onDismiss: () -> Unit,
+    onSave: (Money, String) -> Unit
+) {
+    var actualBalanceText by remember(account.id) { mutableStateOf("") }
+    var reason by remember(account.id) { mutableStateOf("") }
+    var error by remember(account.id) { mutableStateOf<String?>(null) }
+    val actualBalance = Money.parse(actualBalanceText)
+    val difference = actualBalance?.minus(account.currentLedgerBalance)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Reconcile ${account.name}") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Recorded balance: ${account.currentLedgerBalance.format()}")
+                OutlinedTextField(
+                    value = actualBalanceText,
+                    onValueChange = { actualBalanceText = it; error = null },
+                    label = { Text("Verified balance (PHP)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                difference?.let { Text("Adjustment: ${it.format()}", style = MaterialTheme.typography.labelLarge) }
+                OutlinedTextField(
+                    value = reason,
+                    onValueChange = { reason = it; error = null },
+                    label = { Text("Reason for correction") },
+                    supportingText = { Text("This posts an audited balance adjustment. It preserves the opening balance and past entries.") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                when {
+                    actualBalance == null -> error = "Enter a valid balance with up to two decimal places."
+                    !difference!!.isZero && reason.isBlank() -> error = "Add a reason for the balance adjustment."
+                    else -> onSave(actualBalance, reason.trim())
+                }
+            }) { Text("Save adjustment") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

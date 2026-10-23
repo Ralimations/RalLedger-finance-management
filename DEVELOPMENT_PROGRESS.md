@@ -15,7 +15,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Corrected liability reconciliation normal-side handling and added positive/negative tests for asset and liability adjustments.
 - Added transaction reversal entries with preserved audit history. Reversing a collection restores the receivable balance and marks the payment reversed atomically. Reversal and payment relationships are migrated and indexed.
 - Receivable creation now recognizes income once through a balanced journal entry. Collection checks positive amounts, remaining balance, collectible status, and active liquid destination accounts under a database transaction. Overdue status is derived from due dates in the live flow.
-- Added encrypted SAF backup save/open flows using AES-256-GCM with a random nonce and PBKDF2-HMAC-SHA256 password derivation. The current schema-8 backup covers accounts, categories, budgets, expected income, journal entries/lines, receivables/payments/write-offs, subscriptions, and reconciliations. Restore previews counts and integrity errors, then replaces current rows atomically with a post-restore equivalence check.
+- Added encrypted SAF backup save/open flows using AES-256-GCM with a random nonce and PBKDF2-HMAC-SHA256 password derivation. At this checkpoint backup coverage includes accounts, categories, budgets, expected income, bills/loans and repayment history, journal entries/lines, receivables/payments/write-offs, subscriptions, and reconciliations. Restore previews counts and integrity errors, then replaces current rows atomically with a post-restore equivalence check.
 - Disabled Android automatic data backup and excluded app data in both legacy and Android 12+ extraction rules; the portable in-app backup remains the supported recovery path.
 - Corrected dashboard asset aggregation and moved it into a unit-testable calculator. Reversal postings are included as contra income/expense on the reversal date. Subscription commitments are normalized to monthly amounts.
 - Added synthetic instrumentation coverage for concurrent receivable collection, payment reversal, and encrypted backup/restore equivalence. It compiled at the initial checkpoint; the schema-8 connected suite later passed the backup/concurrency coverage.
@@ -81,33 +81,46 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Passed: debug APK launch smoke check on `emulator-5554`; Overview showed Available Money first with Net Worth separate, the transaction shortcut clear of the monthly summary, the Accounts empty state, and Categories opened from Settings. The category list and Add category dialog were visually checked; full account/category form submission and lifecycle actions remain outstanding. One offline emulator was skipped.
 - Passed: transaction UI smoke on `emulator-5554` using only synthetic data. The journal filter panel rendered; Duplicate opened with account/category/amount/description/date prefilled; Correct opened with editable fields; saving a correction displayed the reversal, a Reversed marker on the original, and the replacement entry. The synthetic correction was posted only to the emulator test install.
 - Passed: schema-8 UI smoke on `Medium_Phone(AVD) - 17`. Planning → Expected income rendered; the add and edit forms opened; a synthetic forecast was created, cancelled, and deleted through the UI; the list returned to zero records. The synthetic record was removed from the emulator afterward.
-- Passed latest combined verification on `Medium_Phone(AVD) - 17`: `:app:assembleDebug`, `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:compileDebugAndroidTestKotlin`, and `:app:connectedDebugAndroidTest`. Results: 21 unit tests and 13 connected instrumentation tests, all passing; lint has 23 warnings and 0 errors. Connected coverage includes schema-1→8 and schema-2→8 migrations, account/category/budget/subscription/receivable/expected-income workflows, and encrypted backup restore.
-- Debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (rebuilt with schema 8, expected-income planning, Budgets, subscription lifecycle, and receivable lifecycle controls).
-- Latest debug APK size: 22,049,960 bytes.
+- Passed prior combined verification on `Medium_Phone(AVD) - 17`: 21 unit tests and 13 connected instrumentation tests; schema-1→8 and schema-2→8 migrations, account/category/budget/subscription/receivable/expected-income workflows, and encrypted backup restore.
+- Prior debug APK at the schema-8 milestone: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (22,049,960 bytes).
 - Gradle verification used the cached Gradle 9.6.0 distribution copied into ignored `.ralledger-local` plus the local JDK 25. Repository access was needed to resolve Foojay and Android plugins. Project settings/wrapper versions were restored unchanged after diagnosis.
+
+## Schema 9 — Bills, loans and repayment audit
+
+- Added `debts` and `debt_payments` tables with migration 8→9; populated schema-1 and schema-2 fixtures now traverse the full chain through schema 9. The existing schema-8 backup format remains restorable with no debt records.
+- Bills post a balanced expense/payable entry. Loan receipts post cash/liability only, so borrowed funds do not become income. Repayment entries split principal reduction from categorized interest expense.
+- Added the Planning → Bills & loans screen with search, active/archived lists, bill and loan entry forms, due-date state, payment history, principal/interest payment entry, reversal, cancellation, metadata edit, and closed-record archive/restore. Posted amounts/categories stay immutable; permanent deletion of posted records is intentionally blocked to preserve journal history.
+- Added validation to reject wrong category/account types, overpayment, negative/empty payment amounts, cancellation with unreversed payment history, and archiving an open debt. Account/category delete and merge operations now preserve linked debt history.
+- Dashboard liabilities and payable totals include the new records; cash flow counts loan proceeds and debt cash payments without treating loan proceeds as income. Insights and budgets include bill recognition and interest while excluding principal from expense totals.
+- Encrypted backup schema includes debts and payment events, validates journal/account/category references, reversal agreement and outstanding-principal reconciliation, and restores rows atomically.
+- Passed full post-debt and account-reconciliation verification on `Medium_Phone(AVD) - 17`: debug build, 21 unit tests, lint (0 errors; 23 warnings), Android-test Kotlin compilation, and all 15 connected instrumentation tests. Coverage includes populated schema-1→9/schema-2→9 migrations, debt lifecycle and reversal, account reconciliation increases/decreases for assets and liabilities, category merge, and encrypted backup round-trip.
+- Final interactive debt smoke passed on `Medium_Phone(AVD) - 17`: Bills & loans opens the correct screen; Add bill and Add loan show their expected fields; Subscriptions opens its own screen. Payment-form interaction and persistence after restart remain for hands-on QA.
+- Account reconciliation UI smoke passed on `emulator-5554`: created synthetic `UI_Test_Wallet`, opened Reconcile balance, entered a verified balance and reason, and confirmed the posted balance update and success message. This synthetic account and adjustment remain on the development emulator; no real financial data was used.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk` (22,241,983 bytes). The unrelated `TestApplication/.idea/deploymentTargetSelector.xml` modification is user-local and remains outside the feature work.
 
 ## Module readiness
 
 | Module | Status | Limits |
 |---|---|---|
 | Money input and accounting engine | Implemented and unit-tested | Android screens still need hands-on validation |
-| Accounts | Create, metadata edit, icon/color, dashboard inclusion, search, history, archive/restore, guarded unused delete and backup; lifecycle/migration tests pass | Currency/type/opening balance intentionally immutable after creation; full screen interactions still need manual QA |
-| Transactions | Income, expense, transfers/fees, search, type/account/category/date filters, duplicate, reversal, and atomic correction by reversal plus replacement; connected correction tests passed before the budget schema change | No draft lifecycle, transaction type conversion, attachments/tags, refunds, or loan UI; linked receivable postings cannot use generic correction. Re-run connected suite and UI checks |
+| Accounts | Create, metadata edit, icon/color, dashboard inclusion, search, history, archive/restore, guarded unused delete, balance reconciliation and backup | Currency/type/opening balance intentionally immutable after creation; create and reconciliation dialog smoke-checked; remaining CRUD actions still need manual QA |
+| Transactions | Income, expense, transfers/fees, loan proceeds and principal/interest payments, search, type/account/category/date filters, duplicate, reversal, and atomic correction by reversal plus replacement | No draft lifecycle, transaction type conversion, attachments/tags, or refunds; linked receivable/debt postings cannot use generic correction |
 | Categories and income sources | Create, rename, recolor, re-icon, one-level subcategory, search, archive/restore, history, merge and unused delete; migration/backup tests pass | Income sources are represented by income categories; no separate source analytics. Full screen interactions still need manual QA |
 | Receivables | Recognition, partial collection, editable client/description/due date, collection and write-off history, event reversals, cancellation, partial/full write-off, archive/restore, expense reporting and backup | Schema-8 connected lifecycle/migration/backup tests pass; manual screen workflows remain to be checked; no receivable-level permanent delete because recognition is posted |
 | Expected income | Forecast records with category/source, counterparty, amount and date; convert once to a receivable with recognition journal; backup link validation | Connected migration, lifecycle, category merge and backup tests pass; UI smoke covered create/cancel/delete and editor rendering; conversion uses the existing receivable recognition policy |
+| Bills and personal loans | Bill recognition to expense/payable; loan proceeds to cash/liability without income classification; partial principal and interest payments; payment reversal, cancellation by journal reversal, metadata edit, closed-record archive/restore, due-date state, search and encrypted backup | Connected debt lifecycle, reversals, category merge, schema migration and backup restore pass. Manual route and Add bill/Add loan form smoke passes; payment form interaction/restart still needs QA; posted amount/category cannot be edited or deleted |
 | Reconciliation | Atomic adjustments for asset/liability accounts implemented and unit-tested | Screen accessibility is limited; unmatched-transaction workflow is incomplete |
 | Budgets | Monthly expense-category budgets; create/edit/archive/restore/confirmed delete; live spend, remaining amount and overspend indicators; safe category references and merge handling; encrypted backup support | Connected budget lifecycle and merge tests pass. No carry-forward, fund allocation, or multi-period budget rules |
 | Subscriptions | Metadata create/edit; pause/resume/cancel/reactivate; archive/restore; guarded delete; monthly normalization; backup state | Connected lifecycle and backup tests pass. Linked payment posting/history and due notifications remain incomplete |
-| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, budgets, expected income, subscription archive state, receivable archive state, and write-off history | Connected backup round-trip passes for implemented records; payables, savings goals, interest/time deposits, preferences and other unimplemented modules are not covered |
-| Dashboard | Available Money is primary; Net Worth is separate; totals and reversal-aware month summary are implemented and unit-tested | User-specific account flags cannot be inspected without a device database |
+| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, budgets, expected income, bills/loans/payment audit trail, subscription archive state, receivable archive state, and write-off history | Connected round-trip validates current record types; savings goals, interest/time deposits, preferences and future modules are not covered |
+| Dashboard | Available Money is primary; Net Worth is separate; debt liabilities, payable totals, loan proceeds and reversal-aware month cash flow flow from the ledger | User-specific account flags cannot be inspected without a device database |
 | Appearance and insights UI | Saved theme mode/palette options; monthly interactive spending chart and clearer money summaries | Must be checked on device for motion, contrast, and small-screen layout; native home-screen widgets are still incomplete |
-| Payables/debt, savings goals, time deposits, CSV/XLSX import, reports export, app lock, widgets, advanced charts | Incomplete | No end-to-end implementation in this checkpoint |
+| Savings goals, time deposits, CSV/XLSX import, reports export, app lock, widgets, advanced charts | Incomplete | No end-to-end implementation in this checkpoint |
 
 ## Known audit findings and disposition
 
 - The prior dashboard discrepancy is reproduced as a regression test under the stated account assumptions: liquid cash is ₱2,111; total assets and net worth are ₱17,111 when liabilities are zero and receivables are ₱15,000. The actual historical database flags were not available, so its specific cause is not claimed as proven.
-- No existing user database was loaded, reset, or migrated. Populated synthetic schema-1/schema-2 databases were migrated through schema 8 on the emulator; user-specific historical database contents and flags remain uninspected.
+- No existing user database was loaded, reset, or migrated. Populated synthetic schema-1/schema-2 databases were migrated through schema 9 on the emulator; user-specific historical database contents and flags remain uninspected.
 - The Android UI describes backup coverage accurately for the records that exist today. This is not a complete RalLedger v2 backup of the broader requested future modules.
 
 ## Android Studio validation checklist
@@ -119,8 +132,9 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - [ ] Manage income/expense categories: create, edit, reorganize, archive/restore, merge, view history and delete unused; confirm used history remains intact.
 - [ ] Record an income, expense, transfer with fee, and reversal; inspect ledger and month totals.
 - [ ] Create a receivable, edit client/details/due date, collect partially, attempt overcollection, reverse a collection, partially/full write it off, reverse a write-off, cancel, archive/restore, and verify journal and payment/write-off history.
-- [x] Run the connected suite on an online emulator; populated schema-1/schema-2 migration chains through schema 8, receivable and expected-income lifecycle, and encrypted backup round-trip passed.
-- [ ] Reconcile an asset and a liability with both positive and negative differences.
+- [x] Run the connected suite on an online emulator; populated schema-1/schema-2 migration chains through schema 9, debt/receivable/expected-income lifecycle, and encrypted backup round-trip passed.
+- [x] Verify repository reconciliation corrections for asset and liability accounts with positive and negative differences while preserving original opening journal entries.
+- [x] Smoke-check account-menu reconciliation on emulator; verified adjustment text, reason entry, saved balance and success feedback.
 - [ ] Add subscriptions with weekly, monthly, quarterly, and annual billing; edit a schedule, pause/resume, cancel/reactivate, archive/restore, and verify normalized dashboard total.
 - [x] Run subscription lifecycle and archived-subscription backup tests as part of the schema-8 connected suite. The populated schema-1→8 chain also traverses the 5→6 migration.
 - [ ] Export an encrypted backup, restore it into an empty test install, and compare accounts, journal, receivables, payment history, and dashboard balances.
@@ -129,12 +143,14 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - [ ] Change insight months and tap chart segments/category rows; verify monthly totals match the transaction journal.
 - [x] Run `connectedDebugAndroidTest`; 13 tests passed, including backup and concurrent collection coverage.
 - [x] Smoke-check expected-income tab and editor; create, cancel, and delete a synthetic forecast and verify the list returns to empty.
+- [x] Verify Bills & loans, Add bill/Add loan forms, and Subscriptions tab routing after the final mapping correction.
+- [ ] Complete hands-on Bills & loans payment entry, reversal, restart persistence, and small-screen checks.
 - [ ] Finish hands-on account/category/receivable/subscription workflows, settings persistence, charts, smaller-screen sizing, and SAF export/restore UI checks.
 
 ## Next development steps
 
 1. Finish hands-on account/category/receivable/subscription CRUD, settings persistence, chart interaction, smaller-screen layout, and SAF export/restore checks.
-2. Implement accounts payable, debts, personal loans and repayments with safe accounting, full lifecycle, reporting and backup coverage.
+2. Finish hands-on Bills & loans payment, reversal, restart persistence and small-screen checks.
 3. Implement savings goals and non-double-counting allocations, then interest-bearing accounts and time deposits with gross/net interest, tax, maturity and manual credits.
 4. Add linked subscription payment posting/history and due notifications; add CSV/MyMoney CSV import, spreadsheet export and expanded date-range reports.
 5. Add remaining customizable preferences, optional PIN/biometric lock, export privacy controls, saved filters/reports and home-screen widgets; verify each persisted workflow and backup state.

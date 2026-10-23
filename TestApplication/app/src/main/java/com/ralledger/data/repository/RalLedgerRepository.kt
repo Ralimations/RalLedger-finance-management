@@ -5,6 +5,7 @@ import com.ralledger.data.local.RalLedgerDatabase
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
+import com.ralledger.data.local.entity.ExpectedIncomeEntity
 import com.ralledger.data.local.entity.JournalEntryEntity
 import com.ralledger.data.local.entity.JournalLineEntity
 import com.ralledger.data.local.entity.ReceivableEntity
@@ -19,6 +20,8 @@ import com.ralledger.domain.model.Budget
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.DashboardSummary
+import com.ralledger.domain.model.ExpectedIncome
+import com.ralledger.domain.model.ExpectedIncomeStatus
 import com.ralledger.domain.model.JournalEntry
 import com.ralledger.domain.model.LineType
 import com.ralledger.domain.model.Money
@@ -47,6 +50,7 @@ class RalLedgerRepository(
     private val budgetDao = database.budgetDao()
     private val journalDao = database.journalDao()
     private val categoryDao = database.categoryDao()
+    private val expectedIncomeDao = database.expectedIncomeDao()
     private val receivableDao = database.receivableDao()
     private val subscriptionDao = database.subscriptionDao()
     private val reconciliationDao = database.reconciliationDao()
@@ -247,9 +251,10 @@ class RalLedgerRepository(
                 ?: throw IllegalArgumentException("This category no longer exists")
             requireEditableCategory(category)
             require(journalDao.countCategoryReferences(id) == 0L &&
-                budgetDao.countCategoryReferences(id) == 0L && categoryDao.countChildren(id) == 0L
+                budgetDao.countCategoryReferences(id) == 0L && expectedIncomeDao.countCategoryReferences(id) == 0L &&
+                categoryDao.countChildren(id) == 0L
             ) {
-                "This category has transaction history, budgets, or subcategories. Archive it to preserve its history."
+                "This category has transaction history, budgets, expected income, or subcategories. Archive it to preserve its history."
             }
             categoryDao.deleteCategory(id)
         }
@@ -276,6 +281,9 @@ class RalLedgerRepository(
             journalDao.reassignEntryCategory(sourceId, targetId)
             journalDao.reassignCategoryLedgerLines(sourceId, targetId)
             budgetDao.reassignCategory(sourceId, targetId)
+            expectedIncomeDao.reassignCategory(sourceId, targetId)
+            receivableDao.reassignIncomeCategory(sourceId, targetId)
+            receivableDao.reassignWriteOffCategory(sourceId, targetId)
             categoryDao.moveChildren(sourceId, targetId)
             categoryDao.deleteCategory(sourceId)
         }
@@ -789,6 +797,181 @@ class RalLedgerRepository(
                 notes = "Reversal of ${originalEntity.id}. ${originalEntity.notes}".trim(),
                 reversesEntryId = originalEntity.id
             )
+    }
+
+    // Expected income
+    val expectedIncomeFlow: Flow<List<ExpectedIncome>> = combine(
+        expectedIncomeDao.getAllExpectedIncomeFlow(),
+        categoryDao.getAllCategoriesFlow()
+    ) { records, categories ->
+        val names = categories.associate { it.id to it.name }
+        records.map { it.toDomainModel(names[it.incomeCategoryId] ?: "Income source") }
+    }
+
+    suspend fun createExpectedIncome(
+        description: String,
+        counterparty: String,
+        amount: Money,
+        expectedDate: Long,
+        incomeCategoryId: String
+    ): String {
+        validateExpectedIncomeValues(description, amount, expectedDate)
+        val id = UUID.randomUUID().toString()
+        database.withTransaction {
+            validateExpectedIncomeCategory(incomeCategoryId)
+            expectedIncomeDao.insert(
+                ExpectedIncomeEntity(
+                    id = id,
+                    description = description.trim(),
+                    counterparty = counterparty.trim(),
+                    amountCentavos = amount.centavos,
+                    expectedDate = expectedDate,
+                    incomeCategoryId = incomeCategoryId,
+                    status = ExpectedIncomeStatus.PLANNED.name,
+                    createdAt = System.currentTimeMillis()
+                )
+            )
+        }
+        return id
+    }
+
+    suspend fun updateExpectedIncome(
+        id: String,
+        description: String,
+        counterparty: String,
+        amount: Money,
+        expectedDate: Long,
+        incomeCategoryId: String
+    ) {
+        validateExpectedIncomeValues(description, amount, expectedDate)
+        database.withTransaction {
+            val current = expectedIncomeDao.getById(id)
+                ?: throw IllegalArgumentException("This expected income no longer exists")
+            require(current.status == ExpectedIncomeStatus.PLANNED.name && !current.isArchived) {
+                "Only active planned income can be edited"
+            }
+            validateExpectedIncomeCategory(incomeCategoryId, allowArchivedId = current.incomeCategoryId)
+            expectedIncomeDao.update(
+                current.copy(
+                    description = description.trim(),
+                    counterparty = counterparty.trim(),
+                    amountCentavos = amount.centavos,
+                    expectedDate = expectedDate,
+                    incomeCategoryId = incomeCategoryId
+                )
+            )
+        }
+    }
+
+    suspend fun cancelExpectedIncome(id: String) {
+        setExpectedIncomeStatus(id, ExpectedIncomeStatus.CANCELLED)
+    }
+
+    suspend fun reactivateExpectedIncome(id: String) {
+        setExpectedIncomeStatus(id, ExpectedIncomeStatus.PLANNED)
+    }
+
+    private suspend fun setExpectedIncomeStatus(id: String, status: ExpectedIncomeStatus) {
+        database.withTransaction {
+            val current = expectedIncomeDao.getById(id)
+                ?: throw IllegalArgumentException("This expected income no longer exists")
+            require(!current.isArchived) { "Restore this expected income before changing its status" }
+            when (status) {
+                ExpectedIncomeStatus.CANCELLED -> require(current.status == ExpectedIncomeStatus.PLANNED.name) {
+                    "Only planned income can be cancelled"
+                }
+                ExpectedIncomeStatus.PLANNED -> {
+                    require(current.status == ExpectedIncomeStatus.CANCELLED.name) {
+                        "Only cancelled income can be reactivated"
+                    }
+                    validateExpectedIncomeCategory(current.incomeCategoryId)
+                }
+                ExpectedIncomeStatus.CONVERTED -> error("Expected income can only be converted to a receivable")
+            }
+            expectedIncomeDao.update(current.copy(status = status.name))
+        }
+    }
+
+    suspend fun setExpectedIncomeArchived(id: String, isArchived: Boolean) {
+        database.withTransaction {
+            val current = expectedIncomeDao.getById(id)
+                ?: throw IllegalArgumentException("This expected income no longer exists")
+            expectedIncomeDao.update(current.copy(isArchived = isArchived))
+        }
+    }
+
+    suspend fun deleteExpectedIncome(id: String) {
+        database.withTransaction {
+            val current = expectedIncomeDao.getById(id)
+                ?: throw IllegalArgumentException("This expected income no longer exists")
+            require(current.status != ExpectedIncomeStatus.CONVERTED.name && current.convertedReceivableId == null) {
+                "This forecast created a receivable. Archive it to preserve its financial history."
+            }
+            expectedIncomeDao.delete(id)
+        }
+    }
+
+    suspend fun convertExpectedIncomeToReceivable(id: String): String = database.withTransaction {
+        val expected = expectedIncomeDao.getById(id)
+            ?: throw IllegalArgumentException("This expected income no longer exists")
+        require(expected.status == ExpectedIncomeStatus.PLANNED.name && !expected.isArchived) {
+            "Only active planned income can be converted"
+        }
+        val category = validateExpectedIncomeCategory(expected.incomeCategoryId)
+        val receivableId = UUID.randomUUID().toString()
+        val clientName = expected.counterparty.ifBlank { category.name }
+        val description = expected.description.ifBlank { "Expected income from ${category.name}" }
+        val receivable = ReceivableEntity(
+            id = receivableId,
+            clientName = clientName,
+            originalAmountCentavos = expected.amountCentavos,
+            outstandingAmountCentavos = expected.amountCentavos,
+            recognitionDate = System.currentTimeMillis(),
+            dueDate = expected.expectedDate,
+            linkedCategoryId = expected.incomeCategoryId,
+            description = description,
+            status = ReceivableStatus.CONFIRMED.name
+        )
+        val entry = AccountingEngine.createReceivableRecognitionEntry(
+            receivableAccountId = receivableId,
+            incomeCategoryId = expected.incomeCategoryId,
+            amount = Money(expected.amountCentavos),
+            description = description.ifBlank { "Receivable recognized: $clientName" }
+        )
+        receivableDao.insertReceivable(receivable)
+        postJournalEntry(
+            entry = entry,
+            transactionType = TransactionType.RECEIVABLE_RECOGNITION,
+            amount = Money(expected.amountCentavos),
+            primaryAccountId = receivableId,
+            categoryId = expected.incomeCategoryId,
+            counterparty = clientName
+        )
+        expectedIncomeDao.update(
+            expected.copy(
+                status = ExpectedIncomeStatus.CONVERTED.name,
+                convertedReceivableId = receivableId
+            )
+        )
+        receivableId
+    }
+
+    private fun validateExpectedIncomeValues(description: String, amount: Money, expectedDate: Long) {
+        require(description.isNotBlank()) { "Description is required" }
+        require(amount.isPositive) { "Expected amount must be positive" }
+        require(expectedDate > 0L) { "Choose a valid expected date" }
+    }
+
+    private suspend fun validateExpectedIncomeCategory(
+        categoryId: String,
+        allowArchivedId: String? = null
+    ): CategoryEntity {
+        val category = categoryDao.getCategoryById(categoryId)
+            ?: throw IllegalArgumentException("Select a valid income source")
+        require(category.type == CategoryType.INCOME.name && (!category.isArchived || category.id == allowArchivedId)) {
+            "Choose an active income category"
+        }
+        return category
     }
 
     // Receivables

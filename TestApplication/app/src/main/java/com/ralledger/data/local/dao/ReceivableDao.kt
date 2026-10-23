@@ -48,6 +48,12 @@ interface ReceivableDao {
     @Query("SELECT * FROM receivable_write_offs WHERE journalEntryId = :journalEntryId LIMIT 1")
     suspend fun getWriteOffByJournalEntryId(journalEntryId: String): ReceivableWriteOffEntity?
 
+    @Query("UPDATE receivables SET linkedCategoryId = :targetId WHERE linkedCategoryId = :sourceId")
+    suspend fun reassignIncomeCategory(sourceId: String, targetId: String)
+
+    @Query("UPDATE receivable_write_offs SET expenseCategoryId = :targetId WHERE expenseCategoryId = :sourceId")
+    suspend fun reassignWriteOffCategory(sourceId: String, targetId: String)
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertReceivable(receivable: ReceivableEntity)
 

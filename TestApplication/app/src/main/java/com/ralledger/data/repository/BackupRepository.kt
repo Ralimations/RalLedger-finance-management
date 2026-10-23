@@ -5,6 +5,7 @@ import com.ralledger.data.local.RalLedgerDatabase
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
+import com.ralledger.data.local.entity.ExpectedIncomeEntity
 import com.ralledger.data.local.entity.JournalEntryEntity
 import com.ralledger.data.local.entity.JournalLineEntity
 import com.ralledger.data.local.entity.ReceivableEntity
@@ -33,6 +34,7 @@ data class BackupPreview(
     val accounts: Int,
     val categories: Int,
     val budgets: Int,
+    val expectedIncome: Int,
     val journalEntries: Int,
     val journalLines: Int,
     val receivables: Int,
@@ -83,6 +85,7 @@ class BackupRepository(
             val accounts = database.accountDao()
             val budgets = database.budgetDao()
             val categories = database.categoryDao()
+            val expectedIncome = database.expectedIncomeDao()
             val journals = database.journalDao()
             val receivables = database.receivableDao()
             val subscriptions = database.subscriptionDao()
@@ -92,6 +95,7 @@ class BackupRepository(
             // the verification step fails.
             receivables.clearPayments()
             receivables.clearWriteOffs()
+            expectedIncome.clear()
             journals.clearJournalLines()
             journals.clearJournalEntries()
             receivables.clearReceivables()
@@ -107,6 +111,7 @@ class BackupRepository(
             if (snapshot.entries.isNotEmpty()) journals.insertJournalEntries(snapshot.entries)
             if (snapshot.lines.isNotEmpty()) journals.insertJournalLinesForRestore(snapshot.lines)
             if (snapshot.receivables.isNotEmpty()) receivables.insertReceivables(snapshot.receivables)
+            if (snapshot.expectedIncome.isNotEmpty()) expectedIncome.insertAll(snapshot.expectedIncome)
             if (snapshot.payments.isNotEmpty()) receivables.insertPayments(snapshot.payments)
             if (snapshot.writeOffs.isNotEmpty()) receivables.insertWriteOffs(snapshot.writeOffs)
             if (snapshot.subscriptions.isNotEmpty()) subscriptions.insertSubscriptions(snapshot.subscriptions)
@@ -142,6 +147,7 @@ class BackupRepository(
         accounts = database.accountDao().getAllAccounts(),
         categories = database.categoryDao().getAllCategories(),
         budgets = database.budgetDao().getAllBudgets(),
+        expectedIncome = database.expectedIncomeDao().getAllExpectedIncome(),
         entries = database.journalDao().getAllJournalEntries(),
         lines = database.journalDao().getAllJournalLines(),
         receivables = database.receivableDao().getAllReceivables(),
@@ -224,6 +230,7 @@ class BackupRepository(
         val accounts: List<AccountEntity>,
         val categories: List<CategoryEntity>,
         val budgets: List<BudgetEntity>,
+        val expectedIncome: List<ExpectedIncomeEntity>,
         val entries: List<JournalEntryEntity>,
         val lines: List<JournalLineEntity>,
         val receivables: List<ReceivableEntity>,
@@ -240,6 +247,7 @@ class BackupRepository(
             put("accounts", JSONArray().also { array -> accounts.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("categories", JSONArray().also { array -> categories.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("budgets", JSONArray().also { array -> budgets.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("expectedIncome", JSONArray().also { array -> expectedIncome.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalEntries", JSONArray().also { array -> entries.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalLines", JSONArray().also { array -> lines.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("receivables", JSONArray().also { array -> receivables.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
@@ -257,6 +265,7 @@ class BackupRepository(
             checkUnique("account", accounts) { it.id }
             checkUnique("category", categories) { it.id }
             checkUnique("budget", budgets) { it.id }
+            checkUnique("expected income", expectedIncome) { it.id }
             checkUnique("journal entry", entries) { it.id }
             checkUnique("journal line", lines) { it.id }
             checkUnique("receivable", receivables) { it.id }
@@ -299,6 +308,32 @@ class BackupRepository(
             if (budgets.map { Triple(it.categoryId, it.year, it.month) }.toSet().size != budgets.size) {
                 errors += "Duplicate category budgets for the same month"
             }
+            if (expectedIncome.any {
+                    it.incomeCategoryId !in categoryIds || categoriesById[it.incomeCategoryId]?.type != "INCOME" ||
+                        it.amountCentavos <= 0L || it.expectedDate <= 0L || it.createdAt <= 0L
+                }
+            ) errors += "Expected income references a missing or non-income category or has an invalid amount or date"
+            if (expectedIncome.any { runCatching { com.ralledger.domain.model.ExpectedIncomeStatus.valueOf(it.status) }.isFailure }) {
+                errors += "Expected income contains an unsupported status"
+            }
+            val expectedReceivableIds = expectedIncome.mapNotNull { it.convertedReceivableId }
+            if (expectedReceivableIds.toSet().size != expectedReceivableIds.size) {
+                errors += "Multiple expected income records reference the same receivable"
+            }
+            val receivablesById = receivables.associateBy { it.id }
+            if (expectedIncome.any { expected ->
+                    val converted = expected.status == "CONVERTED"
+                    val linkedReceivable = expected.convertedReceivableId?.let(receivablesById::get)
+                    if (converted) {
+                        linkedReceivable == null || linkedReceivable.originalAmountCentavos != expected.amountCentavos ||
+                            linkedReceivable.linkedCategoryId != expected.incomeCategoryId ||
+                            linkedReceivable.dueDate != expected.expectedDate ||
+                            (expected.counterparty.isNotBlank() && linkedReceivable.clientName != expected.counterparty)
+                    } else {
+                        expected.convertedReceivableId != null
+                    }
+                }
+            ) errors += "Expected income conversion does not match its receivable"
             if (accounts.any { runCatching { com.ralledger.domain.model.AccountType.valueOf(it.accountType) }.isFailure } ||
                 categories.any { runCatching { com.ralledger.domain.model.CategoryType.valueOf(it.type) }.isFailure } ||
                 receivables.any { runCatching { com.ralledger.domain.model.ReceivableStatus.valueOf(it.status) }.isFailure } ||
@@ -394,6 +429,7 @@ class BackupRepository(
                 accounts = accounts.size,
                 categories = categories.size,
                 budgets = budgets.size,
+                expectedIncome = expectedIncome.size,
                 journalEntries = entries.size,
                 journalLines = lines.size,
                 receivables = receivables.size,
@@ -418,6 +454,7 @@ class BackupRepository(
                     accounts = json.getJSONArray("accounts").objects().map { it.toAccount() },
                     categories = json.getJSONArray("categories").objects().map { it.toCategory() },
                     budgets = json.optJSONArray("budgets")?.objects()?.map { it.toBudget() }.orEmpty(),
+                    expectedIncome = json.optJSONArray("expectedIncome")?.objects()?.map { it.toExpectedIncome() }.orEmpty(),
                     entries = json.getJSONArray("journalEntries").objects().map { it.toJournalEntry() },
                     lines = json.getJSONArray("journalLines").objects().map { it.toJournalLine() },
                     receivables = json.getJSONArray("receivables").objects().map { it.toReceivable() },
@@ -484,6 +521,21 @@ private fun BudgetEntity.toJson() = JSONObject().apply {
 private fun JSONObject.toBudget() = BudgetEntity(
     id = getString("id"), categoryId = getString("categoryId"), year = getInt("year"),
     month = getInt("month"), limitCentavos = getLong("limitCentavos"), isArchived = optBoolean("isArchived", false)
+)
+
+private fun ExpectedIncomeEntity.toJson() = JSONObject().apply {
+    put("id", id); put("description", description); put("counterparty", counterparty)
+    put("amountCentavos", amountCentavos); put("expectedDate", expectedDate)
+    put("incomeCategoryId", incomeCategoryId); put("status", status)
+    putNullable("convertedReceivableId", convertedReceivableId); put("isArchived", isArchived)
+    put("createdAt", createdAt)
+}
+private fun JSONObject.toExpectedIncome() = ExpectedIncomeEntity(
+    id = getString("id"), description = getString("description"), counterparty = getString("counterparty"),
+    amountCentavos = getLong("amountCentavos"), expectedDate = getLong("expectedDate"),
+    incomeCategoryId = getString("incomeCategoryId"), status = getString("status"),
+    convertedReceivableId = stringOrNull("convertedReceivableId"), isArchived = optBoolean("isArchived", false),
+    createdAt = getLong("createdAt")
 )
 
 private fun JournalEntryEntity.toJson() = JSONObject().apply {

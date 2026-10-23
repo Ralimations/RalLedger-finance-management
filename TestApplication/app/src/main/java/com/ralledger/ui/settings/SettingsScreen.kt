@@ -200,6 +200,7 @@ fun SettingsScreen(
                     Text("Created ${SimpleDateFormat("MMM d, yyyy HH:mm", Locale.getDefault()).format(Date(preview.createdAt))}")
                     Text("${preview.accounts} accounts · ${preview.categories} categories")
                     Text("${preview.budgets} budgets")
+                    Text("${preview.expectedIncome} expected-income records")
                     Text("${preview.journalEntries} journal entries · ${preview.journalLines} journal lines")
                     Text("${preview.receivables} receivables · ${preview.payments} payments")
                     Text("${preview.writeOffs} receivable write-offs")

@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,10 +27,11 @@ import com.ralledger.ui.subscriptions.SubscriptionsViewModel
 fun PlanningScreen(
     budgetsViewModel: BudgetsViewModel,
     receivablesViewModel: ReceivablesViewModel,
-    subscriptionsViewModel: SubscriptionsViewModel
+    subscriptionsViewModel: SubscriptionsViewModel,
+    expectedIncomeViewModel: ExpectedIncomeViewModel
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Budgets", "Receivables", "Subscriptions")
+    val tabs = listOf("Budgets", "Receivables", "Expected income", "Subscriptions")
 
     Column(
         modifier = Modifier
@@ -45,7 +46,7 @@ fun PlanningScreen(
             )
         }
 
-        TabRow(selectedTabIndex = selectedTab, modifier = Modifier.fillMaxWidth()) {
+        ScrollableTabRow(selectedTabIndex = selectedTab, modifier = Modifier.fillMaxWidth()) {
             tabs.forEachIndexed { index, title ->
                 Tab(
                     selected = selectedTab == index,
@@ -58,7 +59,11 @@ fun PlanningScreen(
         when (selectedTab) {
             0 -> BudgetsScreen(viewModel = budgetsViewModel)
             1 -> ReceivablesScreen(viewModel = receivablesViewModel)
-            2 -> SubscriptionsScreen(viewModel = subscriptionsViewModel)
+            2 -> ExpectedIncomeScreen(
+                viewModel = expectedIncomeViewModel,
+                onViewReceivables = { selectedTab = 1 }
+            )
+            3 -> SubscriptionsScreen(viewModel = subscriptionsViewModel)
         }
     }
 }

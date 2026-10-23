@@ -70,6 +70,21 @@ class FinancialPreferences(context: Context) {
         store.edit { preferences -> preferences[SUBSCRIPTION_REMINDER_DAYS_KEY] = days }
     }
 
+    suspend fun restore(settings: FinancialSettings) {
+        require(settings.defaultInsightsPeriod != InsightsPeriodType.CUSTOM)
+        require(settings.subscriptionReminderDaysBefore in SUBSCRIPTION_REMINDER_OPTIONS)
+        store.edit { preferences ->
+            if (settings.defaultTransactionAccountId.isNullOrBlank()) preferences.remove(DEFAULT_ACCOUNT_KEY)
+            else preferences[DEFAULT_ACCOUNT_KEY] = settings.defaultTransactionAccountId
+            preferences[DEFAULT_PERIOD_KEY] = settings.defaultInsightsPeriod.name
+            preferences[DATE_FORMAT_KEY] = settings.dateDisplayFormat.name
+            preferences[TRANSACTION_DENSITY_KEY] = settings.transactionListDensity.name
+            preferences[CURRENCY_FORMAT_KEY] = settings.currencyDisplayFormat.name
+            preferences[SUBSCRIPTION_REMINDERS_KEY] = settings.subscriptionRemindersEnabled
+            preferences[SUBSCRIPTION_REMINDER_DAYS_KEY] = settings.subscriptionReminderDaysBefore
+        }
+    }
+
     private companion object {
         val DEFAULT_ACCOUNT_KEY = stringPreferencesKey("default_transaction_account")
         val DEFAULT_PERIOD_KEY = stringPreferencesKey("default_insights_period")

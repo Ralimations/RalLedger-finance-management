@@ -1,7 +1,7 @@
 # RalLedger CRUD and lifecycle matrix
 
 Updated: 2026-10-24
-Branch: `feature/ralledger-v2-live-ready`; latest combined smart-import and money-calculator release published to `main` as `8619844`
+Branch: `feature/ralledger-v2-live-ready`; native home-screen money widget and refreshed debug APK published to `main` at `4134fc6`
 
 This matrix distinguishes a working lifecycle from a create-only screen or repository primitive. “Partial” means one or more requested operations remain unavailable in the app UI or lack verified persistence. A button or repository method alone is not counted as complete.
 

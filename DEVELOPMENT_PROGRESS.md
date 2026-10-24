@@ -1,7 +1,7 @@
 # RalLedger v2.0 Development Progress
 
 Updated: 2026-10-24
-Branch: `feature/ralledger-v2-live-ready` (schema-22 restore-recovery release prepared for `main`)
+Branch: `feature/ralledger-v2-live-ready` (schema-22 restore-recovery release published to `main`)
 Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Delivered in this checkpoint
@@ -516,5 +516,5 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Added instrumentation cases for journal serialization, recovery before/after the database commit, and a preference-write failure. The instrumentation sources compile; execution remains unverified because both available emulator transports are offline and no AVD is configured.
 - Verification passed `:app:testDebugUnitTest` (71 tests, 0 failures/errors), `:app:lintDebug` (29 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`.
 - Refreshed `releases/RalLedger-debug.apk`: 23,574,552 bytes; SHA-256 `0BB0C3989F5A16EAB5B57E515FF7006D29D178B5E4B069CAC334027CEDC88ECF`. `apksigner` verifies the v2 signature. Package version remains 2.0 (versionCode 2); this APK is debug-signed, not production-signed.
-- This iteration is being published to `Ralimations/RalLedger-finance-management` on `main` under the user's explicit authorization. The previous `main` release remains `0afa9f630b29efb43e90d2e9c7a433ea063e3ccb` until GitHub confirms this commit.
+- Published commit `41852c210bae6c75cdb47efb7b36a312b5a8afe4` to `Ralimations/RalLedger-finance-management` on `main` under the user's explicit authorization. GitHub confirms `main` points to this commit and `releases/RalLedger-debug.apk` is present at 23,574,552 bytes.
 - Remaining live-use checks include connected migration/recovery execution, screen walkthroughs on small devices, and partial lifecycle items in `FEATURE_CRUD_MATRIX.md`.

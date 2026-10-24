@@ -40,10 +40,17 @@ import kotlinx.coroutines.launch
 import com.ralledger.ui.navigation.RalLedgerMainScreen
 import com.ralledger.ui.theme.RalLedgerTheme
 import com.ralledger.ui.theme.ThemeSettings
+import com.ralledger.ui.widgets.EXTRA_WIDGET_TRANSACTION_TYPE
+import com.ralledger.ui.widgets.normalizeWidgetTransactionType
 
 class MainActivity : FragmentActivity() {
+    private var pendingWidgetTransactionType by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingWidgetTransactionType = normalizeWidgetTransactionType(
+            intent.getStringExtra(EXTRA_WIDGET_TRANSACTION_TYPE)
+        )
         val app = application as RalLedgerApplication
         setContent {
             val startupState by app.startupState.collectAsState()
@@ -109,6 +116,8 @@ class MainActivity : FragmentActivity() {
                     )
                     else -> RalLedgerMainScreen(
                         appContainer = app.container,
+                        widgetQuickAddType = pendingWidgetTransactionType,
+                        onWidgetQuickAddHandled = { pendingWidgetTransactionType = null },
                         appLockAvailable = canUseAppLock(),
                         onEnableAppLock = {
                             if (!canUseAppLock()) {
@@ -156,6 +165,14 @@ class MainActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        pendingWidgetTransactionType = normalizeWidgetTransactionType(
+            intent.getStringExtra(EXTRA_WIDGET_TRANSACTION_TYPE)
+        )
     }
 
     private fun canUseAppLock(): Boolean {

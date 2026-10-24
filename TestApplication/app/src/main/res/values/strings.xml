@@ -1,3 +1,14 @@
 <resources>
-    <string name="app_name">Test Application</string>
+    <string name="app_name">RalLedger</string>
+    <string name="widget_title">Available to spend</string>
+    <string name="widget_loading">Loading…</string>
+    <string name="widget_available_caption">Tap to open RalLedger</string>
+    <string name="widget_balance_hidden">Balance hidden</string>
+    <string name="widget_unlock_caption">Open RalLedger to unlock</string>
+    <string name="widget_data_unavailable">Data unavailable</string>
+    <string name="widget_recovery_caption">Open the app to retry recovery</string>
+    <string name="widget_income">+ Income</string>
+    <string name="widget_expense">− Expense</string>
+    <string name="widget_transfer">⇄ Transfer</string>
+    <string name="widget_description">Available money and quick transaction actions</string>
 </resources>

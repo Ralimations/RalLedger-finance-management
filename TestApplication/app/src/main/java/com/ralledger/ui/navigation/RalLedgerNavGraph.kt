@@ -95,6 +95,7 @@ import com.ralledger.ui.theme.ThemeSettings
 import com.ralledger.ui.subscriptions.SubscriptionsViewModel
 import com.ralledger.ui.transactions.TransactionsScreen
 import com.ralledger.ui.transactions.TransactionsViewModel
+import com.ralledger.ui.widgets.normalizeWidgetTransactionType
 import kotlinx.coroutines.launch
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
@@ -119,6 +120,8 @@ val navScreens = listOf(
 @Composable
 fun RalLedgerMainScreen(
     appContainer: AppContainer,
+    widgetQuickAddType: String?,
+    onWidgetQuickAddHandled: () -> Unit,
     navController: NavHostController = rememberNavController(),
     appLockAvailable: Boolean,
     onEnableAppLock: () -> Unit,
@@ -131,12 +134,21 @@ fun RalLedgerMainScreen(
     val showBottomNavLabels = LocalConfiguration.current.screenWidthDp >= 320
 
     var showAddDialog by remember { mutableStateOf(false) }
+    var dialogInitialTransactionType by remember { mutableStateOf("EXPENSE") }
     val themeSettings by appContainer.themePreferences.settings.collectAsState(initial = ThemeSettings())
     val dashboardSettings by appContainer.dashboardPreferences.settings.collectAsState(initial = DashboardSettings())
     val financialSettings by appContainer.financialPreferences.settings.collectAsState(initial = FinancialSettings())
     val appLockEnabled by appContainer.appLockPreferences.enabled.collectAsState(initial = false)
     val accounts by appContainer.repository.accountsFlow.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
+
+    LaunchedEffect(widgetQuickAddType) {
+        normalizeWidgetTransactionType(widgetQuickAddType)?.let { type ->
+            dialogInitialTransactionType = type
+            showAddDialog = true
+            onWidgetQuickAddHandled()
+        }
+    }
 
     val accountsVm: AccountsViewModel = viewModel(factory = AccountsViewModel.Factory(appContainer.repository))
 
@@ -146,7 +158,10 @@ fun RalLedgerMainScreen(
                 title = { Text("RalLedger") },
                 actions = {
                     if (currentRoute == Screen.Dashboard.route || currentRoute == Screen.Insights.route) {
-                        IconButton(onClick = { showAddDialog = true }) {
+                        IconButton(onClick = {
+                            dialogInitialTransactionType = "EXPENSE"
+                            showAddDialog = true
+                        }) {
                             Icon(Icons.Default.Add, contentDescription = "Record transaction")
                         }
                     }
@@ -312,6 +327,7 @@ fun RalLedgerMainScreen(
                 QuickAddTransactionDialog(
                     appContainer = appContainer,
                     defaultTransactionAccountId = financialSettings.defaultTransactionAccountId,
+                    initialTransactionType = dialogInitialTransactionType,
                     onDismiss = { showAddDialog = false }
                 )
             }
@@ -323,10 +339,13 @@ fun RalLedgerMainScreen(
 fun QuickAddTransactionDialog(
     appContainer: AppContainer,
     defaultTransactionAccountId: String?,
+    initialTransactionType: String = "EXPENSE",
     onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    var txType by remember { mutableStateOf("EXPENSE") } // EXPENSE, INCOME, TRANSFER
+    var txType by remember(initialTransactionType) {
+        mutableStateOf(normalizeWidgetTransactionType(initialTransactionType) ?: "EXPENSE")
+    } // EXPENSE, INCOME, TRANSFER
     var amountStr by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var accountId by remember { mutableStateOf("") }

@@ -558,3 +558,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Results: 81 unit tests and 37 connected Android tests passed with 0 failures, errors, or skips; lint reported 33 warnings and 0 errors; debug assembly and Android-test Kotlin compilation succeeded. Two offline emulator entries were skipped.
 - The generated debug APK and `releases/RalLedger-debug.apk` are both 76,343,987 bytes with SHA-256 `11BF24398CB33B4F502530C2AA0A8090E97BF8181757796645B8C603DE9C04E1`. `apksigner` verifies the v2 signature. The APK is signed with the Android debug key, not a production key.
 - No application code or APK changed in this verification-only pass. Remaining live-use work includes production signing, outstanding manual flows and responsive-layout checks listed in `FEATURE_CRUD_MATRIX.md`, and review of lint warnings.
+
+## Native home-screen money widget — 2026-10-24
+
+- Added a resizable Android home-screen widget showing the journal-derived Available to spend amount, with Income, Expense, and Transfer shortcuts into Quick Add. The selected shortcut preselects its transaction type; the existing Quick Add account-balance panel stays in the form flow.
+- The widget follows the app's currency symbol/code display setting. It hides the amount whenever app lock is enabled and suppresses the amount if startup backup recovery fails. Room-backed dashboard changes, currency display changes, and app-lock changes refresh installed widgets while the app process is active; Android's periodic widget refresh covers later openings.
+- Added a strict widget-intent type parser and a unit test. `:app:testDebugUnitTest` passed (82 tests); `:app:lintDebug` completed with 33 warnings and 0 errors; `:app:assembleDebug` and `:app:compileDebugAndroidTestKotlin` succeeded.
+- The connected Android test task could not run because ADB reported no connected devices and the only transport was offline; no local AVD was available to start. Therefore launcher installation, widget privacy rendering, responsive layout, and shortcut tap-through still need a device check.
+- Refreshed `releases/RalLedger-debug.apk`: 77,928,083 bytes; SHA-256 `CAD71FDA7EF632668BCF69824F8BD9C9CCA8EA32D4E0B1115133B58405680237`. It is the version 2.0 debug-signed APK, not production-signed. This source iteration remains local and was not pushed or merged.

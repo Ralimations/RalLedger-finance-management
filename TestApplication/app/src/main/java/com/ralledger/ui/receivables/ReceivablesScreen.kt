@@ -59,6 +59,7 @@ import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Receivable
 import com.ralledger.domain.model.ReceivableStatus
+import com.ralledger.ui.components.MoneyCalculatorAction
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -421,6 +422,7 @@ private fun ReceivableEditorDialog(
                         amountText, { amountText = it; error = null },
                         label = { Text("Amount owed (PHP)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; error = null } },
                         singleLine = true, modifier = Modifier.fillMaxWidth()
                     )
                     ExposedDropdownMenuBox(expanded = categoryExpanded, onExpandedChange = { categoryExpanded = !categoryExpanded }) {
@@ -505,7 +507,9 @@ private fun CollectPaymentDialog(
                 }
                 OutlinedTextField(
                     amountText, { amountText = it; error = null }, label = { Text("Collection amount (PHP)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth()
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; error = null } },
+                    singleLine = true, modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(notes, { notes = it }, label = { Text("Notes / receipt reference") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -563,7 +567,9 @@ private fun WriteOffDialog(
                 }
                 OutlinedTextField(
                     amountText, { amountText = it; error = null }, label = { Text("Amount to write off (PHP)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth()
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; error = null } },
+                    singleLine = true, modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(notes, { notes = it }, label = { Text("Reason / notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

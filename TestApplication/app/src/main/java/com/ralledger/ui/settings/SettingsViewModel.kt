@@ -1,5 +1,6 @@
 package com.ralledger.ui.settings
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -8,6 +9,8 @@ import com.ralledger.data.repository.BackupRepository
 import com.ralledger.data.importing.CsvColumnMapping
 import com.ralledger.data.importing.CsvDateOrder
 import com.ralledger.data.importing.CsvImportPreview
+import com.ralledger.data.importing.FinancialImportFormat
+import com.ralledger.data.importing.SmartFinancialImportReader
 import com.ralledger.data.importing.ParsedCsvDocument
 import com.ralledger.data.importing.TransactionCsvImporter
 import com.ralledger.data.export.TransactionCsvExporter
@@ -19,13 +22,16 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
-import java.nio.charset.StandardCharsets
 
 data class CsvImportUiState(
     val headers: List<String>,
     val mapping: CsvColumnMapping,
     val preview: CsvImportPreview? = null,
-    val isImporting: Boolean = false
+    val isImporting: Boolean = false,
+    val sourceFormat: FinancialImportFormat = FinancialImportFormat.CSV,
+    val warnings: List<String> = emptyList(),
+    val accounts: List<com.ralledger.domain.model.Account> = emptyList(),
+    val categories: List<com.ralledger.domain.model.Category> = emptyList()
 )
 
 private data class CsvImportReferenceData(
@@ -37,8 +43,10 @@ private data class CsvImportReferenceData(
 
 class SettingsViewModel(
     private val backupRepository: BackupRepository,
-    private val repository: RalLedgerRepository
+    private val repository: RalLedgerRepository,
+    context: Context
 ) : ViewModel() {
+    private val financialImportReader = SmartFinancialImportReader(context)
 
     private val _backupStatus = MutableStateFlow<String?>(null)
     val backupStatus: StateFlow<String?> = _backupStatus
@@ -72,13 +80,12 @@ class SettingsViewModel(
         }
     }
 
-    fun inspectTransactionCsv(readDocument: suspend () -> ByteArray) {
+    fun inspectFinancialFile(fileName: String?, mimeType: String?, readDocument: suspend () -> ByteArray) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val bytes = readDocument()
                 val document = try {
-                    val text = String(bytes, StandardCharsets.UTF_8)
-                    withContext(Dispatchers.Default) { TransactionCsvImporter.parse(text) }
+                    withContext(Dispatchers.Default) { financialImportReader.parse(fileName, mimeType, bytes) }
                 } finally {
                     bytes.fill(0)
                 }
@@ -88,21 +95,29 @@ class SettingsViewModel(
                     tags = repository.transactionTagsFlow.first(),
                     transactions = repository.transactionsFlow.first()
                 )
-                val mapping = TransactionCsvImporter.suggestMapping(document.headers)
+                val mapping = TransactionCsvImporter.suggestMapping(document.table.headers)
                 val preview = withContext(Dispatchers.Default) {
                     TransactionCsvImporter.preview(
-                        document, mapping, references.accounts, references.categories,
+                        document.table, mapping, references.accounts, references.categories,
                         references.tags, references.transactions
                     )
-                }
-                pendingCsv = document
+                }.let { it.copy(warnings = document.warnings + it.warnings) }
+                pendingCsv = document.table
                 pendingCsvReferences = references
-                _csvImportState.value = CsvImportUiState(document.headers, mapping, preview)
+                _csvImportState.value = CsvImportUiState(
+                    headers = document.table.headers,
+                    mapping = mapping,
+                    preview = preview,
+                    sourceFormat = document.format,
+                    warnings = document.warnings,
+                    accounts = references.accounts,
+                    categories = references.categories
+                )
                 _csvStatus.value = null
             } catch (error: Exception) {
                 pendingCsv = null
                 pendingCsvReferences = null
-                _csvStatus.value = "CSV could not be opened: ${error.localizedMessage ?: "Check the file and try again."}"
+                _csvStatus.value = "File could not be opened: ${error.localizedMessage ?: "Check the file and try again."}"
             }
         }
     }
@@ -117,7 +132,9 @@ class SettingsViewModel(
                 document, mapping, references.accounts, references.categories,
                 references.tags, references.transactions
             )
-            _csvImportState.value = _csvImportState.value?.copy(preview = preview)
+            _csvImportState.value = _csvImportState.value?.let { state ->
+                state.copy(preview = preview.copy(warnings = state.warnings + preview.warnings))
+            }
         }
     }
 
@@ -199,11 +216,12 @@ class SettingsViewModel(
 
     class Factory(
         private val backupRepository: BackupRepository,
-        private val repository: RalLedgerRepository
+        private val repository: RalLedgerRepository,
+        private val context: Context
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return SettingsViewModel(backupRepository, repository) as T
+            return SettingsViewModel(backupRepository, repository, context) as T
         }
     }
 }

@@ -56,6 +56,7 @@ import com.ralledger.domain.model.Budget
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
+import com.ralledger.ui.components.MoneyCalculatorAction
 import kotlinx.coroutines.launch
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -366,7 +367,8 @@ private fun BudgetEditorDialog(
                     label = { Text("Monthly limit (PHP)") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it } }
                 )
                 (error ?: localError)?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }

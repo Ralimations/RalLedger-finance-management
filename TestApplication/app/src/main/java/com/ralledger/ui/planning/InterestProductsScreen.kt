@@ -54,6 +54,7 @@ import com.ralledger.domain.model.InterestCompounding
 import com.ralledger.domain.model.InterestProduct
 import com.ralledger.domain.model.InterestProductType
 import com.ralledger.domain.model.Money
+import com.ralledger.ui.components.MoneyCalculatorAction
 import com.ralledger.domain.usecase.InterestCalculator
 import com.ralledger.ui.settings.displayDate
 import java.math.BigDecimal
@@ -340,7 +341,7 @@ private fun InterestProductEditor(
                 OutlinedTextField(opened, { opened = it; error = null }, label = { Text("Opened (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !hasPostedCredits)
                 if (type == InterestProductType.TIME_DEPOSIT) {
                     OutlinedTextField(maturity, { maturity = it; error = null }, label = { Text("Maturity (YYYY-MM-DD)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    OutlinedTextField(principal, { principal = it; error = null }, label = { Text("Original principal (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !hasPostedCredits)
+                    OutlinedTextField(principal, { principal = it; error = null }, label = { Text("Original principal (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), trailingIcon = { MoneyCalculatorAction(principal, enabled = !hasPostedCredits) { principal = it; error = null } }, singleLine = true, modifier = Modifier.fillMaxWidth(), enabled = !hasPostedCredits)
                 }
                 OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4)
                 Text("Interest estimates are informational. Only a recorded credit changes your ledger balance. Rate changes apply to future estimates; each posted credit keeps its original rate and tax snapshot.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -406,8 +407,8 @@ private fun InterestCreditEditor(
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(max = 450.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 estimate?.let { Text("Estimate · gross ${displayMoney(it.gross)} · tax ${displayMoney(it.tax)} · net ${displayMoney(it.net)}", style = MaterialTheme.typography.bodySmall) }
-                OutlinedTextField(gross, { gross = it; error = null }, label = { Text("Actual gross interest (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(tax, { tax = it; error = null }, label = { Text("Tax withheld (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(gross, { gross = it; error = null }, label = { Text("Actual gross interest (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), trailingIcon = { MoneyCalculatorAction(gross) { gross = it; error = null } }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(tax, { tax = it; error = null }, label = { Text("Tax withheld (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), trailingIcon = { MoneyCalculatorAction(tax) { tax = it; error = null } }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 SelectText("Income category", incomeCategories.firstOrNull { it.id == incomeCategoryId }?.name ?: "Choose category", incomeMenu, { incomeMenu = it }) {
                     incomeCategories.forEach { category -> DropdownMenuItem(text = { Text(category.name) }, onClick = { incomeCategoryId = category.id; incomeMenu = false }) }
                 }

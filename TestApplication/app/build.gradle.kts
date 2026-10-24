@@ -48,6 +48,8 @@ dependencies {
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
     implementation(libs.androidx.biometric)
+    implementation(libs.pdfbox.android)
+    implementation(libs.mlkit.text.recognition)
 
     // Compose
     implementation(platform(libs.androidx.compose.bom))

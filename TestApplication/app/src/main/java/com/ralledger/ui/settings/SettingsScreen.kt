@@ -1,9 +1,12 @@
 package com.ralledger.ui.settings
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.OpenableColumns
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -151,10 +154,12 @@ fun SettingsScreen(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
-            viewModel.inspectTransactionCsv {
+            val fileName = displayNameForUri(context, uri)
+            val mimeType = context.contentResolver.getType(uri)
+            viewModel.inspectFinancialFile(fileName, mimeType) {
                 val input = context.contentResolver.openInputStream(uri)
-                    ?: throw IOException("The selected CSV could not be opened")
-                input.use { readCsvWithLimit(it) }
+                    ?: throw IOException("The selected file could not be opened")
+                input.use { readFinancialFileWithLimit(it) }
             }
         }
     }
@@ -449,23 +454,31 @@ fun SettingsScreen(
 
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Transaction CSV export", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text("Transaction import and export", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 Text(
                     "CSV exports include transaction details and are not encrypted. Save them privately; use Encrypted Backup for password-protected storage.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 Text(
-                    "Import income, expenses and transfers from a mapped CSV. Rows must match existing accounts and categories; duplicates are skipped.",
+                    "Import CSV, TSV, Excel, OFX, QIF or PDF statements. Review the detected rows, map them to existing records and confirm before saving.",
                     style = MaterialTheme.typography.bodySmall
                 )
                 TextButton(
                     onClick = {
                         importTransactions.launch(
-                            arrayOf("text/csv", "text/comma-separated-values", "text/plain", "application/vnd.ms-excel", "*/*")
+                            arrayOf(
+                                "text/*",
+                                "application/pdf",
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                "application/x-ofx",
+                                "application/qif",
+                                "application/octet-stream",
+                                "*/*"
+                            )
                         )
                     },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Import CSV") }
+                ) { Text("Import financial file") }
                 Button(
                     onClick = {
                         val date = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
@@ -597,7 +610,13 @@ fun SettingsScreen(
     }
 }
 
-private fun readCsvWithLimit(input: java.io.InputStream): ByteArray {
+private fun displayNameForUri(context: Context, uri: Uri): String? = runCatching {
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        if (cursor.moveToFirst()) cursor.getString(0) else null
+    }
+}.getOrNull()
+
+private fun readFinancialFileWithLimit(input: java.io.InputStream): ByteArray {
     val output = ByteArrayOutputStream()
     val buffer = ByteArray(8_192)
     var total = 0
@@ -605,7 +624,7 @@ private fun readCsvWithLimit(input: java.io.InputStream): ByteArray {
         val count = input.read(buffer)
         if (count < 0) break
         total += count
-        if (total > 20_000_000) throw IOException("CSV import is limited to 20 MB")
+        if (total > 20_000_000) throw IOException("Financial file import is limited to 20 MB")
         output.write(buffer, 0, count)
     }
     return output.toByteArray()

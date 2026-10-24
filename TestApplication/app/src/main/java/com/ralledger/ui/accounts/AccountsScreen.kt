@@ -1,5 +1,6 @@
 package com.ralledger.ui.accounts
 import com.ralledger.ui.settings.displayMoney
+import com.ralledger.ui.components.MoneyCalculatorAction
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -322,6 +323,7 @@ private fun AccountReconciliationDialog(
                     label = { Text("Verified balance (PHP)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    trailingIcon = { MoneyCalculatorAction(actualBalanceText) { actualBalanceText = it; error = null } },
                     modifier = Modifier.fillMaxWidth()
                 )
                 difference?.let { Text("Adjustment: ${displayMoney(it)}", style = MaterialTheme.typography.labelLarge) }
@@ -414,6 +416,7 @@ private fun AccountFormDialog(
                         supportingText = { Text("Use the verified balance when this account is first added.") },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        trailingIcon = { MoneyCalculatorAction(balanceText) { balanceText = it; inputError = null } },
                         modifier = Modifier.fillMaxWidth()
                     )
                 } else {

@@ -60,6 +60,7 @@ import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.ExpectedIncome
 import com.ralledger.domain.model.ExpectedIncomeStatus
 import com.ralledger.domain.model.Money
+import com.ralledger.ui.components.MoneyCalculatorAction
 import java.util.Calendar
 import java.util.Date
 import com.ralledger.ui.settings.displayDate
@@ -341,6 +342,7 @@ private fun ExpectedIncomeEditorDialog(
                     amountText, { amountText = it; error = null },
                     label = { Text("Expected amount (PHP)") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; error = null } },
                     singleLine = true, modifier = Modifier.fillMaxWidth()
                 )
                 ExposedDropdownMenuBox(expanded = categoryExpanded, onExpandedChange = { categoryExpanded = !categoryExpanded }) {

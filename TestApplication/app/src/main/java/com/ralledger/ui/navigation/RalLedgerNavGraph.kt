@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.input.KeyboardType
@@ -62,6 +63,8 @@ import com.ralledger.di.AppContainer
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.usecase.InsightsPeriodType
 import com.ralledger.ui.accounts.AccountsScreen
+import com.ralledger.ui.components.AccountBalancesSummary
+import com.ralledger.ui.components.MoneyCalculatorAction
 import com.ralledger.ui.accounts.AccountsViewModel
 import com.ralledger.ui.categories.CategoriesScreen
 import com.ralledger.ui.categories.CategoriesViewModel
@@ -122,6 +125,7 @@ fun RalLedgerMainScreen(
     onDisableAppLock: () -> Unit,
     onOpenSecuritySettings: () -> Unit
 ) {
+    val applicationContext = LocalContext.current.applicationContext
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
     val showBottomNavLabels = LocalConfiguration.current.screenWidthDp >= 320
@@ -253,7 +257,7 @@ fun RalLedgerMainScreen(
             }
             composable(Screen.Settings.route) {
                 val vm: SettingsViewModel = viewModel(
-                    factory = SettingsViewModel.Factory(appContainer.backupRepository, appContainer.repository)
+                    factory = SettingsViewModel.Factory(appContainer.backupRepository, appContainer.repository, applicationContext)
                 )
                 SettingsScreen(
                     viewModel = vm,
@@ -373,13 +377,16 @@ fun QuickAddTransactionDialog(
                     }
                 }
 
+                AccountBalancesSummary(accounts)
+
                 OutlinedTextField(
                     value = amountStr,
                     onValueChange = { amountStr = it; inputError = null },
                     label = { Text("Amount (PHP)") },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    trailingIcon = { MoneyCalculatorAction(amountStr) { amountStr = it; inputError = null } }
                 )
 
                 OutlinedTextField(

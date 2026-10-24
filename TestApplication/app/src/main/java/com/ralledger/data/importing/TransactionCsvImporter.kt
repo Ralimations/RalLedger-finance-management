@@ -25,6 +25,8 @@ data class CsvColumnMapping(
     val date: Int? = null,
     val type: Int? = null,
     val amount: Int? = null,
+    val debitAmount: Int? = null,
+    val creditAmount: Int? = null,
     val account: Int? = null,
     val destinationAccount: Int? = null,
     val category: Int? = null,
@@ -35,7 +37,11 @@ data class CsvColumnMapping(
     val notes: Int? = null,
     val currency: Int? = null,
     val labels: Int? = null,
-    val dateOrder: CsvDateOrder = CsvDateOrder.AUTO
+    val dateOrder: CsvDateOrder = CsvDateOrder.AUTO,
+    val defaultAccountId: String? = null,
+    val defaultDestinationAccountId: String? = null,
+    val defaultIncomeCategoryId: String? = null,
+    val defaultExpenseCategoryId: String? = null
 )
 
 data class ParsedCsvRow(val lineNumber: Int, val values: List<String>)
@@ -92,7 +98,9 @@ object TransactionCsvImporter {
     private val localDatePatterns = listOf(
         DateTimeFormatter.ISO_LOCAL_DATE,
         DateTimeFormatter.ofPattern("MMM d, yyyy", Locale.US),
+        DateTimeFormatter.ofPattern("MMMM d, yyyy", Locale.US),
         DateTimeFormatter.ofPattern("d MMM yyyy", Locale.US),
+        DateTimeFormatter.ofPattern("d MMMM yyyy", Locale.US),
         DateTimeFormatter.ofPattern("dd-MMM-yyyy", Locale.US),
         DateTimeFormatter.ofPattern("yyyy/M/d", Locale.US)
     )
@@ -101,6 +109,7 @@ object TransactionCsvImporter {
         require(csvText.isNotBlank()) { "The CSV file is empty" }
         require(csvText.length <= 20_000_000) { "The CSV file is larger than the 20 MB import limit" }
         val text = csvText.removePrefix("\uFEFF")
+        val delimiter = detectDelimiter(text)
         val records = mutableListOf<ParsedCsvRow>()
         var row = mutableListOf<String>()
         val cell = StringBuilder()
@@ -148,7 +157,7 @@ object TransactionCsvImporter {
                         require(cell.isEmpty()) { "Unexpected quote on line $line" }
                         quoted = true
                     }
-                    ',' -> finishCell()
+                    delimiter -> finishCell()
                     '\r', '\n' -> {
                         finishRecord()
                         if (character == '\r' && text.getOrNull(index + 1) == '\n') index++
@@ -172,6 +181,8 @@ object TransactionCsvImporter {
         return ParsedCsvDocument(headers, records.drop(1).filter { it.values.any(String::isNotBlank) })
     }
 
+    fun detectedDelimiter(text: String): Char = detectDelimiter(text)
+
     fun suggestMapping(headers: List<String>): CsvColumnMapping {
         val normalized = headers.map { header -> header.lowercase(Locale.ROOT).filter(Char::isLetterOrDigit) }
         fun find(vararg names: String): Int? {
@@ -179,18 +190,20 @@ object TransactionCsvImporter {
             return normalized.indexOfFirst { it in choices }.takeIf { it >= 0 }
         }
         return CsvColumnMapping(
-            date = find("timestamp_epoch_ms", "date", "transactiondate", "postedatutc", "timestamp", "transactiontime"),
-            type = find("transactiontype", "type", "transactionkind"),
-            amount = find("amount", "transactionamount", "value", "total"),
-            account = find("accountid", "account", "accountname", "sourceaccount", "fromaccount"),
+            date = find("timestamp_epoch_ms", "date", "transactiondate", "dateoftransaction", "transdate", "postedatutc", "timestamp", "transactiontime", "postdate", "posteddate", "bookingdate", "valuedate"),
+            type = find("transactiontype", "type", "transactionkind", "kind", "trntype", "flow", "debitcredit", "drcr"),
+            amount = find("amount", "transactionamount", "value", "total", "signedamount", "amountsigned", "netamount", "netvalue"),
+            debitAmount = find("debit", "debitamount", "withdrawal", "withdrawals", "moneyout", "paidout", "outgoing"),
+            creditAmount = find("credit", "creditamount", "deposit", "deposits", "moneyin", "paidin", "incoming"),
+            account = find("accountid", "account", "accountname", "sourceaccount", "fromaccount", "accountnumber"),
             destinationAccount = find("destinationaccountid", "destinationaccount", "destinationaccountname", "toaccount", "transferaccount"),
-            category = find("categoryid", "category", "categoryname", "incomeexpensecategory"),
-            fee = find("fee", "transferfee", "charges"),
+            category = find("categoryid", "category", "categoryname", "incomeexpensecategory", "categorydescription"),
+            fee = find("fee", "transferfee", "charges", "transactionfee"),
             feeCategory = find("feecategory", "transferfeecategory", "feecategoryname"),
-            counterparty = find("counterparty", "payee", "merchant", "payer"),
-            description = find("description", "memo", "title", "transactiondescription"),
+            counterparty = find("counterparty", "payee", "merchant", "payer", "name", "beneficiary"),
+            description = find("description", "memo", "title", "transactiondescription", "details", "narrative", "reference"),
             notes = find("notes", "note", "comment", "comments"),
-            currency = find("accountcurrency", "currency", "currencycode"),
+            currency = find("accountcurrency", "currency", "currencycode", "curr"),
             labels = find("labels", "tags", "transactionlabels")
         )
     }
@@ -211,11 +224,12 @@ object TransactionCsvImporter {
             try {
                 fun value(column: Int?): String = column?.let { row.values.getOrNull(it)?.trim().orEmpty() }.orEmpty()
                 require(mapping.date != null) { "Map a date column" }
-                require(mapping.amount != null) { "Map an amount column" }
-                require(mapping.account != null) { "Map an account column" }
+                require(mapping.amount != null || mapping.debitAmount != null || mapping.creditAmount != null) {
+                    "Map an amount column or debit/credit columns"
+                }
+                require(mapping.account != null || mapping.defaultAccountId != null) { "Choose an account for these rows" }
 
-                val rawAmount = Money.parse(value(mapping.amount))
-                    ?: throw IllegalArgumentException("Amount is missing or invalid")
+                val rawAmount = resolveImportedAmount(row, mapping)
                 require(rawAmount.centavos != Long.MIN_VALUE) { "Amount is outside the supported range" }
                 val typeText = value(mapping.type)
                 val type = parseTransactionType(typeText, rawAmount)
@@ -226,13 +240,17 @@ object TransactionCsvImporter {
                 val dayStart = date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
                 val nextDay = date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
-                val account = resolveAccount(value(mapping.account), activeAccounts)
+                val account = mapping.defaultAccountId
+                    ?.let { resolveAccount(it, activeAccounts) }
+                    ?: resolveAccount(value(mapping.account), activeAccounts)
                 val rawCurrency = value(mapping.currency)
                 require(rawCurrency.isBlank() || rawCurrency.equals(account.currency, ignoreCase = true)) {
                     "Currency $rawCurrency does not match ${account.currency} on ${account.name}"
                 }
                 val destination = if (type == TransactionType.TRANSFER) {
-                    resolveAccount(value(mapping.destinationAccount), activeAccounts)
+                    mapping.defaultDestinationAccountId
+                        ?.let { resolveAccount(it, activeAccounts) }
+                        ?: resolveAccount(value(mapping.destinationAccount), activeAccounts)
                 } else null
                 require(destination == null || destination.id != account.id) { "Transfer source and destination must differ" }
                 require(destination == null || destination.currency == account.currency) {
@@ -240,7 +258,7 @@ object TransactionCsvImporter {
                 }
 
                 val feeRaw = value(mapping.fee)
-                val parsedFee = if (feeRaw.isBlank()) Money.ZERO else Money.parse(feeRaw)
+                val parsedFee = if (feeRaw.isBlank()) Money.ZERO else parseImportedAmount(feeRaw)
                     ?: throw IllegalArgumentException("Fee is invalid")
                 require(parsedFee.centavos >= 0L) { "Fee cannot be negative" }
                 val feeCategory = if (type == TransactionType.TRANSFER && parsedFee.isPositive) {
@@ -248,8 +266,16 @@ object TransactionCsvImporter {
                 } else null
 
                 val category = when (type) {
-                    TransactionType.INCOME -> resolveCategory(value(mapping.category), activeCategories, CategoryType.INCOME)
-                    TransactionType.EXPENSE -> resolveCategory(value(mapping.category), activeCategories, CategoryType.EXPENSE)
+                    TransactionType.INCOME -> resolveCategory(
+                        value(mapping.category).ifBlank { mapping.defaultIncomeCategoryId.orEmpty() },
+                        activeCategories,
+                        CategoryType.INCOME
+                    )
+                    TransactionType.EXPENSE -> resolveCategory(
+                        value(mapping.category).ifBlank { mapping.defaultExpenseCategoryId.orEmpty() },
+                        activeCategories,
+                        CategoryType.EXPENSE
+                    )
                     TransactionType.TRANSFER -> null
                     else -> throw IllegalArgumentException("Only income, expense and transfer rows can be imported")
                 }
@@ -286,6 +312,96 @@ object TransactionCsvImporter {
             }
         }
         return CsvImportPreview(rows, warnings.toList().sorted())
+    }
+
+    private fun detectDelimiter(text: String): Char {
+        val candidates = listOf(',', ';', '\t', '|')
+        fun countOutsideQuotes(line: String, delimiter: Char): Int {
+            var quoted = false
+            var count = 0
+            var index = 0
+            while (index < line.length) {
+                when (line[index]) {
+                    '"' -> if (quoted && line.getOrNull(index + 1) == '"') index++ else quoted = !quoted
+                    delimiter -> if (!quoted) count++
+                }
+                index++
+            }
+            return count
+        }
+        text.lineSequence().filter(String::isNotBlank).take(12).forEach { line ->
+            val counts = candidates.associateWith { countOutsideQuotes(line, it) }
+            val best = counts.maxByOrNull { it.value }
+            if (best != null && best.value > 0) return best.key
+        }
+        return ','
+    }
+
+    private fun resolveImportedAmount(row: ParsedCsvRow, mapping: CsvColumnMapping): Money {
+        fun value(column: Int?): String = column?.let { row.values.getOrNull(it)?.trim().orEmpty() }.orEmpty()
+        if (mapping.amount != null) {
+            return parseImportedAmount(value(mapping.amount))
+                ?: throw IllegalArgumentException("Amount is missing or invalid")
+        }
+        require(mapping.debitAmount != null || mapping.creditAmount != null) {
+            "Map an amount column or debit/credit columns"
+        }
+        val debitText = value(mapping.debitAmount)
+        val creditText = value(mapping.creditAmount)
+        val debit = debitText.takeIf(String::isNotBlank)?.let(::parseImportedAmount)
+            ?: if (debitText.isBlank()) null else throw IllegalArgumentException("Debit amount is invalid")
+        val credit = creditText.takeIf(String::isNotBlank)?.let(::parseImportedAmount)
+            ?: if (creditText.isBlank()) null else throw IllegalArgumentException("Credit amount is invalid")
+        require(debit == null || debit.isZero || credit == null || credit.isZero) {
+            "Both debit and credit amounts are set"
+        }
+        return when {
+            debit != null && !debit.isZero -> {
+                require(debit.centavos != Long.MIN_VALUE) { "Debit amount is outside the supported range" }
+                Money(-kotlin.math.abs(debit.centavos))
+            }
+            credit != null && !credit.isZero -> {
+                require(credit.centavos != Long.MIN_VALUE) { "Credit amount is outside the supported range" }
+                Money(kotlin.math.abs(credit.centavos))
+            }
+            else -> throw IllegalArgumentException("Amount is missing or invalid")
+        }
+    }
+
+    private fun parseImportedAmount(raw: String): Money? {
+        var value = raw.trim()
+            .replace('\u2212', '-')
+            .replace('\u00A0', ' ')
+            .replace(" ", "")
+        if (value.isEmpty()) return null
+        val isParenthesizedNegative = value.startsWith('(') && value.endsWith(')')
+        if (isParenthesizedNegative) value = value.substring(1, value.length - 1)
+        value = value.replace(Regex("(?i)(USD|EUR|GBP|PHP|CAD|AUD|JPY|INR)"), "")
+            .filterNot { it in setOf('₱', '$', '€', '£', '¥', '₹') }
+            .replace("+", "")
+        if (value.isEmpty()) return null
+        val negative = isParenthesizedNegative || value.startsWith('-')
+        value = value.removePrefix("-")
+        val lastDot = value.lastIndexOf('.')
+        val lastComma = value.lastIndexOf(',')
+        val decimalSeparator = when {
+            lastDot >= 0 && lastComma >= 0 -> if (lastDot > lastComma) '.' else ','
+            lastComma >= 0 -> if (value.length - lastComma - 1 in 1..2) ',' else null
+            lastDot >= 0 -> if (value.length - lastDot - 1 in 1..2) '.' else null
+            else -> null
+        }
+        val normalized = buildString(value.length) {
+            value.forEach { character ->
+                when {
+                    character.isDigit() -> append(character)
+                    character == decimalSeparator -> append('.')
+                    character == '.' || character == ',' || character == '\'' || character == '_' -> Unit
+                    else -> return null
+                }
+            }
+        }
+        if (normalized.isBlank() || normalized == ".") return null
+        return Money.parse(if (negative) "-$normalized" else normalized)
     }
 
     fun duplicateKey(transaction: CsvImportedTransaction): String = listOf(
@@ -355,7 +471,7 @@ object TransactionCsvImporter {
 
     private fun parseTimestamp(value: String, dateOrder: CsvDateOrder): Long {
         require(value.isNotBlank()) { "Date is missing" }
-        val normalized = value.trim()
+        val normalized = value.trim().replace(Regex("(?<=\\d)'(?=\\d{2}$)"), "/")
         normalized.toLongOrNull()?.let { numeric ->
             if (normalized.length == 8 && normalized.all(Char::isDigit)) {
                 val date = LocalDate.parse(normalized, DateTimeFormatter.BASIC_ISO_DATE)
@@ -368,16 +484,16 @@ object TransactionCsvImporter {
         runCatching { LocalDateTime.parse(normalized).atZone(ZoneId.systemDefault()).toInstant().toEpochMilli() }.getOrNull()?.let { return it }
 
         val slashFormat = when (dateOrder) {
-            CsvDateOrder.MONTH_FIRST -> listOf("M/d/yyyy", "MM/dd/yyyy")
-            CsvDateOrder.DAY_FIRST -> listOf("d/M/yyyy", "dd/MM/yyyy")
+            CsvDateOrder.MONTH_FIRST -> listOf("M/d/yyyy", "MM/dd/yyyy", "M/d/yy", "MM/dd/yy")
+            CsvDateOrder.DAY_FIRST -> listOf("d/M/yyyy", "dd/MM/yyyy", "d/M/yy", "dd/MM/yy")
             CsvDateOrder.AUTO -> {
                 val parts = normalized.split('/')
                 val first = parts.firstOrNull()?.toIntOrNull()
                 val second = parts.getOrNull(1)?.toIntOrNull()
                 when {
-                    first != null && first > 12 -> listOf("d/M/yyyy", "dd/MM/yyyy")
-                    second != null && second > 12 -> listOf("M/d/yyyy", "MM/dd/yyyy")
-                    else -> listOf("M/d/yyyy", "MM/dd/yyyy")
+                    first != null && first > 12 -> listOf("d/M/yyyy", "dd/MM/yyyy", "d/M/yy", "dd/MM/yy")
+                    second != null && second > 12 -> listOf("M/d/yyyy", "MM/dd/yyyy", "M/d/yy", "MM/dd/yy")
+                    else -> listOf("M/d/yyyy", "MM/dd/yyyy", "M/d/yy", "MM/dd/yy")
                 }
             }
         }

@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ralledger.data.importing.CsvColumnMapping
 import com.ralledger.data.importing.CsvDateOrder
+import com.ralledger.domain.model.CategoryType
 
 @Composable
 fun CsvImportMappingDialog(
@@ -35,20 +36,54 @@ fun CsvImportMappingDialog(
 ) {
     AlertDialog(
         onDismissRequest = { if (!state.isImporting) onCancel() },
-        title = { Text("Map CSV columns") },
+        title = { Text("Review import · ${state.sourceFormat.displayName}") },
         text = {
             Column(
                 modifier = Modifier.heightIn(max = 520.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Choose how the file columns match your records. Only income, expenses and transfers are imported. Rows must match existing active accounts and categories.")
+                Text("Check the detected columns and preview. Only income, expenses and transfers are imported. Nothing is added until you confirm.")
                 CsvColumnPicker("Date · required", state.headers, state.mapping.date) { onMappingChange(state.mapping.copy(date = it)) }
                 CsvDateOrderPicker(state.mapping.dateOrder) { onMappingChange(state.mapping.copy(dateOrder = it)) }
                 CsvColumnPicker("Type", state.headers, state.mapping.type) { onMappingChange(state.mapping.copy(type = it)) }
-                CsvColumnPicker("Amount · required", state.headers, state.mapping.amount) { onMappingChange(state.mapping.copy(amount = it)) }
-                CsvColumnPicker("Account · required", state.headers, state.mapping.account) { onMappingChange(state.mapping.copy(account = it)) }
+                CsvColumnPicker("Amount", state.headers, state.mapping.amount) {
+                    onMappingChange(state.mapping.copy(amount = it, debitAmount = null, creditAmount = null))
+                }
+                CsvColumnPicker("Debit amount", state.headers, state.mapping.debitAmount) {
+                    onMappingChange(state.mapping.copy(amount = null, debitAmount = it))
+                }
+                CsvColumnPicker("Credit amount", state.headers, state.mapping.creditAmount) {
+                    onMappingChange(state.mapping.copy(amount = null, creditAmount = it))
+                }
+                CsvColumnPicker("Account from file", state.headers, state.mapping.account) { onMappingChange(state.mapping.copy(account = it)) }
+                CsvRecordPicker(
+                    label = "Use this account for every row",
+                    options = state.accounts.filter { it.accountType.isAsset && !it.isArchived && !it.accountType.isReceivable }
+                        .map { it.id to it.name },
+                    selected = state.mapping.defaultAccountId,
+                    onSelect = { onMappingChange(state.mapping.copy(defaultAccountId = it)) }
+                )
                 CsvColumnPicker("Destination account", state.headers, state.mapping.destinationAccount) { onMappingChange(state.mapping.copy(destinationAccount = it)) }
+                CsvRecordPicker(
+                    label = "Transfer destination for every row",
+                    options = state.accounts.filter { it.accountType.isAsset && !it.isArchived && !it.accountType.isReceivable }
+                        .map { it.id to it.name },
+                    selected = state.mapping.defaultDestinationAccountId,
+                    onSelect = { onMappingChange(state.mapping.copy(defaultDestinationAccountId = it)) }
+                )
                 CsvColumnPicker("Category", state.headers, state.mapping.category) { onMappingChange(state.mapping.copy(category = it)) }
+                CsvRecordPicker(
+                    label = "Default income category",
+                    options = state.categories.filter { it.type == CategoryType.INCOME && !it.isArchived }.map { it.id to it.name },
+                    selected = state.mapping.defaultIncomeCategoryId,
+                    onSelect = { onMappingChange(state.mapping.copy(defaultIncomeCategoryId = it)) }
+                )
+                CsvRecordPicker(
+                    label = "Default expense category",
+                    options = state.categories.filter { it.type == CategoryType.EXPENSE && !it.isArchived }.map { it.id to it.name },
+                    selected = state.mapping.defaultExpenseCategoryId,
+                    onSelect = { onMappingChange(state.mapping.copy(defaultExpenseCategoryId = it)) }
+                )
                 CsvColumnPicker("Transfer fee", state.headers, state.mapping.fee) { onMappingChange(state.mapping.copy(fee = it)) }
                 CsvColumnPicker("Fee category", state.headers, state.mapping.feeCategory) { onMappingChange(state.mapping.copy(feeCategory = it)) }
                 CsvColumnPicker("Description", state.headers, state.mapping.description) { onMappingChange(state.mapping.copy(description = it)) }
@@ -62,7 +97,7 @@ fun CsvImportMappingDialog(
                         "Ready ${preview.importableCount} · Duplicates ${preview.duplicateCount} · Needs attention ${preview.errorCount}",
                         style = MaterialTheme.typography.titleSmall
                     )
-                    Text("Duplicate rows are skipped. Unsupported types and unmatched accounts/categories are not imported.", style = MaterialTheme.typography.bodySmall)
+                    Text("Duplicates are skipped. Rows with missing or unmatched details need attention.", style = MaterialTheme.typography.bodySmall)
                     preview.warnings.take(4).forEach { warning ->
                         Text(warning, color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
                     }
@@ -87,6 +122,31 @@ fun CsvImportMappingDialog(
             TextButton(onClick = onCancel, enabled = !state.isImporting) { Text("Cancel") }
         }
     )
+}
+
+@Composable
+private fun CsvRecordPicker(
+    label: String,
+    options: List<Pair<String, String>>,
+    selected: String?,
+    onSelect: (String?) -> Unit
+) {
+    var expanded by remember(label) { mutableStateOf(false) }
+    Box {
+        OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+            val selectedName = options.firstOrNull { it.first == selected }?.second ?: "Use file value / choose later"
+            Text("$label: $selectedName", maxLines = 1)
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text("Use file value / choose later") },
+                onClick = { expanded = false; onSelect(null) }
+            )
+            options.forEach { (id, name) ->
+                DropdownMenuItem(text = { Text(name) }, onClick = { expanded = false; onSelect(id) })
+            }
+        }
+    }
 }
 
 @Composable

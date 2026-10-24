@@ -33,6 +33,7 @@ import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.TransactionTemplate
 import com.ralledger.domain.model.TransactionType
+import com.ralledger.ui.components.MoneyCalculatorAction
 import com.ralledger.ui.settings.displayMoney
 import java.util.UUID
 
@@ -223,9 +224,9 @@ private fun TransactionTemplateEditorDialog(
                 if (type == TransactionType.TRANSFER) {
                     TemplateSelectionField("Transfer fee category", feeCategoryOptions.map { it.id to (it.name + if (it.isArchived) " · Archived" else "") }, feeCategoryId) { feeCategoryId = it }
                 }
-                OutlinedTextField(amountText, { amountText = it; error = null }, label = { Text("Amount (PHP)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(amountText, { amountText = it; error = null }, label = { Text("Amount (PHP)") }, trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; error = null } }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (type == TransactionType.TRANSFER) {
-                    OutlinedTextField(feeText, { feeText = it; error = null }, label = { Text("Transfer fee (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(feeText, { feeText = it; error = null }, label = { Text("Transfer fee (optional)") }, trailingIcon = { MoneyCalculatorAction(feeText) { feeText = it; error = null } }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 }
                 OutlinedTextField(description, { description = it }, label = { Text("Description") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 if (type != TransactionType.TRANSFER) {

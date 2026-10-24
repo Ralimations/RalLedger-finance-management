@@ -56,6 +56,7 @@ import com.ralledger.domain.model.BillingFrequency
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
+import com.ralledger.ui.components.MoneyCalculatorAction
 import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.SubscriptionPayment
 import com.ralledger.domain.model.SubscriptionStatus
@@ -396,6 +397,7 @@ private fun SubscriptionPaymentDialog(
                     label = { Text("Amount (PHP)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; inputError = null } },
                     modifier = Modifier.fillMaxWidth()
                 )
                 ExposedDropdownMenuBox(expanded = categoryExpanded, onExpandedChange = { categoryExpanded = !categoryExpanded }) {
@@ -541,7 +543,9 @@ private fun SubscriptionEditorDialog(
                 OutlinedTextField(
                     value = amountText, onValueChange = { amountText = it; inputError = null },
                     label = { Text("Billing amount (PHP)") }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth()
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; inputError = null } },
+                    modifier = Modifier.fillMaxWidth()
                 )
                 TextButton(onClick = { datePickerOpen = true }) { Text("Next billing date: ${formatDate(nextBillingDate)}") }
                 OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2)

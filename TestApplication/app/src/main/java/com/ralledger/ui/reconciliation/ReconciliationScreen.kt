@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.Money
+import com.ralledger.ui.components.MoneyCalculatorAction
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -142,6 +143,7 @@ fun ReconciliationScreen(
                         onValueChange = { actualBalanceText = it; inputError = null },
                         label = { Text("Actual Statement / Wallet Balance") },
                         singleLine = true,
+                        trailingIcon = { MoneyCalculatorAction(actualBalanceText) { actualBalanceText = it; inputError = null } },
                         modifier = Modifier.fillMaxWidth()
                     )
 

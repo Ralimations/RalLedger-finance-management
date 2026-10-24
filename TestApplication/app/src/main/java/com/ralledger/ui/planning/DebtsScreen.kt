@@ -59,6 +59,7 @@ import com.ralledger.domain.model.Debt
 import com.ralledger.domain.model.DebtKind
 import com.ralledger.domain.model.DebtStatus
 import com.ralledger.domain.model.Money
+import com.ralledger.ui.components.MoneyCalculatorAction
 import com.ralledger.domain.model.Counterparty
 import java.util.Calendar
 import java.util.Date
@@ -328,7 +329,7 @@ private fun DebtEditorDialog(
                     }
                 }
                 if (debt == null) {
-                    OutlinedTextField(amount, { amount = it; error = null }, label = { Text("${if (kind == DebtKind.BILL) "Bill" else "Loan"} amount (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(amount, { amount = it; error = null }, label = { Text("${if (kind == DebtKind.BILL) "Bill" else "Loan"} amount (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), trailingIcon = { MoneyCalculatorAction(amount) { amount = it; error = null } }, singleLine = true, modifier = Modifier.fillMaxWidth())
                     if (kind == DebtKind.BILL) {
                         SelectDebtValue("Expense category", expenseCategories.firstOrNull { it.id == categoryId }?.name ?: "Choose category", categoryExpanded, { categoryExpanded = it }) {
                             expenseCategories.forEach { item -> DropdownMenuItem(text = { Text(item.name) }, onClick = { categoryId = item.id; categoryExpanded = false }) }
@@ -413,8 +414,8 @@ private fun DebtPaymentDialog(
                 SelectDebtValue("Pay from account", assetAccounts.firstOrNull { it.id == accountId }?.name ?: "Choose account", accountExpanded, { accountExpanded = it }) {
                     assetAccounts.forEach { item -> DropdownMenuItem(text = { Text(item.name) }, onClick = { accountId = item.id; accountExpanded = false }) }
                 }
-                OutlinedTextField(principal, { principal = it; error = null }, label = { Text("Principal paid (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(interest, { interest = it; error = null }, label = { Text("Interest or fee (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(principal, { principal = it; error = null }, label = { Text("Principal paid (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), trailingIcon = { MoneyCalculatorAction(principal) { principal = it; error = null } }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(interest, { interest = it; error = null }, label = { Text("Interest or fee (PHP)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), trailingIcon = { MoneyCalculatorAction(interest) { interest = it; error = null } }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 SelectDebtValue("Interest expense category", expenseCategories.firstOrNull { it.id == categoryId }?.name ?: "Choose category", categoryExpanded, { categoryExpanded = it }) {
                     expenseCategories.forEach { item -> DropdownMenuItem(text = { Text(item.name) }, onClick = { categoryId = item.id; categoryExpanded = false }) }
                 }

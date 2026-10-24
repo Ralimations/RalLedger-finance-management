@@ -84,7 +84,7 @@ class AccountManagementInstrumentedTest {
         }
 
         val migrated = Room.databaseBuilder(context, RalLedgerDatabase::class.java, databaseName)
-            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9, RalLedgerDatabase.MIGRATION_9_10, RalLedgerDatabase.MIGRATION_10_11, RalLedgerDatabase.MIGRATION_11_12, RalLedgerDatabase.MIGRATION_12_13, RalLedgerDatabase.MIGRATION_13_14, RalLedgerDatabase.MIGRATION_14_15, RalLedgerDatabase.MIGRATION_15_16, RalLedgerDatabase.MIGRATION_16_17, RalLedgerDatabase.MIGRATION_17_18, RalLedgerDatabase.MIGRATION_18_19)
+            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9, RalLedgerDatabase.MIGRATION_9_10, RalLedgerDatabase.MIGRATION_10_11, RalLedgerDatabase.MIGRATION_11_12, RalLedgerDatabase.MIGRATION_12_13, RalLedgerDatabase.MIGRATION_13_14, RalLedgerDatabase.MIGRATION_14_15, RalLedgerDatabase.MIGRATION_15_16, RalLedgerDatabase.MIGRATION_16_17, RalLedgerDatabase.MIGRATION_17_18, RalLedgerDatabase.MIGRATION_18_19, RalLedgerDatabase.MIGRATION_19_20)
             .build()
         try {
             runBlocking {
@@ -133,6 +133,7 @@ class AccountManagementInstrumentedTest {
                 assertTrue(migrated.transactionTemplateDao().getAll().isEmpty())
                 assertTrue(migrated.plannedPaymentDao().getAll().isEmpty())
                 assertTrue(migrated.plannedPaymentDao().getAllRecords().isEmpty())
+                assertTrue(migrated.customReportDao().getAll().isEmpty())
             }
             assertEquals(RalLedgerDatabase.CURRENT_SCHEMA_VERSION, migrated.openHelper.readableDatabase.version)
         } finally {
@@ -166,7 +167,7 @@ class AccountManagementInstrumentedTest {
         }
 
         val migrated = Room.databaseBuilder(context, RalLedgerDatabase::class.java, databaseName)
-            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9, RalLedgerDatabase.MIGRATION_9_10, RalLedgerDatabase.MIGRATION_10_11, RalLedgerDatabase.MIGRATION_11_12, RalLedgerDatabase.MIGRATION_12_13, RalLedgerDatabase.MIGRATION_13_14, RalLedgerDatabase.MIGRATION_14_15, RalLedgerDatabase.MIGRATION_15_16, RalLedgerDatabase.MIGRATION_16_17, RalLedgerDatabase.MIGRATION_17_18, RalLedgerDatabase.MIGRATION_18_19)
+            .addMigrations(RalLedgerDatabase.MIGRATION_1_2, RalLedgerDatabase.MIGRATION_2_3, RalLedgerDatabase.MIGRATION_3_4, RalLedgerDatabase.MIGRATION_4_5, RalLedgerDatabase.MIGRATION_5_6, RalLedgerDatabase.MIGRATION_6_7, RalLedgerDatabase.MIGRATION_7_8, RalLedgerDatabase.MIGRATION_8_9, RalLedgerDatabase.MIGRATION_9_10, RalLedgerDatabase.MIGRATION_10_11, RalLedgerDatabase.MIGRATION_11_12, RalLedgerDatabase.MIGRATION_12_13, RalLedgerDatabase.MIGRATION_13_14, RalLedgerDatabase.MIGRATION_14_15, RalLedgerDatabase.MIGRATION_15_16, RalLedgerDatabase.MIGRATION_16_17, RalLedgerDatabase.MIGRATION_17_18, RalLedgerDatabase.MIGRATION_18_19, RalLedgerDatabase.MIGRATION_19_20)
             .build()
         try {
             val account = kotlinx.coroutines.runBlocking { migrated.accountDao().getAccountById("legacy_account") }
@@ -176,6 +177,7 @@ class AccountManagementInstrumentedTest {
             val category = kotlinx.coroutines.runBlocking { migrated.categoryDao().getCategoryById("legacy_category") }
             assertEquals(null, category?.parentCategoryId)
             assertFalse(category?.isArchived ?: true)
+            assertTrue(kotlinx.coroutines.runBlocking { migrated.customReportDao().getAll().isEmpty() })
             assertEquals(RalLedgerDatabase.CURRENT_SCHEMA_VERSION, migrated.openHelper.readableDatabase.version)
         } finally {
             migrated.close()

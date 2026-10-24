@@ -26,10 +26,12 @@ import com.ralledger.data.local.entity.SavedTransactionFilterEntity
 import com.ralledger.data.local.entity.TransactionTemplateEntity
 import com.ralledger.data.local.entity.PlannedPaymentEntity
 import com.ralledger.data.local.entity.PlannedPaymentRecordEntity
+import com.ralledger.data.local.entity.CustomReportEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.LineType
 import com.ralledger.domain.model.normalizeCounterpartyName
 import com.ralledger.domain.model.normalizeTransactionTemplateName
+import com.ralledger.data.local.entity.normalizeCustomReportName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -74,7 +76,8 @@ data class BackupPreview(
     val validationErrors: List<String>,
     val userPreferencesIncluded: Boolean = false,
     val counterparties: Int = 0,
-    val transactionTemplates: Int = 0
+    val transactionTemplates: Int = 0,
+    val customReports: Int = 0
 ) {
     val canRestore: Boolean get() = validationErrors.isEmpty()
 }
@@ -135,6 +138,7 @@ class BackupRepository(
                 val transactionTags = database.transactionTagDao()
                 val savedFilters = database.savedTransactionFilterDao()
                 val templates = database.transactionTemplateDao()
+                val customReports = database.customReportDao()
                 val journals = database.journalDao()
                 val receivables = database.receivableDao()
                 val subscriptions = database.subscriptionDao()
@@ -155,6 +159,7 @@ class BackupRepository(
                 interest.clearProducts()
                 subscriptionPayments.clearPayments()
                 transactionTags.clearAllAssignments()
+                customReports.clear()
                 transactionTags.clearTags()
                 savedFilters.clear()
                 templates.clear()
@@ -189,6 +194,7 @@ class BackupRepository(
                 if (snapshot.subscriptions.isNotEmpty()) subscriptions.insertSubscriptions(snapshot.subscriptions)
                 if (snapshot.subscriptionPayments.isNotEmpty()) subscriptionPayments.insertPayments(snapshot.subscriptionPayments)
                 if (snapshot.transactionTags.isNotEmpty()) transactionTags.insertTags(snapshot.transactionTags)
+                if (snapshot.customReports.isNotEmpty()) customReports.insertAll(snapshot.customReports)
                 if (snapshot.journalEntryTags.isNotEmpty()) transactionTags.insertAssignments(snapshot.journalEntryTags)
                 if (snapshot.savedTransactionFilters.isNotEmpty()) savedFilters.insertForRestore(snapshot.savedTransactionFilters)
                 if (snapshot.transactionTemplates.isNotEmpty()) templates.insertForRestore(snapshot.transactionTemplates)
@@ -270,6 +276,7 @@ class BackupRepository(
         journalEntryTags = database.transactionTagDao().getAllAssignments(),
         savedTransactionFilters = database.savedTransactionFilterDao().getAll(),
         transactionTemplates = database.transactionTemplateDao().getAll(),
+        customReports = database.customReportDao().getAll(),
         entries = database.journalDao().getAllJournalEntries(),
         lines = database.journalDao().getAllJournalLines(),
         receivables = database.receivableDao().getAllReceivables(),
@@ -368,6 +375,7 @@ class BackupRepository(
         val journalEntryTags: List<JournalEntryTagEntity>,
         val savedTransactionFilters: List<SavedTransactionFilterEntity>,
         val transactionTemplates: List<TransactionTemplateEntity>,
+        val customReports: List<CustomReportEntity>,
         val entries: List<JournalEntryEntity>,
         val lines: List<JournalLineEntity>,
         val receivables: List<ReceivableEntity>,
@@ -400,6 +408,7 @@ class BackupRepository(
             put("journalEntryTags", JSONArray().also { array -> journalEntryTags.sortedWith(compareBy<JournalEntryTagEntity> { it.journalEntryId }.thenBy { it.tagId }).forEach { array.put(it.toJson()) } })
             put("savedTransactionFilters", JSONArray().also { array -> savedTransactionFilters.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("transactionTemplates", JSONArray().also { array -> transactionTemplates.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("customReports", JSONArray().also { array -> customReports.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalEntries", JSONArray().also { array -> entries.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalLines", JSONArray().also { array -> lines.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("receivables", JSONArray().also { array -> receivables.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
@@ -440,6 +449,8 @@ class BackupRepository(
             checkUnique("saved transaction filter name", savedTransactionFilters) { it.normalizedName }
             checkUnique("transaction template", transactionTemplates) { it.id }
             checkUnique("transaction template name", transactionTemplates) { it.normalizedName }
+            checkUnique("custom report", customReports) { it.id }
+            checkUnique("custom report name", customReports) { it.normalizedName }
             checkUnique("journal entry tag", journalEntryTags) { "${it.journalEntryId}\u0000${it.tagId}" }
             checkUnique("journal entry", entries) { it.id }
             checkUnique("journal line", lines) { it.id }
@@ -560,6 +571,19 @@ class BackupRepository(
             val debtIds = debts.map { it.id }.toSet()
             val accountsById = accounts.associateBy { it.id }
             val accountIds = accounts.map { it.id }.toSet()
+            val customReportsByName = customReports.groupBy { it.normalizedName }
+            if (customReports.any { report ->
+                    report.id.isBlank() || report.name.isBlank() || report.name.trim().length > 50 ||
+                        report.normalizedName != normalizeCustomReportName(report.name) ||
+                        report.startDate <= 0L || report.endDate < report.startDate ||
+                        report.createdAt <= 0L || report.createdAt > now ||
+                        report.updatedAt < report.createdAt || report.updatedAt > now ||
+                        (report.accountId != null && report.accountId !in accountIds) ||
+                        (report.categoryId != null && report.categoryId !in categoryIds) ||
+                        (report.tagId != null && report.tagId !in transactionTagsById)
+                } || customReportsByName.values.any { it.size > 1 }) {
+                errors += "Saved report has an invalid name, date range, reference, timestamp, or duplicate name"
+            }
             val validLineAccounts = accountIds + categoryIds + receivableIds + debtIds
             if (lines.any { it.accountId !in validLineAccounts }) {
                 errors += "Journal line references a missing account, category, receivable, or payable"
@@ -922,6 +946,7 @@ class BackupRepository(
                 savedTransactionFilters = savedTransactionFilters.size,
                 taggedJournalEntries = journalEntryTags.map { it.journalEntryId }.toSet().size,
                 transactionTemplates = transactionTemplates.size,
+                customReports = customReports.size,
                 journalEntries = entries.size,
                 journalLines = lines.size,
                 receivables = receivables.size,
@@ -962,6 +987,7 @@ class BackupRepository(
                     journalEntryTags = json.optJSONArray("journalEntryTags")?.objects()?.map { it.toJournalEntryTag() }.orEmpty(),
                     savedTransactionFilters = json.optJSONArray("savedTransactionFilters")?.objects()?.map { it.toSavedTransactionFilter() }.orEmpty(),
                     transactionTemplates = json.optJSONArray("transactionTemplates")?.objects()?.map { it.toTransactionTemplate() }.orEmpty(),
+                    customReports = json.optJSONArray("customReports")?.objects()?.map { it.toCustomReport() }.orEmpty(),
                     entries = json.getJSONArray("journalEntries").objects().map { it.toJournalEntry() },
                     lines = json.getJSONArray("journalLines").objects().map { it.toJournalLine() },
                     receivables = json.getJSONArray("receivables").objects().map { it.toReceivable() },
@@ -1215,6 +1241,19 @@ private fun JSONObject.toTransactionTemplate() = TransactionTemplateEntity(
     feeCategoryId = stringOrNull("feeCategoryId"), counterparty = getString("counterparty"),
     description = getString("description"), notes = getString("notes"), isArchived = optBoolean("isArchived", false),
     createdAt = getLong("createdAt"), updatedAt = getLong("updatedAt")
+)
+
+private fun CustomReportEntity.toJson() = JSONObject().apply {
+    put("id", id); put("name", name); put("normalizedName", normalizedName)
+    put("startDate", startDate); put("endDate", endDate)
+    putNullable("accountId", accountId); putNullable("categoryId", categoryId); putNullable("tagId", tagId)
+    put("isArchived", isArchived); put("createdAt", createdAt); put("updatedAt", updatedAt)
+}
+private fun JSONObject.toCustomReport() = CustomReportEntity(
+    id = getString("id"), name = getString("name"), normalizedName = getString("normalizedName"),
+    startDate = getLong("startDate"), endDate = getLong("endDate"),
+    accountId = stringOrNull("accountId"), categoryId = stringOrNull("categoryId"), tagId = stringOrNull("tagId"),
+    isArchived = optBoolean("isArchived", false), createdAt = getLong("createdAt"), updatedAt = getLong("updatedAt")
 )
 
 private fun JournalEntryEntity.toJson() = JSONObject().apply {

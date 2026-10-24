@@ -27,6 +27,8 @@ import com.ralledger.data.local.entity.TransactionTagEntity
 import com.ralledger.data.local.entity.TransactionTemplateEntity
 import com.ralledger.data.local.entity.PlannedPaymentEntity
 import com.ralledger.data.local.entity.PlannedPaymentRecordEntity
+import com.ralledger.data.local.entity.CustomReportEntity
+import com.ralledger.data.local.entity.normalizeCustomReportName
 import com.ralledger.data.importing.CsvImportExecutionResult
 import com.ralledger.data.importing.CsvImportedTransaction
 import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalDomainModel
@@ -54,6 +56,7 @@ import com.ralledger.domain.model.ExpectedIncomeStatus
 import com.ralledger.domain.model.PlannedPayment
 import com.ralledger.domain.model.PlannedPaymentRecord
 import com.ralledger.domain.model.PlannedPaymentStatus
+import com.ralledger.domain.model.CustomReport
 import com.ralledger.domain.model.JournalEntry
 import com.ralledger.domain.model.LineType
 import com.ralledger.domain.model.Money
@@ -108,9 +111,102 @@ class RalLedgerRepository(
     private val plannedPaymentDao = database.plannedPaymentDao()
     private val savedTransactionFilterDao = database.savedTransactionFilterDao()
     private val counterpartyDao = database.counterpartyDao()
+    private val customReportDao = database.customReportDao()
 
     val counterpartiesFlow: Flow<List<Counterparty>> = counterpartyDao.getAllFlow()
         .map { items -> items.map(CounterpartyEntity::toDomainModel) }
+
+    val customReportsFlow: Flow<List<CustomReport>> = customReportDao.getAllFlow()
+        .map { items -> items.map(CustomReportEntity::toDomainModel) }
+
+    suspend fun createCustomReport(
+        name: String,
+        startDate: Long,
+        endDate: Long,
+        accountId: String?,
+        categoryId: String?,
+        tagId: String?
+    ): String {
+        validateCustomReport(name, startDate, endDate)
+        val id = UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
+        database.withTransaction {
+            require(customReportDao.getByNormalizedName(normalizeCustomReportName(name)) == null) {
+                "A saved report with this name already exists"
+            }
+            validateCustomReportReferences(accountId, categoryId, tagId)
+            customReportDao.insert(CustomReportEntity.fromDomainModel(CustomReport(
+                id = id,
+                name = name.trim().replace(Regex("\\s+"), " "),
+                startDate = startDate,
+                endDate = endDate,
+                accountId = accountId,
+                categoryId = categoryId,
+                tagId = tagId,
+                createdAt = now,
+                updatedAt = now
+            )))
+        }
+        return id
+    }
+
+    suspend fun updateCustomReport(
+        id: String,
+        name: String,
+        startDate: Long,
+        endDate: Long,
+        accountId: String?,
+        categoryId: String?,
+        tagId: String?
+    ) {
+        validateCustomReport(name, startDate, endDate)
+        database.withTransaction {
+            val current = customReportDao.getById(id)
+                ?: throw IllegalArgumentException("This saved report no longer exists")
+            val normalizedName = normalizeCustomReportName(name)
+            require(customReportDao.getByNormalizedName(normalizedName)?.id in setOf(null, id)) {
+                "A saved report with this name already exists"
+            }
+            validateCustomReportReferences(accountId, categoryId, tagId)
+            customReportDao.update(current.copy(
+                name = name.trim().replace(Regex("\\s+"), " "),
+                normalizedName = normalizedName,
+                startDate = startDate,
+                endDate = endDate,
+                accountId = accountId,
+                categoryId = categoryId,
+                tagId = tagId,
+                updatedAt = System.currentTimeMillis()
+            ))
+        }
+    }
+
+    suspend fun setCustomReportArchived(id: String, archived: Boolean) {
+        database.withTransaction {
+            val report = customReportDao.getById(id)
+                ?: throw IllegalArgumentException("This saved report no longer exists")
+            customReportDao.update(report.copy(isArchived = archived, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    suspend fun deleteCustomReport(id: String) {
+        database.withTransaction {
+            require(customReportDao.getById(id) != null) { "This saved report no longer exists" }
+            customReportDao.delete(id)
+        }
+    }
+
+    private fun validateCustomReport(name: String, startDate: Long, endDate: Long) {
+        require(name.isNotBlank()) { "Enter a report name" }
+        require(name.trim().replace(Regex("\\s+"), " ").length <= 50) { "Use 50 characters or fewer for a report name" }
+        require(startDate > 0L && endDate >= startDate) { "Choose a valid report date range" }
+    }
+
+    private suspend fun validateCustomReportReferences(accountId: String?, categoryId: String?, tagId: String?) {
+        require(accountId == null || accountDao.getAccountById(accountId) != null) { "The selected account no longer exists" }
+        require(categoryId == null || categoryDao.getCategoryById(categoryId) != null) { "The selected category no longer exists" }
+        require(tagId == null || transactionTagDao.getTagById(tagId) != null) { "The selected label no longer exists" }
+    }
 
     suspend fun createCounterparty(name: String, kind: CounterpartyKind, notes: String = ""): String {
         val normalizedName = normalizeCounterpartyName(name)
@@ -354,7 +450,8 @@ class RalLedgerRepository(
                 debtDao.countDebtsForFundingAccount(id) +
                 subscriptionDao.countAccountReferences(id) +
                 interestDao.countProductsForAccount(id) +
-                transactionTemplateDao.countAccountReferences(id)
+                transactionTemplateDao.countAccountReferences(id) +
+                customReportDao.countAccountReferences(id)
             require(referenceCount == 0L && account.openingBalanceCentavos == 0L) {
                 "This account has financial history or linked records and cannot be permanently deleted. Archive it to keep its history safe."
             }
@@ -439,6 +536,7 @@ class RalLedgerRepository(
                 interestDao.countCreditsForTaxCategory(id) == 0L &&
                 subscriptionPaymentDao.countPaymentsForCategory(id) == 0L &&
                 transactionTemplateDao.countCategoryReferences(id) == 0L &&
+                customReportDao.countCategoryReferences(id) == 0L &&
                 plannedPaymentDao.countCategoryReferences(id) == 0L &&
                 categoryDao.countChildren(id) == 0L
             ) {
@@ -478,6 +576,7 @@ class RalLedgerRepository(
             receivableDao.reassignWriteOffCategory(sourceId, targetId)
             val updatedAt = System.currentTimeMillis()
             transactionTemplateDao.reassignPrimaryCategory(sourceId, targetId, updatedAt)
+            customReportDao.reassignCategory(sourceId, targetId, updatedAt)
             transactionTemplateDao.reassignFeeCategory(sourceId, targetId, updatedAt)
             plannedPaymentDao.reassignCategory(sourceId, targetId)
             categoryDao.moveChildren(sourceId, targetId)
@@ -775,8 +874,8 @@ class RalLedgerRepository(
         database.withTransaction {
             val tag = transactionTagDao.getTagById(id)
                 ?: throw IllegalArgumentException("This transaction label no longer exists")
-            require(transactionTagDao.countAssignments(id) == 0L) {
-                "This label is attached to transaction history. Remove it from those transactions or archive it to preserve the label."
+            require(transactionTagDao.countAssignments(id) == 0L && customReportDao.countTagReferences(id) == 0L) {
+                "This label is used by transaction history or a saved report. Remove its references or archive the label."
             }
             transactionTagDao.deleteTag(tag.id)
         }
@@ -792,6 +891,7 @@ class RalLedgerRepository(
             require(!target.isArchived) { "Restore the destination label before merging" }
             transactionTagDao.deleteDuplicateAssignmentsForMerge(source.id, target.id)
             transactionTagDao.reassignTag(source.id, target.id)
+            customReportDao.reassignTag(source.id, target.id, System.currentTimeMillis())
             transactionTagDao.deleteTag(source.id)
         }
     }

@@ -33,10 +33,11 @@ fun PlanningScreen(
     debtsViewModel: DebtsViewModel,
     savingsGoalsViewModel: SavingsGoalsViewModel,
     interestProductsViewModel: InterestProductsViewModel,
-    counterpartiesViewModel: CounterpartiesViewModel
+    counterpartiesViewModel: CounterpartiesViewModel,
+    customReportsViewModel: CustomReportsViewModel
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Budgets", "Receivables", "Expected income", "Planned payments", "Bills & loans", "Subscriptions", "Savings goals", "Interest & deposits", "Clients")
+    val tabs = listOf("Budgets", "Receivables", "Expected income", "Planned payments", "Bills & loans", "Subscriptions", "Savings goals", "Interest & deposits", "Clients", "Reports")
 
     Column(
         modifier = Modifier
@@ -74,6 +75,7 @@ fun PlanningScreen(
             6 -> SavingsGoalsScreen(viewModel = savingsGoalsViewModel)
             7 -> InterestProductsScreen(viewModel = interestProductsViewModel)
             8 -> CounterpartiesScreen(viewModel = counterpartiesViewModel)
+            9 -> CustomReportsScreen(viewModel = customReportsViewModel)
         }
     }
 }

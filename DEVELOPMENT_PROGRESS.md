@@ -1,7 +1,7 @@
 # RalLedger v2.0 Development Progress
 
 Updated: 2026-10-24
-Branch: `feature/ralledger-v2-live-ready` (schema-19 planned-payment work in progress)
+Branch: `feature/ralledger-v2-live-ready` (schema-20 custom reports implemented locally)
 Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Delivered in this checkpoint
@@ -469,4 +469,13 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Category and saved-counterparty foreign keys restrict deletion; category and counterparty merges reassign live plans. Encrypted backup now includes plans and payment/reversal events, validates their journal/account/category links, and restores them with older backups defaulting to empty lists.
 - Added schema-1/schema-2 migration coverage through schema 19 and a lifecycle/merge/post/reverse/re-record/archive/backup instrumentation test. Verification passed `:app:testDebugUnitTest` (67 tests, 0 failures/errors/skips), `:app:lintDebug` (28 warnings, 0 errors), `:app:compileDebugAndroidTestKotlin`, and `:app:assembleDebug`. Android-test source compilation confirms the new instrumentation test builds; connected execution is unavailable because both listed emulators are offline and no AVD is configured.
 - Refreshed `releases/RalLedger-debug.apk`: 23,869,534 bytes; SHA-256 `9BC96AF3ED7C48F3EDA7FA541CEFE938A6C52A924A7EEA32CF3D2F4EA1F101CB`. `apksigner` verifies the v2 signature; the manifest reports `com.ralledger`, versionCode 2, versionName 2.0. The APK is signed with the Android debug key, not a production key.
-- Custom reports, project tracking, savings-growth statistics, and personal/business separation remain open. Transaction tags can represent personal and business activity, but dedicated saved report definitions are not yet implemented.
+- Project tracking, savings-growth statistics, and dedicated personal/business separation remain open. Custom reports now support transaction-label filters, which can be used to separate labeled activity.
+
+## Schema 20 — Saved custom reports
+
+- Added a version-20 `custom_reports` table with normalized unique names, inclusive date ranges, optional account/category/label filters, archive state, and timestamps. Schema-1 and schema-2 migration fixtures now traverse through version 20.
+- Added Planning → Reports with create, edit, search, archive/restore, and confirmed delete. Saved reports calculate income, expenses, net, and category totals from journal-backed activity; account, category, and label filters are reusable. Linked reversals remain associated with the selected source event and are counted on their posting date.
+- Account/category/label references use restrictive foreign keys. Permanent deletion is blocked while a report refers to the record; category and label merges update saved report references atomically.
+- Encrypted backup/restore now includes saved reports, validates names, date ranges, timestamps and referenced records, and remains compatible with older backups that omit the report list.
+- Added a focused unit case for report filtering and reversal-period attribution, plus instrumentation for CRUD, duplicate names, reference protection, merges and encrypted backup round-trip. Verification passed 68 unit tests, `:app:lintDebug` (28 warnings, 0 errors), `:app:compileDebugAndroidTestKotlin`, and `:app:assembleDebug`. The connected instrumentation suite could not run because the two listed devices are offline and no AVD is configured.
+- Refreshed `releases/RalLedger-debug.apk` from the schema-20 build: 24,091,643 bytes; SHA-256 `19BF52F7F55B282F8D379780389FFC7C3468A0CE5382EBC9B431F5D8B0A9BD94`. The v2 APK signature verifies; package version remains 2.0 (versionCode 2). The APK uses the Android debug signing key and is not production-signed.

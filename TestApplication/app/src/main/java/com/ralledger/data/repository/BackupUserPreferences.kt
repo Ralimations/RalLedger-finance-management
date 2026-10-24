@@ -1,5 +1,9 @@
 package com.ralledger.data.repository
 
+import android.content.Context
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.usecase.InsightsPeriodType
@@ -17,8 +21,11 @@ import com.ralledger.ui.theme.ThemePreferences
 import com.ralledger.ui.theme.ThemeSettings
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
+
+private val Context.backupRestoreJournalDataStore by preferencesDataStore(name = "backup_restore_journal")
 
 /** User-controlled presentation and entry defaults. Device authentication state is intentionally excluded. */
 data class BackupUserPreferences(
@@ -130,6 +137,64 @@ data class BackupUserPreferences(
 interface BackupPreferencesStore {
     suspend fun read(): BackupUserPreferences
     suspend fun write(preferences: BackupUserPreferences)
+}
+
+/** A durable cross-store intent used to reconcile settings after a process interruption. */
+data class PendingBackupRestore(
+    val id: String,
+    val previousPreferences: BackupUserPreferences,
+    val targetPreferences: BackupUserPreferences
+)
+
+interface BackupRestoreJournalStore {
+    suspend fun read(): PendingBackupRestore?
+    suspend fun write(journal: PendingBackupRestore)
+    suspend fun clear()
+}
+
+class DataStoreBackupRestoreJournalStore(context: Context) : BackupRestoreJournalStore {
+    private val store = context.applicationContext.backupRestoreJournalDataStore
+
+    override suspend fun read(): PendingBackupRestore? = store.data.map { it[JOURNAL_KEY] }.first()?.let { value ->
+        try {
+            val json = JSONObject(value)
+            PendingBackupRestore(
+                id = json.getString("id").also { require(it.isNotBlank()) },
+                previousPreferences = BackupUserPreferences.fromJson(json.getJSONObject("previousPreferences")),
+                targetPreferences = BackupUserPreferences.fromJson(json.getJSONObject("targetPreferences"))
+            )
+        } catch (error: Exception) {
+            throw IllegalStateException("Saved backup recovery data is invalid; restore was stopped to protect your data", error)
+        }
+    }
+
+    override suspend fun write(journal: PendingBackupRestore) {
+        require(journal.id.isNotBlank())
+        val json = JSONObject().apply {
+            put("id", journal.id)
+            put("previousPreferences", journal.previousPreferences.toJson())
+            put("targetPreferences", journal.targetPreferences.toJson())
+        }
+        store.edit { it[JOURNAL_KEY] = json.toString() }
+    }
+
+    override suspend fun clear() {
+        store.edit { it.remove(JOURNAL_KEY) }
+    }
+
+    private companion object {
+        val JOURNAL_KEY = stringPreferencesKey("pending_restore")
+    }
+}
+
+/** Test helper for restore flows where process-death persistence is supplied separately. */
+class InMemoryBackupRestoreJournalStore : BackupRestoreJournalStore {
+    @Volatile
+    private var journal: PendingBackupRestore? = null
+
+    override suspend fun read(): PendingBackupRestore? = journal
+    override suspend fun write(journal: PendingBackupRestore) { this.journal = journal }
+    override suspend fun clear() { journal = null }
 }
 
 class DataStoreBackupPreferencesStore(

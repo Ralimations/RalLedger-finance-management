@@ -9,12 +9,32 @@ import com.ralledger.domain.model.AccountType
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class BackupUserPreferencesInstrumentedTest {
+    @Test
+    fun durableRestoreJournalRoundTripsAndClears() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val journalStore = DataStoreBackupRestoreJournalStore(context)
+        val journal = PendingBackupRestore(
+            id = "restore-journal-round-trip",
+            previousPreferences = BackupUserPreferences(themeMode = "LIGHT", themePalette = "INDIGO"),
+            targetPreferences = BackupUserPreferences(themeMode = "DARK", themePalette = "SAGE")
+        )
+
+        try {
+            journalStore.clear()
+            journalStore.write(journal)
+            assertEquals(journal, journalStore.read())
+        } finally {
+            journalStore.clear()
+        }
+    }
+
     @Test
     fun encryptedRestoreIncludesUserPreferencesAndKeepsAccountReferenceValid() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -57,7 +77,7 @@ class BackupUserPreferencesInstrumentedTest {
 
             val password = "user-preferences-backup-password"
             val encrypted = BackupRepository(source, sourcePreferences).createEncryptedBackup(password)
-            val restore = BackupRepository(destination, targetPreferences)
+            val restore = BackupRepository(destination, targetPreferences, MemoryBackupRestoreJournalStore())
             val preview = restore.prepareRestore(encrypted, password)
 
             assertTrue(preview.canRestore)
@@ -96,7 +116,7 @@ class BackupUserPreferencesInstrumentedTest {
     }
 
     @Test
-    fun preferenceWriteFailureRollsBackRecordsAndSettingsAndCanBeRetried() = runBlocking {
+    fun preferenceWriteFailureLeavesJournalAndRecoveryCompletesCommittedRestore() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val source = inMemoryDatabase(context)
         val destination = inMemoryDatabase(context)
@@ -110,7 +130,8 @@ class BackupUserPreferencesInstrumentedTest {
             themeMode = "LIGHT",
             themePalette = "INDIGO"
         )
-        val targetPreferences = FailOnceBackupPreferencesStore(currentSettings)
+        val targetPreferences = FailTwiceBackupPreferencesStore(currentSettings)
+        val journalStore = MemoryBackupRestoreJournalStore()
 
         try {
             source.accountDao().insertAccount(testAccount("source_wallet"))
@@ -118,21 +139,71 @@ class BackupUserPreferencesInstrumentedTest {
 
             val encrypted = BackupRepository(source, MemoryBackupPreferencesStore(backupSettings))
                 .createEncryptedBackup("rollback-preferences-backup-password")
-            val restore = BackupRepository(destination, targetPreferences)
+            val restore = BackupRepository(destination, targetPreferences, journalStore)
             val preview = restore.prepareRestore(encrypted, "rollback-preferences-backup-password")
             assertTrue(preview.canRestore)
 
             val failure = runCatching { restore.restorePreparedBackup() }.exceptionOrNull()
             assertEquals("Preference write failed", failure?.message)
-            assertEquals("destination_wallet", destination.accountDao().getAllAccounts().single().id)
+            assertEquals("source_wallet", destination.accountDao().getAllAccounts().single().id)
             assertEquals(currentSettings, targetPreferences.value)
+            assertTrue(journalStore.value != null)
 
-            restore.restorePreparedBackup()
+            assertTrue(restore.recoverPendingRestore())
             assertEquals("source_wallet", destination.accountDao().getAllAccounts().single().id)
             assertEquals(backupSettings, targetPreferences.value)
+            assertNull(journalStore.value)
         } finally {
             source.close()
             destination.close()
+        }
+    }
+
+    @Test
+    fun recoveryRestoresPreviousPreferencesWhenDatabaseRestoreDidNotCommit() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database = inMemoryDatabase(context)
+        val previous = BackupUserPreferences(themeMode = "LIGHT", themePalette = "INDIGO")
+        val target = BackupUserPreferences(themeMode = "DARK", themePalette = "SAGE")
+        val preferences = MemoryBackupPreferencesStore(target)
+        val journalStore = MemoryBackupRestoreJournalStore().apply {
+            value = PendingBackupRestore("restore-not-committed", previous, target)
+        }
+
+        try {
+            val restore = BackupRepository(database, preferences, journalStore)
+            assertTrue(restore.recoverPendingRestore())
+            assertEquals(previous, preferences.value)
+            assertNull(journalStore.value)
+            assertNull(database.backupRestoreStateDao().getLastSuccessfulRestoreId())
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun recoveryAppliesTargetPreferencesWhenDatabaseRestoreCommitted() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database = inMemoryDatabase(context)
+        val previous = BackupUserPreferences(themeMode = "LIGHT", themePalette = "INDIGO")
+        val target = BackupUserPreferences(themeMode = "DARK", themePalette = "SAGE")
+        val preferences = MemoryBackupPreferencesStore(previous)
+        val journalStore = MemoryBackupRestoreJournalStore().apply {
+            value = PendingBackupRestore("restore-committed", previous, target)
+        }
+
+        try {
+            database.backupRestoreStateDao().recordSuccessfulRestore(
+                com.ralledger.data.local.entity.BackupRestoreStateEntity(
+                    lastSuccessfulRestoreId = "restore-committed"
+                )
+            )
+            val restore = BackupRepository(database, preferences, journalStore)
+            assertTrue(restore.recoverPendingRestore())
+            assertEquals(target, preferences.value)
+            assertNull(journalStore.value)
+        } finally {
+            database.close()
         }
     }
 
@@ -164,19 +235,27 @@ class BackupUserPreferencesInstrumentedTest {
         }
     }
 
-    private class FailOnceBackupPreferencesStore(
+    private class FailTwiceBackupPreferencesStore(
         var value: BackupUserPreferences
     ) : BackupPreferencesStore {
-        private var failNextWrite = true
+        private var failuresRemaining = 2
 
         override suspend fun read(): BackupUserPreferences = value
 
         override suspend fun write(preferences: BackupUserPreferences) {
-            value = preferences
-            if (failNextWrite) {
-                failNextWrite = false
+            if (failuresRemaining > 0) {
+                failuresRemaining--
                 throw IllegalStateException("Preference write failed")
             }
+            value = preferences
         }
+    }
+
+    private class MemoryBackupRestoreJournalStore : BackupRestoreJournalStore {
+        var value: PendingBackupRestore? = null
+
+        override suspend fun read(): PendingBackupRestore? = value
+        override suspend fun write(journal: PendingBackupRestore) { value = journal }
+        override suspend fun clear() { value = null }
     }
 }

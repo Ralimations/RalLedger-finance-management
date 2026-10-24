@@ -46,6 +46,8 @@ class MainActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         val app = application as RalLedgerApplication
         setContent {
+            val startupState by app.startupState.collectAsState()
+            if (startupState == StartupState.Ready) {
             val themeSettings by app.container.themePreferences.settings.collectAsState(initial = ThemeSettings())
             val lockEnabled by app.container.appLockPreferences.enabled.collectAsState(initial = null as Boolean?)
             val lifecycleOwner = LocalLifecycleOwner.current
@@ -129,6 +131,28 @@ class MainActivity : FragmentActivity() {
                         onDisableAppLock = { scope.launch { app.container.appLockPreferences.setEnabled(false) } },
                         onOpenSecuritySettings = { openDeviceSecuritySettings() }
                     )
+                }
+            }
+            } else {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    Column(
+                        modifier = Modifier.fillMaxSize().padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        if (startupState == StartupState.Recovering) {
+                            CircularProgressIndicator()
+                            Text("Preparing your data", modifier = Modifier.padding(top = 16.dp))
+                        } else {
+                            Text("RalLedger couldn't finish recovering your backup.")
+                            Button(
+                                onClick = app::retryStartupRecovery,
+                                modifier = Modifier.padding(top = 16.dp)
+                            ) {
+                                Text("Try again")
+                            }
+                        }
+                    }
                 }
             }
         }

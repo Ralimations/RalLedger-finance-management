@@ -26,6 +26,7 @@ import com.ralledger.data.local.dao.TransactionTemplateDao
 import com.ralledger.data.local.dao.PlannedPaymentDao
 import com.ralledger.data.local.dao.CustomReportDao
 import com.ralledger.data.local.dao.FinancialProjectDao
+import com.ralledger.data.local.dao.BackupRestoreStateDao
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
@@ -54,6 +55,7 @@ import com.ralledger.data.local.entity.PlannedPaymentRecordEntity
 import com.ralledger.data.local.entity.CustomReportEntity
 import com.ralledger.data.local.entity.FinancialProjectEntity
 import com.ralledger.data.local.entity.JournalEntryProjectEntity
+import com.ralledger.data.local.entity.BackupRestoreStateEntity
 import com.ralledger.domain.model.AccountCategory
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.CategoryType
@@ -90,9 +92,10 @@ import kotlinx.coroutines.launch
         PlannedPaymentRecordEntity::class,
         CustomReportEntity::class,
         FinancialProjectEntity::class,
-        JournalEntryProjectEntity::class
+        JournalEntryProjectEntity::class,
+        BackupRestoreStateEntity::class
     ],
-    version = 21,
+    version = 22,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -116,9 +119,10 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun plannedPaymentDao(): PlannedPaymentDao
     abstract fun customReportDao(): CustomReportDao
     abstract fun financialProjectDao(): FinancialProjectDao
+    abstract fun backupRestoreStateDao(): BackupRestoreStateDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 21
+        const val CURRENT_SCHEMA_VERSION = 22
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -645,6 +649,18 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS backup_restore_state (
+                        id INTEGER NOT NULL,
+                        lastSuccessfulRestoreId TEXT,
+                        PRIMARY KEY(id)
+                    )"""
+                )
+            }
+        }
+
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
 
@@ -655,7 +671,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

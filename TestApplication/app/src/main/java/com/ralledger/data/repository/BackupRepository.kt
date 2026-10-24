@@ -42,6 +42,7 @@ import org.json.JSONObject
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
+import java.util.UUID
 import java.util.Arrays
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
@@ -88,10 +89,13 @@ data class BackupPreview(
 
 class BackupRepository(
     private val database: RalLedgerDatabase,
-    private val userPreferencesStore: BackupPreferencesStore? = null
+    private val userPreferencesStore: BackupPreferencesStore? = null,
+    private val restoreJournalStore: BackupRestoreJournalStore? = null
 ) {
     @Volatile
     private var pendingRestore: BackupSnapshot? = null
+    @Volatile
+    private var pendingRestoreId: String? = null
 
     suspend fun createEncryptedBackup(password: String): ByteArray = withContext(Dispatchers.IO) {
         requireValidPassword(password)
@@ -125,8 +129,33 @@ class BackupRepository(
             "Backup failed integrity checks: ${preview.validationErrors.joinToString()}"
         }
 
-        val previousUserPreferences = snapshot.userPreferences?.let { userPreferencesStore?.read() }
-        var preferencesWriteAttempted = false
+        pendingRestoreId?.let { restoreId ->
+            val journal = requireNotNull(restoreJournalStore).read()
+            if (journal?.id == restoreId) {
+                val databaseCommitted = database.backupRestoreStateDao().getLastSuccessfulRestoreId() == restoreId
+                recoverPendingRestore()
+                if (databaseCommitted) {
+                    pendingRestore = null
+                    pendingRestoreId = null
+                    return@withContext preview
+                }
+            }
+        }
+
+        val restoreJournal = snapshot.userPreferences?.let { targetPreferences ->
+            val preferencesStore = requireNotNull(userPreferencesStore)
+            requireNotNull(restoreJournalStore) { "This installation cannot safely restore backed-up user preferences" }
+            PendingBackupRestore(
+                id = UUID.randomUUID().toString(),
+                previousPreferences = preferencesStore.read(),
+                targetPreferences = targetPreferences
+            )
+        }
+        restoreJournal?.let {
+            requireNotNull(restoreJournalStore).write(it)
+            pendingRestoreId = it.id
+        }
+
         try {
             database.withTransaction {
                 val accounts = database.accountDao()
@@ -209,9 +238,12 @@ class BackupRepository(
                 if (snapshot.transactionTemplates.isNotEmpty()) templates.insertForRestore(snapshot.transactionTemplates)
                 if (snapshot.reconciliations.isNotEmpty()) reconciliations.insertReconciliations(snapshot.reconciliations)
 
-                snapshot.userPreferences?.let { preferences ->
-                    preferencesWriteAttempted = true
-                    requireNotNull(userPreferencesStore).write(preferences)
+                restoreJournal?.let { journal ->
+                    database.backupRestoreStateDao().recordSuccessfulRestore(
+                        com.ralledger.data.local.entity.BackupRestoreStateEntity(
+                            lastSuccessfulRestoreId = journal.id
+                        )
+                    )
                 }
 
                 val restored = readSnapshot(snapshot.userPreferences).copy(createdAt = snapshot.createdAt)
@@ -220,10 +252,10 @@ class BackupRepository(
                 }
             }
         } catch (error: Throwable) {
-            if (preferencesWriteAttempted && previousUserPreferences != null) {
+            if (restoreJournal != null) {
                 runCatching {
                     withContext(NonCancellable) {
-                        userPreferencesStore?.write(previousUserPreferences)
+                        recoverPendingRestore()
                     }
                 }
                     .exceptionOrNull()
@@ -231,8 +263,45 @@ class BackupRepository(
             }
             throw error
         }
+
+        restoreJournal?.let { journal ->
+            try {
+                requireNotNull(userPreferencesStore).write(journal.targetPreferences)
+            } catch (error: Throwable) {
+                val recovery = runCatching {
+                    withContext(NonCancellable) {
+                        check(recoverPendingRestore()) { "Restore recovery journal disappeared" }
+                    }
+                }
+                recovery.exceptionOrNull()?.let { recoveryError ->
+                    error.addSuppressed(recoveryError)
+                    throw error
+                }
+                return@let
+            }
+            requireNotNull(restoreJournalStore).clear()
+        }
         pendingRestore = null
+        pendingRestoreId = null
         preview
+    }
+
+    /** Completes or rolls back a settings restore based on the Room transaction's commit marker. */
+    suspend fun recoverPendingRestore(): Boolean = withContext(Dispatchers.IO) {
+        val journalStore = requireNotNull(restoreJournalStore) {
+            "This installation cannot recover backed-up user preferences"
+        }
+        val journal = journalStore.read() ?: return@withContext false
+        val committed = database.backupRestoreStateDao().getLastSuccessfulRestoreId() == journal.id
+        val preferences = if (committed) journal.targetPreferences else journal.previousPreferences
+        requireNotNull(userPreferencesStore) { "This installation cannot recover backed-up user preferences" }
+            .write(preferences)
+        journalStore.clear()
+        if (pendingRestoreId == journal.id) {
+            pendingRestore = null
+            pendingRestoreId = null
+        }
+        true
     }
 
     fun cancelPreparedRestore() {
@@ -260,6 +329,11 @@ class BackupRepository(
         if (snapshot.userPreferences != null && userPreferencesStore == null) {
             return preview.copy(
                 validationErrors = (preview.validationErrors + "This installation cannot restore backed-up user preferences").distinct()
+            )
+        }
+        if (snapshot.userPreferences != null && restoreJournalStore == null) {
+            return preview.copy(
+                validationErrors = (preview.validationErrors + "This installation cannot safely recover backed-up user preferences").distinct()
             )
         }
         return preview

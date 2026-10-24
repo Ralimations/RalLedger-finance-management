@@ -1,7 +1,7 @@
 # RalLedger v2.0 Development Progress
 
 Updated: 2026-10-24
-Branch: `feature/ralledger-v2-live-ready` (schema-20 custom reports implemented locally)
+Branch: `feature/ralledger-v2-live-ready` (schema-22 restore-recovery release prepared for `main`)
 Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Delivered in this checkpoint
@@ -145,7 +145,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 | Subscriptions | Daily/weekly/monthly/quarterly/annual schedule create/edit, pause/resume/cancel/reactivate, archive/restore, guarded delete, normalized commitments, categorized ledger payment, history and ordered reversal | Schema-14 build, 51 unit tests and 22 connected tests pass, including migration, payment reversal and backup coverage; manual profile workflow and due reminders remain incomplete |
 | Savings goals | Create/edit target, date and notes; searchable list; reserve/release existing liquid cash with dated history; archive/restore; delete only before use | Connected lifecycle and encrypted backup/restore pass. Emulator smoke covers create/edit, allocation and release, over-limit guards, delete-history protection, archive/restore with a live reserve, available-cash calculation and reserve-history persistence after restart; additional small-screen and backup UI checks remain |
 | Interest-bearing savings and time deposits | Schema-11 profile terms, interest/tax estimate, compounding, maturity, actual gross/tax/net credits, history and journal reversal; archive/restore and delete-unused | Schema-14 migration, lifecycle, interest posting/reversal and encrypted-backup connected tests pass. Emulator smoke covers profile creation/edit, estimates, tax/net posting, reversal, deletion protection, profile/account archive and separate restore, and restart persistence; backup UI and smaller-screen checks remain |
-| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, budgets, expected income, savings goals/allocations, interest profiles/credits, bills/loans/payment audit trail, subscriptions/payment history, receivables and write-off history | Connected migration and backup/restore coverage passes through schema 14; SAF UI, release build and broader restore compatibility checks remain open |
+| Backup and restore | Encrypted SAF flow, validation, atomic replacement, account descriptions, category hierarchy/archive state, budgets, expected income, savings goals/allocations, interest profiles/credits, bills/loans/payment audit trail, subscriptions/payment history, receivables and write-off history; schema 22 adds crash-recovery journal and commit marker | Backup data migrates and restores atomically in Room; cross-store settings now reconcile at startup. Connected recovery/migration execution and interrupted-process device checks still need an online emulator |
 | Dashboard | Available Money is primary; Net Worth is separate; debt liabilities, payable totals, loan proceeds and reversal-aware month cash flow flow from the ledger | Available Money now uses calculated spendable funds after goal reserves; emulator values matched ₱1,000 account cash, ₱50/₱100 reserves and the corresponding spendable balance. User-specific account flags cannot be inspected without a device database |
 | Appearance and insights UI | Saved theme mode/palette options; interactive daily, weekly, monthly, yearly, custom-range and all-time cash-flow/category charts | Must be checked on device for contrast, overflow, and small-screen layout; native home-screen widgets are still incomplete |
 | Historical net worth/liquid-assets, savings growth, subscription/collection trend and aging reports, business reports, CSV/XLSX import/export, app lock, widgets | Incomplete | No end-to-end implementation in this checkpoint |
@@ -507,3 +507,14 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Refreshed `releases/RalLedger-debug.apk`: 23,579,113 bytes; SHA-256 `4B3545AB3B9DC4966DF26211147C89C3CCA5D2499065D153AB9F3DF7E1A3C2E5`. `apksigner` verifies the v2 signature. It remains version 2.0, debug-signed, and is not a production build.
 - Published commit `cfa98bd525ac003971c32e69ef036f7064bdf537` to `Ralimations/RalLedger-finance-management` on `main`. GitHub confirms the branch head and APK blob path/size.
 - The emulator transports remain offline and no AVD is configured, so the new chart has no device walkthrough yet. Small-screen checks, connected migration/project lifecycle tests, backup recovery cases, and the other partial lifecycles in the CRUD matrix remain.
+
+## Durable encrypted-restore recovery — 2026-10-24
+
+- Added Room schema 22 with a DataStore recovery journal containing the prior and requested user preferences plus a Room commit marker. The marker is written in the same transaction as the financial-record replacement.
+- If the app restarts before the Room transaction commits, startup restores the previous preferences. If the database committed first, startup applies the backup preferences. The app waits for recovery before showing financial screens or processing subscription reminders.
+- A failed preference write attempts immediate recovery; if storage still fails, the durable journal remains for the next launch. Device app-lock remains local and is not part of backup preferences.
+- Added instrumentation cases for journal serialization, recovery before/after the database commit, and a preference-write failure. The instrumentation sources compile; execution remains unverified because both available emulator transports are offline and no AVD is configured.
+- Verification passed `:app:testDebugUnitTest` (71 tests, 0 failures/errors), `:app:lintDebug` (29 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`.
+- Refreshed `releases/RalLedger-debug.apk`: 23,574,552 bytes; SHA-256 `0BB0C3989F5A16EAB5B57E515FF7006D29D178B5E4B069CAC334027CEDC88ECF`. `apksigner` verifies the v2 signature. Package version remains 2.0 (versionCode 2); this APK is debug-signed, not production-signed.
+- This iteration is being published to `Ralimations/RalLedger-finance-management` on `main` under the user's explicit authorization. The previous `main` release remains `0afa9f630b29efb43e90d2e9c7a433ea063e3ccb` until GitHub confirms this commit.
+- Remaining live-use checks include connected migration/recovery execution, screen walkthroughs on small devices, and partial lifecycle items in `FEATURE_CRUD_MATRIX.md`.

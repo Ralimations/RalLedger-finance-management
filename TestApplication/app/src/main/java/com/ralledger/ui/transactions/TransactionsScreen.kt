@@ -43,6 +43,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -72,6 +73,7 @@ import com.ralledger.domain.model.TransactionCorrection
 import com.ralledger.domain.model.TransactionTypeFilter
 import com.ralledger.domain.model.TransactionType
 import com.ralledger.domain.model.TransactionTag
+import com.ralledger.domain.model.FinancialProject
 import com.ralledger.domain.model.SavedTransactionFilter
 import com.ralledger.domain.model.TransactionFilter
 import com.ralledger.domain.model.TransactionTemplate
@@ -95,6 +97,7 @@ fun TransactionsScreen(
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val tags by viewModel.tags.collectAsState()
+    val projects by viewModel.projects.collectAsState()
     val savedFilters by viewModel.savedFilters.collectAsState()
     val transactionTemplates by viewModel.transactionTemplates.collectAsState()
     val templateMessage by viewModel.templateMessage.collectAsState()
@@ -119,6 +122,7 @@ fun TransactionsScreen(
     var showTemplateManager by remember { mutableStateOf(false) }
     var templateToUse by remember { mutableStateOf<TransactionTemplate?>(null) }
     var tagAssignmentCandidate by remember { mutableStateOf<Transaction?>(null) }
+    var projectAssignmentCandidate by remember { mutableStateOf<Transaction?>(null) }
     var showSavedFilters by remember { mutableStateOf(false) }
     var showSaveFilter by remember { mutableStateOf(false) }
     var saveFilterName by remember { mutableStateOf("") }
@@ -244,7 +248,8 @@ fun TransactionsScreen(
                             onCorrect = { correctCandidate = tx },
                             onDuplicate = { duplicateCandidate = tx },
                             onReverse = { reverseCandidate = tx },
-                            onManageTags = { tagAssignmentCandidate = tx }
+                            onManageTags = { tagAssignmentCandidate = tx },
+                            onAssignProject = { projectAssignmentCandidate = tx }
                         )
                     }
                 }
@@ -328,6 +333,18 @@ fun TransactionsScreen(
             onSave = { tagIds ->
                 viewModel.setTransactionTags(transaction.journalEntryId, tagIds)
                 tagAssignmentCandidate = null
+            }
+        )
+    }
+
+    projectAssignmentCandidate?.let { transaction ->
+        TransactionProjectAssignmentDialog(
+            transaction = transaction,
+            projects = projects,
+            onDismiss = { projectAssignmentCandidate = null },
+            onSave = { projectId ->
+                viewModel.setTransactionProject(transaction.journalEntryId, projectId)
+                projectAssignmentCandidate = null
             }
         )
     }
@@ -571,7 +588,8 @@ private fun TransactionRow(
     onCorrect: () -> Unit,
     onDuplicate: () -> Unit,
     onReverse: () -> Unit,
-    onManageTags: () -> Unit
+    onManageTags: () -> Unit,
+    onAssignProject: () -> Unit
 ) {
     val isPositive = transaction.transactionType == TransactionType.INCOME ||
         transaction.transactionType == TransactionType.INTEREST_CREDIT ||
@@ -630,6 +648,9 @@ private fun TransactionRow(
                         color = MaterialTheme.colorScheme.tertiary
                     )
                 }
+                transaction.projectName?.let { projectName ->
+                    Text("Project · $projectName", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -650,6 +671,12 @@ private fun TransactionRow(
                         }
                         DropdownMenu(expanded = actionsExpanded, onDismissRequest = { actionsExpanded = false }) {
                             DropdownMenuItem(text = { Text("Manage labels") }, onClick = { actionsExpanded = false; onManageTags() })
+                            if (transaction.reversesEntryId == null) {
+                                DropdownMenuItem(
+                                    text = { Text(if (transaction.projectId == null) "Assign project" else "Change project") },
+                                    onClick = { actionsExpanded = false; onAssignProject() }
+                                )
+                            }
                             if (canCorrect && !transaction.isReversed) {
                                 DropdownMenuItem(text = { Text("Correct") }, onClick = { actionsExpanded = false; onCorrect() })
                                 DropdownMenuItem(text = { Text("Duplicate") }, onClick = { actionsExpanded = false; onDuplicate() })
@@ -1005,6 +1032,48 @@ private fun CategoryDropdown(
             }
         }
     }
+}
+
+@Composable
+private fun TransactionProjectAssignmentDialog(
+    transaction: Transaction,
+    projects: List<FinancialProject>,
+    onDismiss: () -> Unit,
+    onSave: (String?) -> Unit
+) {
+    var selectedId by remember(transaction.journalEntryId) { mutableStateOf(transaction.projectId) }
+    val availableProjects = projects.filter { !it.isArchived || it.id == transaction.projectId }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Project for ${transaction.description.ifBlank { "transaction" }}") },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                Text("Choose one project to include this activity in Personal or Business reporting.", style = MaterialTheme.typography.bodySmall)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(selected = selectedId == null, onClick = { selectedId = null })
+                    Text("No project")
+                }
+                availableProjects.forEach { project ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(selected = selectedId == project.id, onClick = { selectedId = project.id })
+                        Column {
+                            Text(project.name)
+                            Text(
+                                project.kind.displayName + if (project.isArchived) " · Archived" else "",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                if (availableProjects.isEmpty()) {
+                    Text("Create a project in Planning → Projects first.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        },
+        confirmButton = { Button(onClick = { onSave(selectedId) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
 }
 
 @Composable

@@ -28,6 +28,8 @@ import com.ralledger.data.local.entity.TransactionTemplateEntity
 import com.ralledger.data.local.entity.PlannedPaymentEntity
 import com.ralledger.data.local.entity.PlannedPaymentRecordEntity
 import com.ralledger.data.local.entity.CustomReportEntity
+import com.ralledger.data.local.entity.FinancialProjectEntity
+import com.ralledger.data.local.entity.JournalEntryProjectEntity
 import com.ralledger.data.local.entity.normalizeCustomReportName
 import com.ralledger.data.importing.CsvImportExecutionResult
 import com.ralledger.data.importing.CsvImportedTransaction
@@ -57,6 +59,10 @@ import com.ralledger.domain.model.PlannedPayment
 import com.ralledger.domain.model.PlannedPaymentRecord
 import com.ralledger.domain.model.PlannedPaymentStatus
 import com.ralledger.domain.model.CustomReport
+import com.ralledger.domain.model.FinancialProject
+import com.ralledger.domain.model.FinancialProjectKind
+import com.ralledger.domain.model.normalizeFinancialProjectName
+import com.ralledger.domain.model.displayFinancialProjectName
 import com.ralledger.domain.model.JournalEntry
 import com.ralledger.domain.model.LineType
 import com.ralledger.domain.model.Money
@@ -112,6 +118,7 @@ class RalLedgerRepository(
     private val savedTransactionFilterDao = database.savedTransactionFilterDao()
     private val counterpartyDao = database.counterpartyDao()
     private val customReportDao = database.customReportDao()
+    private val financialProjectDao = database.financialProjectDao()
 
     val counterpartiesFlow: Flow<List<Counterparty>> = counterpartyDao.getAllFlow()
         .map { items -> items.map(CounterpartyEntity::toDomainModel) }
@@ -119,13 +126,117 @@ class RalLedgerRepository(
     val customReportsFlow: Flow<List<CustomReport>> = customReportDao.getAllFlow()
         .map { items -> items.map(CustomReportEntity::toDomainModel) }
 
+    val financialProjectsFlow: Flow<List<FinancialProject>> = financialProjectDao.getAllFlow()
+        .map { items -> items.map(FinancialProjectEntity::toDomainModel) }
+
+    suspend fun createFinancialProject(
+        name: String,
+        kind: FinancialProjectKind,
+        description: String,
+        colorHex: String
+    ): String {
+        validateFinancialProject(name, description, colorHex)
+        val id = UUID.randomUUID().toString()
+        val now = System.currentTimeMillis()
+        val project = FinancialProject(id, displayFinancialProjectName(name), kind, description.trim(), colorHex.uppercase(), createdAt = now, updatedAt = now)
+        database.withTransaction {
+            require(financialProjectDao.getByNormalizedName(normalizeFinancialProjectName(name)) == null) {
+                "A project with this name already exists"
+            }
+            financialProjectDao.insert(FinancialProjectEntity.fromDomainModel(project))
+        }
+        return id
+    }
+
+    suspend fun updateFinancialProject(id: String, name: String, kind: FinancialProjectKind, description: String, colorHex: String) {
+        validateFinancialProject(name, description, colorHex)
+        database.withTransaction {
+            val current = financialProjectDao.getById(id)
+                ?: throw IllegalArgumentException("This project no longer exists")
+            val normalizedName = normalizeFinancialProjectName(name)
+            require(financialProjectDao.getByNormalizedName(normalizedName)?.id in setOf(null, id)) {
+                "A project with this name already exists"
+            }
+            financialProjectDao.update(current.copy(
+                name = displayFinancialProjectName(name),
+                normalizedName = normalizedName,
+                kind = kind.name,
+                description = description.trim(),
+                colorHex = colorHex.uppercase(),
+                updatedAt = System.currentTimeMillis()
+            ))
+        }
+    }
+
+    suspend fun setFinancialProjectArchived(id: String, isArchived: Boolean) {
+        database.withTransaction {
+            val project = financialProjectDao.getById(id)
+                ?: throw IllegalArgumentException("This project no longer exists")
+            financialProjectDao.update(project.copy(isArchived = isArchived, updatedAt = System.currentTimeMillis()))
+        }
+    }
+
+    suspend fun deleteUnusedFinancialProject(id: String) {
+        database.withTransaction {
+            val project = financialProjectDao.getById(id)
+                ?: throw IllegalArgumentException("This project no longer exists")
+            require(financialProjectDao.countAssignments(id) == 0L && customReportDao.countProjectReferences(id) == 0L) {
+                "${project.name} is used by transaction history or a saved report. Remove those references, merge it, or archive the project."
+            }
+            financialProjectDao.delete(id)
+        }
+    }
+
+    suspend fun mergeFinancialProjects(sourceId: String, targetId: String) {
+        require(sourceId != targetId) { "Choose a different project to merge into" }
+        database.withTransaction {
+            val source = financialProjectDao.getById(sourceId)
+                ?: throw IllegalArgumentException("The project to merge no longer exists")
+            val target = financialProjectDao.getById(targetId)
+                ?: throw IllegalArgumentException("Choose an existing destination project")
+            require(!target.isArchived) { "Restore the destination project before merging" }
+            require(source.kind == target.kind) { "Projects of different types cannot be merged. Change a project type first if you intend to reclassify its history." }
+            financialProjectDao.reassignProject(source.id, target.id)
+            customReportDao.reassignProject(source.id, target.id, System.currentTimeMillis())
+            financialProjectDao.delete(source.id)
+        }
+    }
+
+    suspend fun setJournalEntryProject(journalEntryId: String, projectId: String?) {
+        database.withTransaction {
+            val entry = journalDao.getJournalEntryById(journalEntryId)
+                ?: throw IllegalArgumentException("This transaction no longer exists")
+            require(entry.reversesEntryId == null) {
+                "A reversal follows the project assigned to its original transaction"
+            }
+            val currentProjectId = financialProjectDao.getProjectIdForEntry(journalEntryId)
+            if (projectId != null) {
+                val project = financialProjectDao.getById(projectId)
+                    ?: throw IllegalArgumentException("The selected project no longer exists")
+                require(!project.isArchived || project.id == currentProjectId) {
+                    "Restore this project before assigning it to a transaction"
+                }
+            }
+            financialProjectDao.clearAssignment(journalEntryId)
+            if (projectId != null) financialProjectDao.assign(JournalEntryProjectEntity(journalEntryId, projectId))
+        }
+    }
+
+    private fun validateFinancialProject(name: String, description: String, colorHex: String) {
+        require(normalizeFinancialProjectName(name).isNotBlank()) { "Enter a project name" }
+        require(normalizeFinancialProjectName(name).length <= 60) { "Use 60 characters or fewer for a project name" }
+        require(description.length <= 300) { "Keep the project description to 300 characters or fewer" }
+        require(colorHex.matches(Regex("^#[0-9A-Fa-f]{6}$"))) { "Choose a valid project color" }
+    }
+
     suspend fun createCustomReport(
         name: String,
         startDate: Long,
         endDate: Long,
         accountId: String?,
         categoryId: String?,
-        tagId: String?
+        tagId: String?,
+        projectId: String? = null
     ): String {
         validateCustomReport(name, startDate, endDate)
         val id = UUID.randomUUID().toString()
@@ -134,7 +245,7 @@ class RalLedgerRepository(
             require(customReportDao.getByNormalizedName(normalizeCustomReportName(name)) == null) {
                 "A saved report with this name already exists"
             }
-            validateCustomReportReferences(accountId, categoryId, tagId)
+            validateCustomReportReferences(accountId, categoryId, tagId, projectId)
             customReportDao.insert(CustomReportEntity.fromDomainModel(CustomReport(
                 id = id,
                 name = name.trim().replace(Regex("\\s+"), " "),
@@ -143,6 +254,7 @@ class RalLedgerRepository(
                 accountId = accountId,
                 categoryId = categoryId,
                 tagId = tagId,
+                projectId = projectId,
                 createdAt = now,
                 updatedAt = now
             )))
@@ -157,7 +269,8 @@ class RalLedgerRepository(
         endDate: Long,
         accountId: String?,
         categoryId: String?,
-        tagId: String?
+        tagId: String?,
+        projectId: String? = null
     ) {
         validateCustomReport(name, startDate, endDate)
         database.withTransaction {
@@ -167,7 +280,7 @@ class RalLedgerRepository(
             require(customReportDao.getByNormalizedName(normalizedName)?.id in setOf(null, id)) {
                 "A saved report with this name already exists"
             }
-            validateCustomReportReferences(accountId, categoryId, tagId)
+            validateCustomReportReferences(accountId, categoryId, tagId, projectId)
             customReportDao.update(current.copy(
                 name = name.trim().replace(Regex("\\s+"), " "),
                 normalizedName = normalizedName,
@@ -176,6 +289,7 @@ class RalLedgerRepository(
                 accountId = accountId,
                 categoryId = categoryId,
                 tagId = tagId,
+                projectId = projectId,
                 updatedAt = System.currentTimeMillis()
             ))
         }
@@ -202,10 +316,11 @@ class RalLedgerRepository(
         require(startDate > 0L && endDate >= startDate) { "Choose a valid report date range" }
     }
 
-    private suspend fun validateCustomReportReferences(accountId: String?, categoryId: String?, tagId: String?) {
+    private suspend fun validateCustomReportReferences(accountId: String?, categoryId: String?, tagId: String?, projectId: String?) {
         require(accountId == null || accountDao.getAccountById(accountId) != null) { "The selected account no longer exists" }
         require(categoryId == null || categoryDao.getCategoryById(categoryId) != null) { "The selected category no longer exists" }
         require(tagId == null || transactionTagDao.getTagById(tagId) != null) { "The selected label no longer exists" }
+        require(projectId == null || financialProjectDao.getById(projectId) != null) { "The selected project no longer exists" }
     }
 
     suspend fun createCounterparty(name: String, kind: CounterpartyKind, notes: String = ""): String {
@@ -1491,6 +1606,15 @@ class RalLedgerRepository(
                 tagNames = assignedTags.map { it.name }
             )
         }
+    }.combine(financialProjectDao.getAllFlow()) { transactions, projects ->
+        transactions to projects.associateBy { it.id }
+    }.combine(financialProjectDao.getAssignmentsFlow()) { (transactions, projectsById), assignments ->
+        val projectByEntry = assignments.associate { it.journalEntryId to it.projectId }
+        transactions.map { transaction ->
+            val sourceEntryId = transaction.reversesEntryId ?: transaction.journalEntryId
+            val project = projectByEntry[sourceEntryId]?.let(projectsById::get)
+            transaction.copy(projectId = project?.id, projectName = project?.name)
+        }
     }
 
     val budgetsFlow: Flow<List<Budget>> = combine(
@@ -1804,6 +1928,7 @@ class RalLedgerRepository(
             require(correction.transactionType == originalType) { "A correction must keep the original transaction type" }
             require(correction.amount.isPositive) { "Enter an amount greater than zero" }
             require(!correction.fee.isNegative) { "Transfer fee cannot be negative" }
+            val originalProjectId = financialProjectDao.getProjectIdForEntry(journalEntryId)
 
             validateCorrectionAccount(correction.accountId, originalEntity.primaryAccountId)
             when (originalType) {
@@ -1871,6 +1996,9 @@ class RalLedgerRepository(
                 counterparty = correction.counterparty.trim(),
                 notes = correction.notes.trim()
             )
+            originalProjectId?.let { projectId ->
+                financialProjectDao.assign(JournalEntryProjectEntity(replacement.id, projectId))
+            }
         }
     }
 

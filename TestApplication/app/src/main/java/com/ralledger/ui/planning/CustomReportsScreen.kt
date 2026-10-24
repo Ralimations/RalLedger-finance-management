@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CustomReport
+import com.ralledger.domain.model.FinancialProject
 import com.ralledger.domain.model.TransactionTag
 import com.ralledger.domain.usecase.InsightsResult
 import com.ralledger.ui.settings.displayDate
@@ -70,6 +71,7 @@ fun CustomReportsScreen(viewModel: CustomReportsViewModel) {
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val tags by viewModel.tags.collectAsState()
+    val projects by viewModel.projects.collectAsState()
     val message by viewModel.message.collectAsState()
     val snackbar = remember { SnackbarHostState() }
     var query by remember { mutableStateOf("") }
@@ -100,7 +102,7 @@ fun CustomReportsScreen(viewModel: CustomReportsViewModel) {
         ) {
             item {
                 Text("Custom Reports", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                Text("Save a date range with optional account, category, and label filters.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Save a date range with optional account, category, label, and project filters.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             item {
                 OutlinedTextField(
@@ -137,6 +139,7 @@ fun CustomReportsScreen(viewModel: CustomReportsViewModel) {
                         accountName = accounts.firstOrNull { it.id == report.accountId }?.name,
                         categoryName = categories.firstOrNull { it.id == report.categoryId }?.name,
                         tagName = tags.firstOrNull { it.id == report.tagId }?.name,
+                        projectName = projects.firstOrNull { it.id == report.projectId }?.name,
                         onEdit = { editorTarget = report; editorOpen = true },
                         onArchive = { viewModel.archive(report, !report.isArchived) },
                         onDelete = { deleteTarget = report }
@@ -152,11 +155,12 @@ fun CustomReportsScreen(viewModel: CustomReportsViewModel) {
             accounts = accounts,
             categories = categories,
             tags = tags,
+            projects = projects,
             onDismiss = { editorOpen = false },
-            onSave = { name, startDate, endDate, accountId, categoryId, tagId ->
+            onSave = { name, startDate, endDate, accountId, categoryId, tagId, projectId ->
                 val target = editorTarget
-                if (target == null) viewModel.create(name, startDate, endDate, accountId, categoryId, tagId)
-                else viewModel.update(target, name, startDate, endDate, accountId, categoryId, tagId)
+                if (target == null) viewModel.create(name, startDate, endDate, accountId, categoryId, tagId, projectId)
+                else viewModel.update(target, name, startDate, endDate, accountId, categoryId, tagId, projectId)
                 editorOpen = false
             }
         )
@@ -182,6 +186,7 @@ private fun CustomReportCard(
     accountName: String?,
     categoryName: String?,
     tagName: String?,
+    projectName: String?,
     onEdit: () -> Unit,
     onArchive: () -> Unit,
     onDelete: () -> Unit
@@ -206,7 +211,8 @@ private fun CustomReportCard(
             val filters = listOfNotNull(
                 accountName?.let { "Account: $it" },
                 categoryName?.let { "Category: $it" },
-                tagName?.let { "Label: $it" }
+                tagName?.let { "Label: $it" },
+                projectName?.let { "Project: $it" }
             )
             if (filters.isNotEmpty()) Text(filters.joinToString(" · "), style = MaterialTheme.typography.bodySmall)
             if (result != null) {
@@ -266,8 +272,9 @@ private fun CustomReportEditorDialog(
     accounts: List<Account>,
     categories: List<Category>,
     tags: List<TransactionTag>,
+    projects: List<FinancialProject>,
     onDismiss: () -> Unit,
-    onSave: (String, Long, Long, String?, String?, String?) -> Unit
+    onSave: (String, Long, Long, String?, String?, String?, String?) -> Unit
 ) {
     val zone = remember { ZoneId.systemDefault() }
     val today = remember { LocalDate.now(zone) }
@@ -277,6 +284,7 @@ private fun CustomReportEditorDialog(
     var accountId by remember(report?.id) { mutableStateOf(report?.accountId) }
     var categoryId by remember(report?.id) { mutableStateOf(report?.categoryId) }
     var tagId by remember(report?.id) { mutableStateOf(report?.tagId) }
+    var projectId by remember(report?.id) { mutableStateOf(report?.projectId) }
     var dateField by remember { mutableStateOf<ReportDateField?>(null) }
 
     AlertDialog(
@@ -292,10 +300,11 @@ private fun CustomReportEditorDialog(
                 ReportFilterDropdown("Account", accountId, listOf(ReportFilterOption(null, "All accounts")) + accounts.filter { !it.isArchived || it.id == accountId }.map { ReportFilterOption(it.id, it.name) }) { accountId = it }
                 ReportFilterDropdown("Category", categoryId, listOf(ReportFilterOption(null, "All categories")) + categories.filter { !it.isArchived || it.id == categoryId }.map { ReportFilterOption(it.id, it.name) }) { categoryId = it }
                 ReportFilterDropdown("Label", tagId, listOf(ReportFilterOption(null, "All labels")) + tags.filter { !it.isArchived || it.id == tagId }.map { ReportFilterOption(it.id, it.name) }) { tagId = it }
+                ReportFilterDropdown("Project", projectId, listOf(ReportFilterOption(null, "All projects")) + projects.filter { !it.isArchived || it.id == projectId }.map { ReportFilterOption(it.id, it.name) }) { projectId = it }
             }
         },
         confirmButton = {
-            Button(onClick = { onSave(name, startDate, endDate, accountId, categoryId, tagId) }, enabled = name.isNotBlank()) { Text("Save") }
+            Button(onClick = { onSave(name, startDate, endDate, accountId, categoryId, tagId, projectId) }, enabled = name.isNotBlank()) { Text("Save") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )

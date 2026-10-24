@@ -19,7 +19,8 @@ data class TransactionFilter(
             transaction.destinationAccountName?.contains(query, ignoreCase = true) == true ||
             transaction.categoryName?.contains(query, ignoreCase = true) == true ||
             transaction.secondaryCategoryName?.contains(query, ignoreCase = true) == true ||
-            transaction.tagNames.any { it.contains(query, ignoreCase = true) }
+            transaction.tagNames.any { it.contains(query, ignoreCase = true) } ||
+            transaction.projectName?.contains(query, ignoreCase = true) == true
         val matchesType = when (type) {
             TransactionTypeFilter.ALL -> true
             TransactionTypeFilter.INCOME -> transaction.transactionType in setOf(TransactionType.INCOME, TransactionType.INTEREST_CREDIT)

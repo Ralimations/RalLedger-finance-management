@@ -11,13 +11,15 @@ import com.ralledger.domain.model.CustomReport
     foreignKeys = [
         ForeignKey(entity = AccountEntity::class, parentColumns = ["id"], childColumns = ["accountId"], onDelete = ForeignKey.RESTRICT),
         ForeignKey(entity = CategoryEntity::class, parentColumns = ["id"], childColumns = ["categoryId"], onDelete = ForeignKey.RESTRICT),
-        ForeignKey(entity = TransactionTagEntity::class, parentColumns = ["id"], childColumns = ["tagId"], onDelete = ForeignKey.RESTRICT)
+        ForeignKey(entity = TransactionTagEntity::class, parentColumns = ["id"], childColumns = ["tagId"], onDelete = ForeignKey.RESTRICT),
+        ForeignKey(entity = FinancialProjectEntity::class, parentColumns = ["id"], childColumns = ["projectId"], onDelete = ForeignKey.RESTRICT)
     ],
     indices = [
         Index(value = ["normalizedName"], unique = true),
         Index(value = ["accountId"]),
         Index(value = ["categoryId"]),
-        Index(value = ["tagId"])
+        Index(value = ["tagId"]),
+        Index(value = ["projectId"])
     ]
 )
 data class CustomReportEntity(
@@ -29,6 +31,7 @@ data class CustomReportEntity(
     val accountId: String?,
     val categoryId: String?,
     val tagId: String?,
+    val projectId: String?,
     val isArchived: Boolean,
     val createdAt: Long,
     val updatedAt: Long
@@ -41,6 +44,7 @@ data class CustomReportEntity(
         accountId = accountId,
         categoryId = categoryId,
         tagId = tagId,
+        projectId = projectId,
         isArchived = isArchived,
         createdAt = createdAt,
         updatedAt = updatedAt
@@ -56,6 +60,7 @@ data class CustomReportEntity(
             accountId = report.accountId,
             categoryId = report.categoryId,
             tagId = report.tagId,
+            projectId = report.projectId,
             isArchived = report.isArchived,
             createdAt = report.createdAt,
             updatedAt = report.updatedAt

@@ -14,6 +14,7 @@ import com.ralledger.domain.model.TransactionTypeFilter
 import com.ralledger.domain.model.TransactionTag
 import com.ralledger.domain.model.SavedTransactionFilter
 import com.ralledger.domain.model.TransactionTemplate
+import com.ralledger.domain.model.FinancialProject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +34,9 @@ class TransactionsViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val tags: StateFlow<List<TransactionTag>> = repository.transactionTagsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val projects: StateFlow<List<FinancialProject>> = repository.financialProjectsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val savedFilters: StateFlow<List<SavedTransactionFilter>> = repository.savedTransactionFiltersFlow
@@ -188,6 +192,10 @@ class TransactionsViewModel(
 
     fun setTransactionTags(journalEntryId: String, tagIds: Set<String>) = runTagOperation("Transaction labels updated.") {
         repository.setJournalEntryTags(journalEntryId, tagIds)
+    }
+
+    fun setTransactionProject(journalEntryId: String, projectId: String?) = runTagOperation("Transaction project updated.") {
+        repository.setJournalEntryProject(journalEntryId, projectId)
     }
 
     fun clearTagMessage() {

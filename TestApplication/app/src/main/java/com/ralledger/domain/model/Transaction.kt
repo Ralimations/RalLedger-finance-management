@@ -21,7 +21,9 @@ data class Transaction(
     val secondaryCategoryId: String? = null,
     val secondaryCategoryName: String? = null,
     val tagIds: Set<String> = emptySet(),
-    val tagNames: List<String> = emptyList()
+    val tagNames: List<String> = emptyList(),
+    val projectId: String? = null,
+    val projectName: String? = null
 )
 
 data class TransactionCorrection(

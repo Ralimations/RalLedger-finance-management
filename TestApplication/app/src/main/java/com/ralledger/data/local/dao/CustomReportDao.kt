@@ -37,6 +37,12 @@ interface CustomReportDao {
     @Query("UPDATE custom_reports SET tagId = :targetId, updatedAt = :updatedAt WHERE tagId = :sourceId")
     suspend fun reassignTag(sourceId: String, targetId: String, updatedAt: Long)
 
+    @Query("SELECT COUNT(*) FROM custom_reports WHERE projectId = :projectId")
+    suspend fun countProjectReferences(projectId: String): Long
+
+    @Query("UPDATE custom_reports SET projectId = :targetId, updatedAt = :updatedAt WHERE projectId = :sourceId")
+    suspend fun reassignProject(sourceId: String, targetId: String, updatedAt: Long)
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(report: CustomReportEntity)
 

@@ -25,6 +25,7 @@ import com.ralledger.data.local.dao.CounterpartyDao
 import com.ralledger.data.local.dao.TransactionTemplateDao
 import com.ralledger.data.local.dao.PlannedPaymentDao
 import com.ralledger.data.local.dao.CustomReportDao
+import com.ralledger.data.local.dao.FinancialProjectDao
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
@@ -51,6 +52,8 @@ import com.ralledger.data.local.entity.TransactionTemplateEntity
 import com.ralledger.data.local.entity.PlannedPaymentEntity
 import com.ralledger.data.local.entity.PlannedPaymentRecordEntity
 import com.ralledger.data.local.entity.CustomReportEntity
+import com.ralledger.data.local.entity.FinancialProjectEntity
+import com.ralledger.data.local.entity.JournalEntryProjectEntity
 import com.ralledger.domain.model.AccountCategory
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.CategoryType
@@ -85,9 +88,11 @@ import kotlinx.coroutines.launch
         TransactionTemplateEntity::class,
         PlannedPaymentEntity::class,
         PlannedPaymentRecordEntity::class,
-        CustomReportEntity::class
+        CustomReportEntity::class,
+        FinancialProjectEntity::class,
+        JournalEntryProjectEntity::class
     ],
-    version = 20,
+    version = 21,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -110,9 +115,10 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun transactionTemplateDao(): TransactionTemplateDao
     abstract fun plannedPaymentDao(): PlannedPaymentDao
     abstract fun customReportDao(): CustomReportDao
+    abstract fun financialProjectDao(): FinancialProjectDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 20
+        const val CURRENT_SCHEMA_VERSION = 21
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -607,6 +613,38 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS financial_projects (
+                        id TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        normalizedName TEXT NOT NULL,
+                        kind TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        colorHex TEXT NOT NULL,
+                        isArchived INTEGER NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        PRIMARY KEY(id)
+                    )"""
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_financial_projects_normalizedName ON financial_projects(normalizedName)")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS journal_entry_projects (
+                        journalEntryId TEXT NOT NULL,
+                        projectId TEXT NOT NULL,
+                        PRIMARY KEY(journalEntryId),
+                        FOREIGN KEY(journalEntryId) REFERENCES journal_entries(id) ON UPDATE NO ACTION ON DELETE CASCADE,
+                        FOREIGN KEY(projectId) REFERENCES financial_projects(id) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_journal_entry_projects_projectId ON journal_entry_projects(projectId)")
+                db.execSQL("ALTER TABLE custom_reports ADD COLUMN projectId TEXT REFERENCES financial_projects(id) ON UPDATE NO ACTION ON DELETE RESTRICT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_custom_reports_projectId ON custom_reports(projectId)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
 
@@ -617,7 +655,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

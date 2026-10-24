@@ -32,7 +32,9 @@ object TransactionCsvExporter {
         "is_reversed",
         "reverses_entry_id",
         "label_ids",
-        "labels"
+        "labels",
+        "project_id",
+        "project"
     )
 
     fun encode(transactions: List<Transaction>, accountCurrencies: Map<String, String>): ByteArray {
@@ -71,7 +73,9 @@ object TransactionCsvExporter {
                         transaction.isReversed.toString(),
                         textCell(transaction.reversesEntryId.orEmpty()),
                         textCell(transaction.tagIds.sorted().joinToString(" | ")),
-                        textCell(transaction.tagNames.joinToString(" | "))
+                        textCell(transaction.tagNames.joinToString(" | ")),
+                        textCell(transaction.projectId.orEmpty()),
+                        textCell(transaction.projectName.orEmpty())
                     )
                     append(values.joinToString(","))
                     append('\n')

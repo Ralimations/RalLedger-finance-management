@@ -27,6 +27,8 @@ import com.ralledger.data.local.entity.TransactionTemplateEntity
 import com.ralledger.data.local.entity.PlannedPaymentEntity
 import com.ralledger.data.local.entity.PlannedPaymentRecordEntity
 import com.ralledger.data.local.entity.CustomReportEntity
+import com.ralledger.data.local.entity.FinancialProjectEntity
+import com.ralledger.data.local.entity.JournalEntryProjectEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.LineType
 import com.ralledger.domain.model.normalizeCounterpartyName
@@ -77,7 +79,9 @@ data class BackupPreview(
     val userPreferencesIncluded: Boolean = false,
     val counterparties: Int = 0,
     val transactionTemplates: Int = 0,
-    val customReports: Int = 0
+    val customReports: Int = 0,
+    val financialProjects: Int = 0,
+    val projectAssignments: Int = 0
 ) {
     val canRestore: Boolean get() = validationErrors.isEmpty()
 }
@@ -139,6 +143,7 @@ class BackupRepository(
                 val savedFilters = database.savedTransactionFilterDao()
                 val templates = database.transactionTemplateDao()
                 val customReports = database.customReportDao()
+                val financialProjects = database.financialProjectDao()
                 val journals = database.journalDao()
                 val receivables = database.receivableDao()
                 val subscriptions = database.subscriptionDao()
@@ -160,6 +165,8 @@ class BackupRepository(
                 subscriptionPayments.clearPayments()
                 transactionTags.clearAllAssignments()
                 customReports.clear()
+                financialProjects.clearAssignments()
+                financialProjects.clear()
                 transactionTags.clearTags()
                 savedFilters.clear()
                 templates.clear()
@@ -194,8 +201,10 @@ class BackupRepository(
                 if (snapshot.subscriptions.isNotEmpty()) subscriptions.insertSubscriptions(snapshot.subscriptions)
                 if (snapshot.subscriptionPayments.isNotEmpty()) subscriptionPayments.insertPayments(snapshot.subscriptionPayments)
                 if (snapshot.transactionTags.isNotEmpty()) transactionTags.insertTags(snapshot.transactionTags)
+                if (snapshot.financialProjects.isNotEmpty()) financialProjects.insertAll(snapshot.financialProjects)
                 if (snapshot.customReports.isNotEmpty()) customReports.insertAll(snapshot.customReports)
                 if (snapshot.journalEntryTags.isNotEmpty()) transactionTags.insertAssignments(snapshot.journalEntryTags)
+                if (snapshot.journalEntryProjects.isNotEmpty()) financialProjects.assignAll(snapshot.journalEntryProjects)
                 if (snapshot.savedTransactionFilters.isNotEmpty()) savedFilters.insertForRestore(snapshot.savedTransactionFilters)
                 if (snapshot.transactionTemplates.isNotEmpty()) templates.insertForRestore(snapshot.transactionTemplates)
                 if (snapshot.reconciliations.isNotEmpty()) reconciliations.insertReconciliations(snapshot.reconciliations)
@@ -277,6 +286,8 @@ class BackupRepository(
         savedTransactionFilters = database.savedTransactionFilterDao().getAll(),
         transactionTemplates = database.transactionTemplateDao().getAll(),
         customReports = database.customReportDao().getAll(),
+        financialProjects = database.financialProjectDao().getAll(),
+        journalEntryProjects = database.financialProjectDao().getAssignments(),
         entries = database.journalDao().getAllJournalEntries(),
         lines = database.journalDao().getAllJournalLines(),
         receivables = database.receivableDao().getAllReceivables(),
@@ -376,6 +387,8 @@ class BackupRepository(
         val savedTransactionFilters: List<SavedTransactionFilterEntity>,
         val transactionTemplates: List<TransactionTemplateEntity>,
         val customReports: List<CustomReportEntity>,
+        val financialProjects: List<FinancialProjectEntity>,
+        val journalEntryProjects: List<JournalEntryProjectEntity>,
         val entries: List<JournalEntryEntity>,
         val lines: List<JournalLineEntity>,
         val receivables: List<ReceivableEntity>,
@@ -409,6 +422,8 @@ class BackupRepository(
             put("savedTransactionFilters", JSONArray().also { array -> savedTransactionFilters.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("transactionTemplates", JSONArray().also { array -> transactionTemplates.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("customReports", JSONArray().also { array -> customReports.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("financialProjects", JSONArray().also { array -> financialProjects.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("journalEntryProjects", JSONArray().also { array -> journalEntryProjects.sortedBy { it.journalEntryId }.forEach { array.put(it.toJson()) } })
             put("journalEntries", JSONArray().also { array -> entries.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalLines", JSONArray().also { array -> lines.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("receivables", JSONArray().also { array -> receivables.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
@@ -451,6 +466,9 @@ class BackupRepository(
             checkUnique("transaction template name", transactionTemplates) { it.normalizedName }
             checkUnique("custom report", customReports) { it.id }
             checkUnique("custom report name", customReports) { it.normalizedName }
+            checkUnique("financial project", financialProjects) { it.id }
+            checkUnique("financial project name", financialProjects) { it.normalizedName }
+            checkUnique("journal entry project", journalEntryProjects) { it.journalEntryId }
             checkUnique("journal entry tag", journalEntryTags) { "${it.journalEntryId}\u0000${it.tagId}" }
             checkUnique("journal entry", entries) { it.id }
             checkUnique("journal line", lines) { it.id }
@@ -503,6 +521,17 @@ class BackupRepository(
             }
 
             val entryIds = entries.map { it.id }.toSet()
+            val financialProjectsById = financialProjects.associateBy { it.id }
+            if (financialProjects.any { project ->
+                    project.id.isBlank() || project.name.isBlank() || project.name.trim().length > 60 ||
+                        project.normalizedName != com.ralledger.domain.model.normalizeFinancialProjectName(project.name) ||
+                        runCatching { com.ralledger.domain.model.FinancialProjectKind.valueOf(project.kind) }.isFailure ||
+                        project.description.length > 300 || !project.colorHex.matches(Regex("^#[0-9A-Fa-f]{6}$")) ||
+                        project.createdAt <= 0L || project.createdAt > now || project.updatedAt < project.createdAt || project.updatedAt > now
+                }) errors += "Financial project has an invalid name, type, color, or timestamp"
+            if (journalEntryProjects.any { it.journalEntryId !in entryIds || it.projectId !in financialProjectsById }) {
+                errors += "Project assignment references a missing project or journal entry"
+            }
             val transactionTagsById = transactionTags.associateBy { it.id }
             val tagsByNormalizedName = transactionTags.groupBy { it.normalizedName }
             if (transactionTags.any {
@@ -580,7 +609,8 @@ class BackupRepository(
                         report.updatedAt < report.createdAt || report.updatedAt > now ||
                         (report.accountId != null && report.accountId !in accountIds) ||
                         (report.categoryId != null && report.categoryId !in categoryIds) ||
-                        (report.tagId != null && report.tagId !in transactionTagsById)
+                        (report.tagId != null && report.tagId !in transactionTagsById) ||
+                        (report.projectId != null && report.projectId !in financialProjectsById)
                 } || customReportsByName.values.any { it.size > 1 }) {
                 errors += "Saved report has an invalid name, date range, reference, timestamp, or duplicate name"
             }
@@ -947,6 +977,8 @@ class BackupRepository(
                 taggedJournalEntries = journalEntryTags.map { it.journalEntryId }.toSet().size,
                 transactionTemplates = transactionTemplates.size,
                 customReports = customReports.size,
+                financialProjects = financialProjects.size,
+                projectAssignments = journalEntryProjects.size,
                 journalEntries = entries.size,
                 journalLines = lines.size,
                 receivables = receivables.size,
@@ -988,6 +1020,8 @@ class BackupRepository(
                     savedTransactionFilters = json.optJSONArray("savedTransactionFilters")?.objects()?.map { it.toSavedTransactionFilter() }.orEmpty(),
                     transactionTemplates = json.optJSONArray("transactionTemplates")?.objects()?.map { it.toTransactionTemplate() }.orEmpty(),
                     customReports = json.optJSONArray("customReports")?.objects()?.map { it.toCustomReport() }.orEmpty(),
+                    financialProjects = json.optJSONArray("financialProjects")?.objects()?.map { it.toFinancialProject() }.orEmpty(),
+                    journalEntryProjects = json.optJSONArray("journalEntryProjects")?.objects()?.map { it.toJournalEntryProject() }.orEmpty(),
                     entries = json.getJSONArray("journalEntries").objects().map { it.toJournalEntry() },
                     lines = json.getJSONArray("journalLines").objects().map { it.toJournalLine() },
                     receivables = json.getJSONArray("receivables").objects().map { it.toReceivable() },
@@ -1213,6 +1247,22 @@ private fun JournalEntryTagEntity.toJson() = JSONObject().apply {
 private fun JSONObject.toJournalEntryTag() = JournalEntryTagEntity(
     journalEntryId = getString("journalEntryId"), tagId = getString("tagId")
 )
+private fun FinancialProjectEntity.toJson() = JSONObject().apply {
+    put("id", id); put("name", name); put("normalizedName", normalizedName); put("kind", kind)
+    put("description", description); put("colorHex", colorHex); put("isArchived", isArchived)
+    put("createdAt", createdAt); put("updatedAt", updatedAt)
+}
+private fun JSONObject.toFinancialProject() = FinancialProjectEntity(
+    id = getString("id"), name = getString("name"), normalizedName = getString("normalizedName"),
+    kind = getString("kind"), description = optString("description", ""), colorHex = getString("colorHex"),
+    isArchived = optBoolean("isArchived", false), createdAt = getLong("createdAt"), updatedAt = getLong("updatedAt")
+)
+private fun JournalEntryProjectEntity.toJson() = JSONObject().apply {
+    put("journalEntryId", journalEntryId); put("projectId", projectId)
+}
+private fun JSONObject.toJournalEntryProject() = JournalEntryProjectEntity(
+    journalEntryId = getString("journalEntryId"), projectId = getString("projectId")
+)
 private fun SavedTransactionFilterEntity.toJson() = JSONObject().apply {
     put("id", id); put("name", name); put("normalizedName", normalizedName); put("query", query)
     put("transactionType", transactionType); putNullable("accountId", accountId); putNullable("categoryId", categoryId)
@@ -1246,13 +1296,14 @@ private fun JSONObject.toTransactionTemplate() = TransactionTemplateEntity(
 private fun CustomReportEntity.toJson() = JSONObject().apply {
     put("id", id); put("name", name); put("normalizedName", normalizedName)
     put("startDate", startDate); put("endDate", endDate)
-    putNullable("accountId", accountId); putNullable("categoryId", categoryId); putNullable("tagId", tagId)
+    putNullable("accountId", accountId); putNullable("categoryId", categoryId); putNullable("tagId", tagId); putNullable("projectId", projectId)
     put("isArchived", isArchived); put("createdAt", createdAt); put("updatedAt", updatedAt)
 }
 private fun JSONObject.toCustomReport() = CustomReportEntity(
     id = getString("id"), name = getString("name"), normalizedName = getString("normalizedName"),
     startDate = getLong("startDate"), endDate = getLong("endDate"),
     accountId = stringOrNull("accountId"), categoryId = stringOrNull("categoryId"), tagId = stringOrNull("tagId"),
+    projectId = stringOrNull("projectId"),
     isArchived = optBoolean("isArchived", false), createdAt = getLong("createdAt"), updatedAt = getLong("updatedAt")
 )
 

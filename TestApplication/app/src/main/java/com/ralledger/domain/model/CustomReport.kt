@@ -8,6 +8,7 @@ data class CustomReport(
     val accountId: String? = null,
     val categoryId: String? = null,
     val tagId: String? = null,
+    val projectId: String? = null,
     val isArchived: Boolean = false,
     val createdAt: Long,
     val updatedAt: Long

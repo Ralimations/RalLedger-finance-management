@@ -7,6 +7,7 @@ import com.ralledger.data.repository.RalLedgerRepository
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CustomReport
+import com.ralledger.domain.model.FinancialProject
 import com.ralledger.domain.model.TransactionTag
 import com.ralledger.domain.usecase.CustomReportCalculator
 import com.ralledger.domain.usecase.InsightsResult
@@ -27,6 +28,8 @@ class CustomReportsViewModel(private val repository: RalLedgerRepository) : View
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val tags: StateFlow<List<TransactionTag>> = repository.transactionTagsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val projects: StateFlow<List<FinancialProject>> = repository.financialProjectsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
     val results: StateFlow<Map<String, InsightsResult>> = combine(
         repository.customReportsFlow,
         repository.transactionsFlow,
@@ -40,11 +43,11 @@ class CustomReportsViewModel(private val repository: RalLedgerRepository) : View
     private val _message = MutableStateFlow<String?>(null)
     val message = _message.asStateFlow()
 
-    fun create(name: String, startDate: Long, endDate: Long, accountId: String?, categoryId: String?, tagId: String?) =
-        runAction("Report saved") { repository.createCustomReport(name, startDate, endDate, accountId, categoryId, tagId) }
+    fun create(name: String, startDate: Long, endDate: Long, accountId: String?, categoryId: String?, tagId: String?, projectId: String?) =
+        runAction("Report saved") { repository.createCustomReport(name, startDate, endDate, accountId, categoryId, tagId, projectId) }
 
-    fun update(report: CustomReport, name: String, startDate: Long, endDate: Long, accountId: String?, categoryId: String?, tagId: String?) =
-        runAction("Changes saved") { repository.updateCustomReport(report.id, name, startDate, endDate, accountId, categoryId, tagId) }
+    fun update(report: CustomReport, name: String, startDate: Long, endDate: Long, accountId: String?, categoryId: String?, tagId: String?, projectId: String?) =
+        runAction("Changes saved") { repository.updateCustomReport(report.id, name, startDate, endDate, accountId, categoryId, tagId, projectId) }
 
     fun archive(report: CustomReport, archived: Boolean) =
         runAction(if (archived) "Report archived" else "Report restored") { repository.setCustomReportArchived(report.id, archived) }

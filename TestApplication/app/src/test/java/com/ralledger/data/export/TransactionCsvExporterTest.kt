@@ -23,7 +23,9 @@ class TransactionCsvExporterTest {
             description = "=HYPERLINK(\"https://example.invalid\")",
             notes = "Bought \"fresh\" food\nfor home",
             tagIds = setOf("label-a", "label-b"),
-            tagNames = listOf("Food", "Home")
+            tagNames = listOf("Food", "Home"),
+            projectId = "project-1",
+            projectName = "Kitchen remodel"
         )
 
         val csv = TransactionCsvExporter.encode(listOf(transaction), mapOf("wallet" to "PHP"))
@@ -38,6 +40,7 @@ class TransactionCsvExporterTest {
         assertTrue(body.contains("\"'=HYPERLINK(\"\"https://example.invalid\"\")\""))
         assertTrue(body.contains("\"Bought \"\"fresh\"\" food\nfor home\""))
         assertTrue(body.contains("\"label-a | label-b\",\"Food | Home\""))
+        assertTrue(body.contains("\"project-1\",\"Kitchen remodel\""))
         assertTrue(body.contains("2023-11-14T22:13:20.123Z"))
     }
 
@@ -59,6 +62,6 @@ class TransactionCsvExporterTest {
 
         assertTrue(rows[1].startsWith("\"earlier\",100,"))
         assertTrue(rows[2].startsWith("\"later\",200,"))
-        assertTrue(rows[2].endsWith("\"original\",\"\",\"\""))
+        assertTrue(rows[2].endsWith("\"original\",\"\",\"\",\"\",\"\""))
     }
 }

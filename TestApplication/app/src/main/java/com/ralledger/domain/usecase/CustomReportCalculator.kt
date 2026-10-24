@@ -22,6 +22,7 @@ object CustomReportCalculator {
             .filter { report.accountId == null || it.accountId == report.accountId || it.destinationAccountId == report.accountId }
             .filter { report.categoryId == null || it.categoryId == report.categoryId || it.secondaryCategoryId == report.categoryId }
             .filter { report.tagId == null || report.tagId in it.tagIds }
+            .filter { report.projectId == null || report.projectId == it.projectId }
             .map { it.journalEntryId }
             .toSet()
         val selectedTransactions = transactions.filter { transaction ->

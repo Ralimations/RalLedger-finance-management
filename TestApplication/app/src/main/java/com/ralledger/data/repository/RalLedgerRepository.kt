@@ -24,6 +24,7 @@ import com.ralledger.data.local.entity.SubscriptionPaymentEntity
 import com.ralledger.data.local.entity.JournalEntryTagEntity
 import com.ralledger.data.local.entity.SavedTransactionFilterEntity
 import com.ralledger.data.local.entity.TransactionTagEntity
+import com.ralledger.data.local.entity.TransactionTemplateEntity
 import com.ralledger.data.importing.CsvImportExecutionResult
 import com.ralledger.data.importing.CsvImportedTransaction
 import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalDomainModel
@@ -69,6 +70,8 @@ import com.ralledger.domain.model.TransactionType
 import com.ralledger.domain.model.TransactionTag
 import com.ralledger.domain.model.SavedTransactionFilter
 import com.ralledger.domain.model.TransactionFilter
+import com.ralledger.domain.model.TransactionTemplate
+import com.ralledger.domain.model.normalizeTransactionTemplateName
 import com.ralledger.domain.usecase.AccountingEngine
 import com.ralledger.domain.usecase.BudgetSpendingCalculator
 import com.ralledger.domain.usecase.BudgetSpendingKey
@@ -96,6 +99,7 @@ class RalLedgerRepository(
     private val interestDao = database.interestDao()
     private val subscriptionPaymentDao = database.subscriptionPaymentDao()
     private val transactionTagDao = database.transactionTagDao()
+    private val transactionTemplateDao = database.transactionTemplateDao()
     private val savedTransactionFilterDao = database.savedTransactionFilterDao()
     private val counterpartyDao = database.counterpartyDao()
 
@@ -340,7 +344,8 @@ class RalLedgerRepository(
                 debtDao.countPaymentsForAccount(id) +
                 debtDao.countDebtsForFundingAccount(id) +
                 subscriptionDao.countAccountReferences(id) +
-                interestDao.countProductsForAccount(id)
+                interestDao.countProductsForAccount(id) +
+                transactionTemplateDao.countAccountReferences(id)
             require(referenceCount == 0L && account.openingBalanceCentavos == 0L) {
                 "This account has financial history or linked records and cannot be permanently deleted. Archive it to keep its history safe."
             }
@@ -424,6 +429,7 @@ class RalLedgerRepository(
                 debtDao.countDebtsForCategory(id) == 0L && debtDao.countPaymentsForCategory(id) == 0L &&
                 interestDao.countCreditsForTaxCategory(id) == 0L &&
                 subscriptionPaymentDao.countPaymentsForCategory(id) == 0L &&
+                transactionTemplateDao.countCategoryReferences(id) == 0L &&
                 categoryDao.countChildren(id) == 0L
             ) {
                 "This category is used by financial history, budgets, receivables, or other records. Archive it to preserve its history."
@@ -460,6 +466,9 @@ class RalLedgerRepository(
             subscriptionPaymentDao.reassignCategory(sourceId, targetId)
             receivableDao.reassignIncomeCategory(sourceId, targetId)
             receivableDao.reassignWriteOffCategory(sourceId, targetId)
+            val updatedAt = System.currentTimeMillis()
+            transactionTemplateDao.reassignPrimaryCategory(sourceId, targetId, updatedAt)
+            transactionTemplateDao.reassignFeeCategory(sourceId, targetId, updatedAt)
             categoryDao.moveChildren(sourceId, targetId)
             categoryDao.deleteCategory(sourceId)
         }
@@ -514,6 +523,129 @@ class RalLedgerRepository(
 
     val savedTransactionFiltersFlow: Flow<List<SavedTransactionFilter>> =
         savedTransactionFilterDao.getAllFlow().map { rows -> rows.map(SavedTransactionFilterEntity::toDomainModel) }
+
+    val transactionTemplatesFlow: Flow<List<TransactionTemplate>> = transactionTemplateDao.getAllFlow()
+        .map { rows -> rows.map(TransactionTemplateEntity::toDomainModel) }
+
+    suspend fun createTransactionTemplate(template: TransactionTemplate): String {
+        val now = System.currentTimeMillis()
+        val newTemplate = template.copy(
+            id = UUID.randomUUID().toString(),
+            name = template.name.trim(),
+            counterparty = template.counterparty.trim(),
+            description = template.description.trim(),
+            notes = template.notes.trim(),
+            isArchived = false,
+            createdAt = now,
+            updatedAt = now
+        )
+        database.withTransaction {
+            validateTransactionTemplate(newTemplate)
+            transactionTemplateDao.insert(TransactionTemplateEntity.fromDomainModel(newTemplate))
+        }
+        return newTemplate.id
+    }
+
+    suspend fun updateTransactionTemplate(template: TransactionTemplate) {
+        require(template.id.isNotBlank()) { "This transaction template no longer exists" }
+        database.withTransaction {
+            val current = transactionTemplateDao.getById(template.id)
+                ?: throw IllegalArgumentException("This transaction template no longer exists")
+            val updated = template.copy(
+                name = template.name.trim(),
+                counterparty = template.counterparty.trim(),
+                description = template.description.trim(),
+                notes = template.notes.trim(),
+                isArchived = current.isArchived,
+                createdAt = current.createdAt,
+                updatedAt = System.currentTimeMillis()
+            )
+            validateTransactionTemplate(
+                updated,
+                current = current.toDomainModel()
+            )
+            transactionTemplateDao.update(TransactionTemplateEntity.fromDomainModel(updated))
+        }
+    }
+
+    suspend fun setTransactionTemplateArchived(id: String, isArchived: Boolean) {
+        database.withTransaction {
+            require(transactionTemplateDao.getById(id) != null) { "This transaction template no longer exists" }
+            transactionTemplateDao.setArchived(id, isArchived, System.currentTimeMillis())
+        }
+    }
+
+    suspend fun deleteTransactionTemplate(id: String) {
+        database.withTransaction {
+            require(transactionTemplateDao.getById(id) != null) { "This transaction template no longer exists" }
+            transactionTemplateDao.delete(id)
+        }
+    }
+
+    private suspend fun validateTransactionTemplate(
+        template: TransactionTemplate,
+        current: TransactionTemplate? = null
+    ) {
+        require(template.name.isNotBlank()) { "Enter a template name" }
+        require(template.name.trim().length <= 60) { "Use 60 characters or fewer for a template name" }
+        require(template.amount.isPositive) { "Template amount must be greater than zero" }
+        require(!template.fee.isNegative) { "Transfer fee cannot be negative" }
+        require(template.transactionType in setOf(TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.TRANSFER)) {
+            "Choose income, expense, or transfer for this template"
+        }
+        require(template.description.length <= 200) { "Keep the description to 200 characters or fewer" }
+        require(template.counterparty.length <= 120) { "Keep the source or counterparty to 120 characters or fewer" }
+        require(template.notes.length <= 500) { "Keep notes to 500 characters or fewer" }
+
+        val normalizedName = normalizeTransactionTemplateName(template.name)
+        require(transactionTemplateDao.getByNormalizedName(normalizedName)?.id in setOf(null, template.id)) {
+            "A transaction template with this name already exists"
+        }
+
+        validateTemplateAccount(template.accountId, current?.accountId)
+        when (template.transactionType) {
+            TransactionType.INCOME, TransactionType.EXPENSE -> {
+                require(template.destinationAccountId == null && template.fee.isZero && template.feeCategoryId == null) {
+                    "Income and expense templates cannot include transfer details"
+                }
+                validateTemplateCategory(
+                    requireNotNull(template.categoryId) { "Choose a category for this template" },
+                    if (template.transactionType == TransactionType.INCOME) CategoryType.INCOME else CategoryType.EXPENSE,
+                    current?.categoryId
+                )
+            }
+            TransactionType.TRANSFER -> {
+                require(template.categoryId == null) { "Transfers use a fee category only" }
+                val destinationId = requireNotNull(template.destinationAccountId) { "Choose a destination account" }
+                require(destinationId != template.accountId) { "Choose different source and destination accounts" }
+                validateTemplateAccount(destinationId, current?.destinationAccountId)
+                template.feeCategoryId?.let {
+                    validateTemplateCategory(it, CategoryType.EXPENSE, current?.feeCategoryId)
+                }
+                require(template.fee.isZero || template.feeCategoryId != null) {
+                    "Choose an expense category when the transfer fee is greater than zero"
+                }
+            }
+            else -> error("Unsupported transaction template type")
+        }
+    }
+
+    private suspend fun validateTemplateAccount(id: String, allowArchivedId: String?) {
+        val account = accountDao.getAccountById(id)
+            ?: throw IllegalArgumentException("Choose an existing account")
+        val type = AccountType.valueOf(account.accountType)
+        require(type.isAsset && !type.isReceivable) { "Choose an asset account for this template" }
+        require(!account.isArchived || account.id == allowArchivedId) { "Restore this account before assigning it to a template" }
+    }
+
+    private suspend fun validateTemplateCategory(id: String, expected: CategoryType, allowArchivedId: String?) {
+        val category = categoryDao.getCategoryById(id)
+            ?: throw IllegalArgumentException("Choose an existing ${expected.name.lowercase()} category")
+        require(category.type == expected.name) { "Choose a ${expected.name.lowercase()} category" }
+        require(!category.isArchived || category.id == allowArchivedId) {
+            "Restore this category before assigning it to a template"
+        }
+    }
 
     suspend fun createSavedTransactionFilter(name: String, filter: TransactionFilter): String {
         validateSavedTransactionFilter(name, filter)

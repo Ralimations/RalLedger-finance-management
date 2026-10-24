@@ -74,6 +74,7 @@ import com.ralledger.domain.model.TransactionType
 import com.ralledger.domain.model.TransactionTag
 import com.ralledger.domain.model.SavedTransactionFilter
 import com.ralledger.domain.model.TransactionFilter
+import com.ralledger.domain.model.TransactionTemplate
 import com.ralledger.ui.settings.TransactionListDensity
 import com.ralledger.ui.settings.displayDate
 import java.math.BigDecimal
@@ -95,6 +96,8 @@ fun TransactionsScreen(
     val categories by viewModel.categories.collectAsState()
     val tags by viewModel.tags.collectAsState()
     val savedFilters by viewModel.savedFilters.collectAsState()
+    val transactionTemplates by viewModel.transactionTemplates.collectAsState()
+    val templateMessage by viewModel.templateMessage.collectAsState()
     val canSaveActiveFilter by viewModel.canSaveActiveFilter.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val typeFilter by viewModel.typeFilter.collectAsState()
@@ -113,6 +116,8 @@ fun TransactionsScreen(
     var correctCandidate by remember { mutableStateOf<Transaction?>(null) }
     var duplicateCandidate by remember { mutableStateOf<Transaction?>(null) }
     var showTagManager by remember { mutableStateOf(false) }
+    var showTemplateManager by remember { mutableStateOf(false) }
+    var templateToUse by remember { mutableStateOf<TransactionTemplate?>(null) }
     var tagAssignmentCandidate by remember { mutableStateOf<Transaction?>(null) }
     var showSavedFilters by remember { mutableStateOf(false) }
     var showSaveFilter by remember { mutableStateOf(false) }
@@ -142,6 +147,7 @@ fun TransactionsScreen(
                 Row {
                     TextButton(onClick = onManageCategories) { Text("Categories") }
                     TextButton(onClick = { showTagManager = true }) { Text("Labels") }
+                    TextButton(onClick = { showTemplateManager = true }) { Text("Templates") }
                 }
             }
             Spacer(modifier = Modifier.height(12.dp))
@@ -253,26 +259,31 @@ fun TransactionsScreen(
             accounts = accounts,
             categories = categories,
             initialTransaction = initialTransaction,
+            template = templateToUse,
             isCorrection = correctionSource != null,
             onDismiss = {
                 showAddDialog = false
                 correctCandidate = null
                 duplicateCandidate = null
+                templateToUse = null
             },
             onIncome = { accountId, catId, amount, desc, counterparty, notes, timestamp ->
                 viewModel.recordIncome(accountId, catId, amount, desc, counterparty, notes, timestamp)
                 showAddDialog = false
                 duplicateCandidate = null
+                templateToUse = null
             },
             onExpense = { accountId, catId, amount, desc, counterparty, notes, timestamp ->
                 viewModel.recordExpense(accountId, catId, amount, desc, counterparty, notes, timestamp)
                 showAddDialog = false
                 duplicateCandidate = null
+                templateToUse = null
             },
             onTransfer = { srcId, destId, amount, fee, feeCatId, desc, notes, timestamp ->
                 viewModel.recordTransfer(srcId, destId, amount, fee, feeCatId, desc, notes, timestamp)
                 showAddDialog = false
                 duplicateCandidate = null
+                templateToUse = null
             },
             onCorrect = { correction ->
                 correctionSource?.let { viewModel.correctTransaction(it.journalEntryId, correction) }
@@ -290,6 +301,22 @@ fun TransactionsScreen(
             onArchive = viewModel::setTagArchived,
             onDelete = viewModel::deleteUnusedTag,
             onMerge = viewModel::mergeTags
+        )
+    }
+
+    if (showTemplateManager) {
+        TransactionTemplatesDialog(
+            templates = transactionTemplates,
+            accounts = accounts,
+            categories = categories,
+            message = templateMessage,
+            onDismiss = { showTemplateManager = false },
+            onCreate = viewModel::createTransactionTemplate,
+            onUpdate = viewModel::updateTransactionTemplate,
+            onArchive = viewModel::setTransactionTemplateArchived,
+            onDelete = viewModel::deleteTransactionTemplate,
+            onUse = { templateToUse = it; showAddDialog = true },
+            onClearMessage = viewModel::clearTemplateMessage
         )
     }
 
@@ -647,6 +674,7 @@ private fun RecordTransactionDialog(
     accounts: List<Account>,
     categories: List<Category>,
     initialTransaction: Transaction?,
+    template: TransactionTemplate?,
     isCorrection: Boolean,
     onDismiss: () -> Unit,
     onIncome: (accountId: String, categoryId: String, amount: Money, desc: String, counterparty: String, notes: String, timestamp: Long) -> Unit,
@@ -654,10 +682,10 @@ private fun RecordTransactionDialog(
     onTransfer: (srcId: String, destId: String, amount: Money, fee: Money, feeCatId: String?, desc: String, notes: String, timestamp: Long) -> Unit,
     onCorrect: (TransactionCorrection) -> Unit
 ) {
-    val transactionKey = initialTransaction?.journalEntryId
+    val transactionKey = initialTransaction?.journalEntryId ?: template?.id
     var selectedTab by remember(transactionKey, isCorrection) {
         mutableStateOf(
-            when (initialTransaction?.transactionType) {
+            when (initialTransaction?.transactionType ?: template?.transactionType) {
                 TransactionType.INCOME -> 1
                 TransactionType.TRANSFER -> 2
                 else -> 0
@@ -669,24 +697,24 @@ private fun RecordTransactionDialog(
             (!account.isArchived || (isCorrection && account.id in setOf(initialTransaction?.accountId, initialTransaction?.destinationAccountId)))
     }
     var selectedAccountId by remember(transactionKey, isCorrection) {
-        mutableStateOf(initialTransaction?.accountId ?: eligibleAccounts.firstOrNull()?.id.orEmpty())
+        mutableStateOf(initialTransaction?.accountId ?: template?.accountId ?: eligibleAccounts.firstOrNull()?.id.orEmpty())
     }
     var selectedDestAccountId by remember(transactionKey, isCorrection) {
-        mutableStateOf(initialTransaction?.destinationAccountId ?: eligibleAccounts.firstOrNull { it.id != selectedAccountId }?.id.orEmpty())
+        mutableStateOf(initialTransaction?.destinationAccountId ?: template?.destinationAccountId ?: eligibleAccounts.firstOrNull { it.id != selectedAccountId }?.id.orEmpty())
     }
     var selectedCategoryId by remember(transactionKey, isCorrection) {
-        mutableStateOf(initialTransaction?.categoryId ?: categories.firstOrNull {
+        mutableStateOf(initialTransaction?.categoryId ?: template?.categoryId ?: template?.feeCategoryId ?: categories.firstOrNull {
             it.type.name == (if (selectedTab == 1) "INCOME" else "EXPENSE") && !it.isArchived
         }?.id.orEmpty())
     }
     var selectedFeeCategoryId by remember(transactionKey, isCorrection) {
-        mutableStateOf(initialTransaction?.categoryId ?: categories.firstOrNull { it.type.name == "EXPENSE" && !it.isArchived }?.id.orEmpty())
+        mutableStateOf(initialTransaction?.categoryId ?: template?.feeCategoryId ?: categories.firstOrNull { it.type.name == "EXPENSE" && !it.isArchived }?.id.orEmpty())
     }
-    var amountText by remember(transactionKey, isCorrection) { mutableStateOf(initialTransaction?.amount?.let(::moneyForInput).orEmpty()) }
-    var feeText by remember(transactionKey, isCorrection) { mutableStateOf(initialTransaction?.fee?.takeIf { it.isPositive }?.let(::moneyForInput).orEmpty()) }
-    var description by remember(transactionKey, isCorrection) { mutableStateOf(initialTransaction?.description.orEmpty()) }
-    var counterparty by remember(transactionKey, isCorrection) { mutableStateOf(initialTransaction?.counterparty.orEmpty()) }
-    var notes by remember(transactionKey, isCorrection) { mutableStateOf(initialTransaction?.notes.orEmpty()) }
+    var amountText by remember(transactionKey, isCorrection) { mutableStateOf((initialTransaction?.amount ?: template?.amount)?.let(::moneyForInput).orEmpty()) }
+    var feeText by remember(transactionKey, isCorrection) { mutableStateOf((initialTransaction?.fee ?: template?.fee)?.takeIf { it.isPositive }?.let(::moneyForInput).orEmpty()) }
+    var description by remember(transactionKey, isCorrection) { mutableStateOf(initialTransaction?.description ?: template?.description.orEmpty()) }
+    var counterparty by remember(transactionKey, isCorrection) { mutableStateOf(initialTransaction?.counterparty ?: template?.counterparty.orEmpty()) }
+    var notes by remember(transactionKey, isCorrection) { mutableStateOf(initialTransaction?.notes ?: template?.notes.orEmpty()) }
     var selectedTimestamp by remember(transactionKey, isCorrection) {
         mutableStateOf(if (isCorrection) initialTransaction?.timestamp ?: System.currentTimeMillis() else System.currentTimeMillis())
     }
@@ -722,6 +750,7 @@ private fun RecordTransactionDialog(
         title = {
             Text(when {
                 isCorrection -> "Correct transaction"
+                template != null -> "Use ${template.name}"
                 initialTransaction != null -> "Duplicate transaction"
                 else -> "Record transaction"
             })

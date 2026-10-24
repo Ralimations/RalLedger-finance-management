@@ -554,6 +554,7 @@ fun SettingsScreen(
                     Text("${preview.writeOffs} receivable write-offs")
                     Text("${preview.transactionTags} transaction labels · ${preview.taggedJournalEntries} labeled journal entries")
                     Text("${preview.savedTransactionFilters} saved transaction filters")
+                    Text("${preview.transactionTemplates} transaction templates")
                     Text(
                         if (preview.userPreferencesIncluded) {
                             "Appearance, dashboard, display, entry, and reminder settings included; app lock stays on this device"

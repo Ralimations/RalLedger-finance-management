@@ -1,7 +1,7 @@
 # RalLedger v2.0 Development Progress
 
 Updated: 2026-10-24
-Branch: `main` (updated from `feature/ralledger-v2-live-ready`)
+Branch: `main` (schema-18 transaction-template milestone)
 Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Delivered in this checkpoint
@@ -449,6 +449,15 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Latest GitHub publication — 2026-10-24
 
-- Published commit `685ea292e0b157f5e624b2260f11a523ac8d71a4` to `main` in `Ralimations/RalLedger-finance-management`, extending saved-counterparty links to bills, loans and subscriptions.
-- Updated `releases/RalLedger-debug.apk` to the schema-17 build: 23,492,390 bytes; SHA-256 `25ABBB7432F46873DC330FF02C514B273BB057A2A58C33188879AB833C26EADE`; Git blob `c211ee06e9142cfae7efa244cf408a7951daf936`. The APK is debug-signed, not production-signed.
-- Verification: 67 unit tests pass; `assembleDebug`, lint (0 errors, 28 warnings), and Android-test Kotlin compilation pass. The expanded connected test's first run reached the runner but hit a test assertion-order mistake; after correcting it, emulator targets went offline before the rerun, so the corrected test and schema-1/schema-2 migration fixtures remain unverified on device.
+- Published the schema-18 transaction-template milestone to `main` in `Ralimations/RalLedger-finance-management`.
+- Updated `releases/RalLedger-debug.apk` to the schema-18 build: 23,504,293 bytes; SHA-256 `BEAE6F1995C18836BEBD29E6FE02C5E8766ADBEEB1F55AEFE4814962E50A66A4`. `apksigner` verifies its v2 signature. It is debug-signed, version `1.0`, and not production-signed.
+- Verification: 67 unit tests pass; `assembleDebug`, lint (0 errors, 28 warnings), and Android-test Kotlin compilation pass. The connected emulator remained offline, so schema-1/schema-2 migrations and template CRUD/backup tests compile but remain unverified on device.
+
+## Transaction templates — 2026-10-24
+
+- Added schema 18 saved transaction templates for income, expense, and transfers, including transfer fees, selected accounts/categories, source or counterparty, description, notes, and archive state.
+- Templates support case/whitespace-insensitive unique names, create/edit, search, archive/restore, confirmed deletion, and prefilling a standard transaction form. Applying a template never posts automatically; the user reviews and presses Post.
+- Account/category references use restrictive foreign keys; deletion guards block removal while templates refer to records, and category merge updates both transaction and transfer-fee category links. Encrypted backups validate and restore templates while older backups default to an empty template list.
+- Added instrumentation for template CRUD, normalized duplicate rejection, reference guards, category merge, and encrypted backup/restore, plus schema-1/schema-2 migration coverage through version 18. These instrumentation sources compile; device execution is still pending.
+- Final verification passed `:app:assembleDebug`, `:app:testDebugUnitTest` (67 tests, 0 failures), `:app:lintDebug` (28 warnings, 0 errors), and `:app:compileDebugAndroidTestKotlin`. The connected emulator remained offline, so no live-device migration or template workflow is claimed.
+- Refreshed `releases/RalLedger-debug.apk` from the verified build (23,504,293 bytes; SHA-256 `BEAE6F1995C18836BEBD29E6FE02C5E8766ADBEEB1F55AEFE4814962E50A66A4`). `apksigner` verifies the v2 signature. It remains a debug-signed APK, version `1.0`, not a production-signed release.

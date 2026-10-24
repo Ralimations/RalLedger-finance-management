@@ -24,6 +24,8 @@ import com.ralledger.data.local.entity.TransactionTagEntity
 import com.ralledger.data.local.entity.JournalEntryTagEntity
 import com.ralledger.data.local.entity.SavedTransactionFilterEntity
 import com.ralledger.data.local.entity.TransactionTemplateEntity
+import com.ralledger.data.local.entity.PlannedPaymentEntity
+import com.ralledger.data.local.entity.PlannedPaymentRecordEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.LineType
 import com.ralledger.domain.model.normalizeCounterpartyName
@@ -50,6 +52,8 @@ data class BackupPreview(
     val categories: Int,
     val budgets: Int,
     val expectedIncome: Int,
+    val plannedPayments: Int = 0,
+    val plannedPaymentEvents: Int = 0,
     val debts: Int,
     val debtPayments: Int,
     val savingsGoals: Int = 0,
@@ -123,6 +127,7 @@ class BackupRepository(
                 val categories = database.categoryDao()
                 val counterparties = database.counterpartyDao()
                 val expectedIncome = database.expectedIncomeDao()
+                val plannedPayments = database.plannedPaymentDao()
                 val debts = database.debtDao()
                 val savingsGoals = database.savingsGoalDao()
                 val interest = database.interestDao()
@@ -140,6 +145,8 @@ class BackupRepository(
                 receivables.clearPayments()
                 receivables.clearWriteOffs()
                 expectedIncome.clear()
+                plannedPayments.clearRecords()
+                plannedPayments.clear()
                 debts.clearPayments()
                 debts.clearDebts()
                 savingsGoals.clearEvents()
@@ -169,6 +176,8 @@ class BackupRepository(
                 if (snapshot.lines.isNotEmpty()) journals.insertJournalLinesForRestore(snapshot.lines)
                 if (snapshot.receivables.isNotEmpty()) receivables.insertReceivables(snapshot.receivables)
                 if (snapshot.expectedIncome.isNotEmpty()) expectedIncome.insertAll(snapshot.expectedIncome)
+                if (snapshot.plannedPayments.isNotEmpty()) plannedPayments.insert(snapshot.plannedPayments)
+                if (snapshot.plannedPaymentRecords.isNotEmpty()) plannedPayments.insertRecords(snapshot.plannedPaymentRecords)
                 if (snapshot.debts.isNotEmpty()) debts.insertDebts(snapshot.debts)
                 if (snapshot.debtPayments.isNotEmpty()) debts.insertPayments(snapshot.debtPayments)
                 if (snapshot.savingsGoals.isNotEmpty()) savingsGoals.insertGoals(snapshot.savingsGoals)
@@ -248,6 +257,8 @@ class BackupRepository(
         counterparties = database.counterpartyDao().getAll(),
         budgets = database.budgetDao().getAllBudgets(),
         expectedIncome = database.expectedIncomeDao().getAllExpectedIncome(),
+        plannedPayments = database.plannedPaymentDao().getAll(),
+        plannedPaymentRecords = database.plannedPaymentDao().getAllRecords(),
         debts = database.debtDao().getAllDebts(),
         debtPayments = database.debtDao().getAllPayments(),
         savingsGoals = database.savingsGoalDao().getAllGoals(),
@@ -344,6 +355,8 @@ class BackupRepository(
         val counterparties: List<CounterpartyEntity>,
         val budgets: List<BudgetEntity>,
         val expectedIncome: List<ExpectedIncomeEntity>,
+        val plannedPayments: List<PlannedPaymentEntity>,
+        val plannedPaymentRecords: List<PlannedPaymentRecordEntity>,
         val debts: List<DebtEntity>,
         val debtPayments: List<DebtPaymentEntity>,
         val savingsGoals: List<SavingsGoalEntity>,
@@ -374,6 +387,8 @@ class BackupRepository(
             put("counterparties", JSONArray().also { array -> counterparties.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("budgets", JSONArray().also { array -> budgets.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("expectedIncome", JSONArray().also { array -> expectedIncome.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("plannedPayments", JSONArray().also { array -> plannedPayments.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("plannedPaymentRecords", JSONArray().also { array -> plannedPaymentRecords.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("debts", JSONArray().also { array -> debts.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("debtPayments", JSONArray().also { array -> debtPayments.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("savingsGoals", JSONArray().also { array -> savingsGoals.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
@@ -407,6 +422,9 @@ class BackupRepository(
             checkUnique("counterparty name", counterparties) { it.normalizedName }
             checkUnique("budget", budgets) { it.id }
             checkUnique("expected income", expectedIncome) { it.id }
+            checkUnique("planned payment", plannedPayments) { it.id }
+            checkUnique("planned payment record", plannedPaymentRecords) { it.id }
+            checkUnique("planned payment journal entry", plannedPaymentRecords) { it.journalEntryId }
             checkUnique("debt", debts) { it.id }
             checkUnique("debt payment", debtPayments) { it.id }
             checkUnique("savings goal", savingsGoals) { it.id }
@@ -666,6 +684,43 @@ class BackupRepository(
             if (expectedIncome.any { runCatching { com.ralledger.domain.model.ExpectedIncomeStatus.valueOf(it.status) }.isFailure }) {
                 errors += "Expected income contains an unsupported status"
             }
+            val plannedPaymentsById = plannedPayments.associateBy { it.id }
+            val plannedPaymentRecordsByPlan = plannedPaymentRecords.groupBy { it.plannedPaymentId }
+            if (plannedPayments.any { plan ->
+                    plan.id.isBlank() || plan.description.isBlank() || plan.description.length > 160 || plan.counterparty.length > 120 || plan.amountCentavos <= 0L ||
+                        plan.dueDate <= 0L || plan.createdAt <= 0L || plan.createdAt > now || plan.notes.length > 2_000 ||
+                        plan.expenseCategoryId !in categoryIds || categoriesById[plan.expenseCategoryId]?.type != "EXPENSE" ||
+                        (plan.counterpartyId != null && plan.counterpartyId !in counterpartiesById) ||
+                        runCatching { com.ralledger.domain.model.PlannedPaymentStatus.valueOf(plan.status) }.isFailure
+                }) errors += "Planned payment references a missing category or counterparty or has invalid values"
+            if (plannedPaymentRecords.any { record ->
+                    val plan = plannedPaymentsById[record.plannedPaymentId]
+                    val entry = entryById[record.journalEntryId]
+                    val account = entry?.primaryAccountId?.let(accountsById::get)
+                    val accountType = account?.accountType?.let { runCatching { com.ralledger.domain.model.AccountType.valueOf(it) }.getOrNull() }
+                    record.id.isBlank() || plan == null || entry == null || entry.transactionType != "EXPENSE" || accountType == null || !accountType.isAsset ||
+                        accountType.isReceivable || record.amountCentavos <= 0L || record.paymentDate <= 0L ||
+                        record.paymentDate > now || record.notes.length > 2_000 || record.reversedAt?.let { it < record.paymentDate || it > now } == true ||
+                        entry.amountCentavos != record.amountCentavos || entry.timestamp != record.paymentDate ||
+                        entry.categoryId != plan?.expenseCategoryId || entry.feeCentavos != 0L
+                }) errors += "Planned payment history references a missing or mismatched account, plan, or journal entry"
+            plannedPaymentRecords.forEach { record ->
+                val plan = plannedPaymentsById[record.plannedPaymentId] ?: return@forEach
+                val entry = entryById[record.journalEntryId] ?: return@forEach
+                val linesForPayment = linesByEntry[entry.id].orEmpty()
+                val accountId = entry.primaryAccountId
+                val validExpense = linesForPayment.any { it.accountId == plan.expenseCategoryId && it.lineType == "DEBIT" && it.amountCentavos == record.amountCentavos }
+                val validAccount = linesForPayment.any { it.accountId == accountId && it.lineType == "CREDIT" && it.amountCentavos == record.amountCentavos }
+                if (!validExpense || !validAccount || linesForPayment.size != 2) errors += "Planned payment ${record.id} does not match its balanced journal posting"
+                val hasReversal = entries.any { it.reversesEntryId == entry.id }
+                if ((record.reversedAt != null) != hasReversal) errors += "Planned payment ${record.id} reversal state does not match its journal"
+            }
+            if (plannedPaymentRecords.groupBy { it.plannedPaymentId }.values.any { records -> records.count { it.reversedAt == null } > 1 }) {
+                errors += "A planned payment has more than one active payment record"
+            }
+            if (plannedPayments.any { plan -> plan.status == "CANCELLED" && plannedPaymentRecordsByPlan[plan.id].orEmpty().any { it.reversedAt == null } }) {
+                errors += "A cancelled planned payment still has an active payment"
+            }
             val expectedReceivableIds = expectedIncome.mapNotNull { it.convertedReceivableId }
             if (expectedReceivableIds.toSet().size != expectedReceivableIds.size) {
                 errors += "Multiple expected income records reference the same receivable"
@@ -854,6 +909,8 @@ class BackupRepository(
                 counterparties = counterparties.size,
                 budgets = budgets.size,
                 expectedIncome = expectedIncome.size,
+                plannedPayments = plannedPayments.size,
+                plannedPaymentEvents = plannedPaymentRecords.size,
                 debts = debts.size,
                 debtPayments = debtPayments.size,
                 savingsGoals = savingsGoals.size,
@@ -892,6 +949,8 @@ class BackupRepository(
                     counterparties = json.optJSONArray("counterparties")?.objects()?.map { it.toCounterparty() }.orEmpty(),
                     budgets = json.optJSONArray("budgets")?.objects()?.map { it.toBudget() }.orEmpty(),
                     expectedIncome = json.optJSONArray("expectedIncome")?.objects()?.map { it.toExpectedIncome() }.orEmpty(),
+                    plannedPayments = json.optJSONArray("plannedPayments")?.objects()?.map { it.toPlannedPayment() }.orEmpty(),
+                    plannedPaymentRecords = json.optJSONArray("plannedPaymentRecords")?.objects()?.map { it.toPlannedPaymentRecord() }.orEmpty(),
                     debts = json.optJSONArray("debts")?.objects()?.map { it.toDebt() }.orEmpty(),
                     debtPayments = json.optJSONArray("debtPayments")?.objects()?.map { it.toDebtPayment() }.orEmpty(),
                     savingsGoals = json.optJSONArray("savingsGoals")?.objects()?.map { it.toSavingsGoal() }.orEmpty(),
@@ -989,6 +1048,30 @@ private fun ExpectedIncomeEntity.toJson() = JSONObject().apply {
     putNullable("convertedReceivableId", convertedReceivableId); put("isArchived", isArchived)
     put("createdAt", createdAt); putNullable("counterpartyId", counterpartyId)
 }
+
+private fun PlannedPaymentEntity.toJson() = JSONObject().apply {
+    put("id", id); put("description", description); put("counterparty", counterparty)
+    put("amountCentavos", amountCentavos); put("dueDate", dueDate); put("expenseCategoryId", expenseCategoryId)
+    put("notes", notes); put("status", status); put("isArchived", isArchived); put("createdAt", createdAt)
+    putNullable("counterpartyId", counterpartyId)
+}
+private fun JSONObject.toPlannedPayment() = PlannedPaymentEntity(
+    id = getString("id"), description = getString("description"), counterparty = optString("counterparty", ""),
+    amountCentavos = getLong("amountCentavos"), dueDate = getLong("dueDate"), expenseCategoryId = getString("expenseCategoryId"),
+    notes = optString("notes", ""), status = getString("status"), isArchived = optBoolean("isArchived", false),
+    createdAt = getLong("createdAt"), counterpartyId = stringOrNull("counterpartyId")
+)
+
+private fun PlannedPaymentRecordEntity.toJson() = JSONObject().apply {
+    put("id", id); put("plannedPaymentId", plannedPaymentId); put("journalEntryId", journalEntryId)
+    put("amountCentavos", amountCentavos); put("paymentDate", paymentDate); put("notes", notes); putNullable("reversedAt", reversedAt)
+}
+private fun JSONObject.toPlannedPaymentRecord() = PlannedPaymentRecordEntity(
+    id = getString("id"), plannedPaymentId = getString("plannedPaymentId"), journalEntryId = getString("journalEntryId"),
+    amountCentavos = getLong("amountCentavos"), paymentDate = getLong("paymentDate"), notes = optString("notes", ""),
+    reversedAt = longOrNull("reversedAt")
+)
+
 private fun JSONObject.toExpectedIncome() = ExpectedIncomeEntity(
     id = getString("id"), description = getString("description"), counterparty = getString("counterparty"),
     amountCentavos = getLong("amountCentavos"), expectedDate = getLong("expectedDate"),

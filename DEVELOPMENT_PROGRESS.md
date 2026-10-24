@@ -1,7 +1,7 @@
 # RalLedger v2.0 Development Progress
 
 Updated: 2026-10-24
-Branch: `main` (schema-18 transaction-template milestone)
+Branch: `feature/ralledger-v2-live-ready` (schema-19 planned-payment work in progress)
 Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Delivered in this checkpoint
@@ -461,3 +461,12 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Added instrumentation for template CRUD, normalized duplicate rejection, reference guards, category merge, and encrypted backup/restore, plus schema-1/schema-2 migration coverage through version 18. These instrumentation sources compile; device execution is still pending.
 - Final verification passed `:app:assembleDebug`, `:app:testDebugUnitTest` (67 tests, 0 failures), `:app:lintDebug` (28 warnings, 0 errors), and `:app:compileDebugAndroidTestKotlin`. The connected emulator remained offline, so no live-device migration or template workflow is claimed.
 - Refreshed `releases/RalLedger-debug.apk` from the verified build (23,504,293 bytes; SHA-256 `BEAE6F1995C18836BEBD29E6FE02C5E8766ADBEEB1F55AEFE4814962E50A66A4`). `apksigner` verifies the v2 signature. It remains a debug-signed APK, version `1.0`, not a production-signed release.
+
+## Planned payments — 2026-10-24
+
+- Added schema 19 one-time planned payments. Creating or editing a forecast has no journal, balance, or budget effect. Posting an actual payment creates a standard expense journal entry at the user-entered actual amount and links it to immutable payment history.
+- The Planning area now supports searchable active and archived plans, editing before any payment history, cancel/reactivate, archive/restore, safe deletion only before payment history, recording a payment from an active asset account, and reversing a payment from its history. Reversal keeps both journal and payment events and makes the plan available again; generic correction is blocked for a linked expense so the relationship cannot be lost.
+- Category and saved-counterparty foreign keys restrict deletion; category and counterparty merges reassign live plans. Encrypted backup now includes plans and payment/reversal events, validates their journal/account/category links, and restores them with older backups defaulting to empty lists.
+- Added schema-1/schema-2 migration coverage through schema 19 and a lifecycle/merge/post/reverse/re-record/archive/backup instrumentation test. Verification passed `:app:testDebugUnitTest` (67 tests, 0 failures/errors/skips), `:app:lintDebug` (28 warnings, 0 errors), `:app:compileDebugAndroidTestKotlin`, and `:app:assembleDebug`. Android-test source compilation confirms the new instrumentation test builds; connected execution is unavailable because both listed emulators are offline and no AVD is configured.
+- Refreshed `releases/RalLedger-debug.apk`: 23,869,534 bytes; SHA-256 `9BC96AF3ED7C48F3EDA7FA541CEFE938A6C52A924A7EEA32CF3D2F4EA1F101CB`. `apksigner` verifies the v2 signature; the manifest reports `com.ralledger`, versionCode 2, versionName 2.0. The APK is signed with the Android debug key, not a production key.
+- Custom reports, project tracking, savings-growth statistics, and personal/business separation remain open. Transaction tags can represent personal and business activity, but dedicated saved report definitions are not yet implemented.

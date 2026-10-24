@@ -74,6 +74,7 @@ import com.ralledger.ui.insights.InsightsViewModel
 import com.ralledger.ui.planning.PlanningScreen
 import com.ralledger.ui.planning.BudgetsViewModel
 import com.ralledger.ui.planning.ExpectedIncomeViewModel
+import com.ralledger.ui.planning.PlannedPaymentsViewModel
 import com.ralledger.ui.planning.DebtsViewModel
 import com.ralledger.ui.planning.SavingsGoalsViewModel
 import com.ralledger.ui.planning.InterestProductsViewModel
@@ -223,6 +224,7 @@ fun RalLedgerMainScreen(
                 val recVm: ReceivablesViewModel = viewModel(factory = ReceivablesViewModel.Factory(appContainer.repository))
                 val subVm: SubscriptionsViewModel = viewModel(factory = SubscriptionsViewModel.Factory(appContainer.repository))
                 val expectedIncomeVm: ExpectedIncomeViewModel = viewModel(factory = ExpectedIncomeViewModel.Factory(appContainer.repository))
+                val plannedPaymentsVm: PlannedPaymentsViewModel = viewModel(factory = PlannedPaymentsViewModel.Factory(appContainer.repository))
                 val debtsVm: DebtsViewModel = viewModel(factory = DebtsViewModel.Factory(appContainer.repository))
                 val savingsGoalsVm: SavingsGoalsViewModel = viewModel(factory = SavingsGoalsViewModel.Factory(appContainer.repository))
                 val interestProductsVm: InterestProductsViewModel = viewModel(factory = InterestProductsViewModel.Factory(appContainer.repository))
@@ -232,6 +234,7 @@ fun RalLedgerMainScreen(
                     receivablesViewModel = recVm,
                     subscriptionsViewModel = subVm,
                     expectedIncomeViewModel = expectedIncomeVm,
+                    plannedPaymentsViewModel = plannedPaymentsVm,
                     debtsViewModel = debtsVm,
                     savingsGoalsViewModel = savingsGoalsVm,
                     interestProductsViewModel = interestProductsVm,

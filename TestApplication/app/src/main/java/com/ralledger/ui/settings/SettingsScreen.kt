@@ -527,7 +527,7 @@ fun SettingsScreen(
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("App Details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
-                Text("Version: 2.0 development", style = MaterialTheme.typography.bodySmall)
+                Text("Version: 2.0 RC1", style = MaterialTheme.typography.bodySmall)
                 Text("Architecture: Native Android + Room + Double-Entry Accounting Engine", style = MaterialTheme.typography.bodySmall)
                 Text("Mode: Offline-first", style = MaterialTheme.typography.bodySmall)
             }
@@ -545,6 +545,7 @@ fun SettingsScreen(
                     Text("${preview.counterparties} clients / counterparties")
                     Text("${preview.budgets} budgets")
                     Text("${preview.expectedIncome} expected-income records")
+                    Text("${preview.plannedPayments} planned payments · ${preview.plannedPaymentEvents} payment-history entries")
                     Text("${preview.debts} bills and loans · ${preview.debtPayments} debt payments")
                     Text("${preview.savingsGoals} savings goals · ${preview.savingsGoalEvents} allocations")
                     Text("${preview.interestProducts} interest profiles · ${preview.interestCredits} credits")

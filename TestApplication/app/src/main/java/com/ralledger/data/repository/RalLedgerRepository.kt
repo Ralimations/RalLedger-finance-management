@@ -25,6 +25,8 @@ import com.ralledger.data.local.entity.JournalEntryTagEntity
 import com.ralledger.data.local.entity.SavedTransactionFilterEntity
 import com.ralledger.data.local.entity.TransactionTagEntity
 import com.ralledger.data.local.entity.TransactionTemplateEntity
+import com.ralledger.data.local.entity.PlannedPaymentEntity
+import com.ralledger.data.local.entity.PlannedPaymentRecordEntity
 import com.ralledger.data.importing.CsvImportExecutionResult
 import com.ralledger.data.importing.CsvImportedTransaction
 import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalDomainModel
@@ -49,6 +51,9 @@ import com.ralledger.domain.model.DebtKind
 import com.ralledger.domain.model.DebtStatus
 import com.ralledger.domain.model.ExpectedIncome
 import com.ralledger.domain.model.ExpectedIncomeStatus
+import com.ralledger.domain.model.PlannedPayment
+import com.ralledger.domain.model.PlannedPaymentRecord
+import com.ralledger.domain.model.PlannedPaymentStatus
 import com.ralledger.domain.model.JournalEntry
 import com.ralledger.domain.model.LineType
 import com.ralledger.domain.model.Money
@@ -100,6 +105,7 @@ class RalLedgerRepository(
     private val subscriptionPaymentDao = database.subscriptionPaymentDao()
     private val transactionTagDao = database.transactionTagDao()
     private val transactionTemplateDao = database.transactionTemplateDao()
+    private val plannedPaymentDao = database.plannedPaymentDao()
     private val savedTransactionFilterDao = database.savedTransactionFilterDao()
     private val counterpartyDao = database.counterpartyDao()
 
@@ -163,7 +169,8 @@ class RalLedgerRepository(
             val expectedIncomeReferences = counterpartyDao.countExpectedIncomeReferences(id)
             val debtReferences = counterpartyDao.countDebtReferences(id)
             val subscriptionReferences = counterpartyDao.countSubscriptionReferences(id)
-            require(receivableReferences == 0L && expectedIncomeReferences == 0L && debtReferences == 0L && subscriptionReferences == 0L) {
+            val plannedPaymentReferences = plannedPaymentDao.countCounterpartyReferences(id)
+            require(receivableReferences == 0L && expectedIncomeReferences == 0L && debtReferences == 0L && subscriptionReferences == 0L && plannedPaymentReferences == 0L) {
                 "${current.name} is linked to financial records. Merge it or archive it to preserve history."
             }
             counterpartyDao.delete(id)
@@ -182,13 +189,15 @@ class RalLedgerRepository(
             expectedIncomeDao.reassignCounterparty(source.id, target.id)
             debtDao.reassignCounterparty(source.id, target.id, target.name)
             subscriptionDao.reassignCounterparty(source.id, target.id, target.name)
+            plannedPaymentDao.reassignCounterparty(source.id, target.id)
             counterpartyDao.delete(source.id)
         }
     }
 
     suspend fun getCounterpartyReferenceCount(id: String): Long = database.withTransaction {
         counterpartyDao.countReceivableReferences(id) + counterpartyDao.countExpectedIncomeReferences(id) +
-            counterpartyDao.countDebtReferences(id) + counterpartyDao.countSubscriptionReferences(id)
+            counterpartyDao.countDebtReferences(id) + counterpartyDao.countSubscriptionReferences(id) +
+            plannedPaymentDao.countCounterpartyReferences(id)
     }
 
     private suspend fun validateCounterparty(
@@ -430,6 +439,7 @@ class RalLedgerRepository(
                 interestDao.countCreditsForTaxCategory(id) == 0L &&
                 subscriptionPaymentDao.countPaymentsForCategory(id) == 0L &&
                 transactionTemplateDao.countCategoryReferences(id) == 0L &&
+                plannedPaymentDao.countCategoryReferences(id) == 0L &&
                 categoryDao.countChildren(id) == 0L
             ) {
                 "This category is used by financial history, budgets, receivables, or other records. Archive it to preserve its history."
@@ -469,6 +479,7 @@ class RalLedgerRepository(
             val updatedAt = System.currentTimeMillis()
             transactionTemplateDao.reassignPrimaryCategory(sourceId, targetId, updatedAt)
             transactionTemplateDao.reassignFeeCategory(sourceId, targetId, updatedAt)
+            plannedPaymentDao.reassignCategory(sourceId, targetId)
             categoryDao.moveChildren(sourceId, targetId)
             categoryDao.deleteCategory(sourceId)
         }
@@ -1680,6 +1691,9 @@ class RalLedgerRepository(
         database.withTransaction {
             val originalEntity = journalDao.getJournalEntryById(journalEntryId)
                 ?: throw IllegalArgumentException("Transaction no longer exists")
+            require(plannedPaymentDao.getRecordByJournalEntry(journalEntryId) == null) {
+                "This expense is linked to a planned payment. Manage its correction from Planned Payments."
+            }
             val originalType = TransactionType.valueOf(originalEntity.transactionType)
             require(originalType in setOf(TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.TRANSFER)) {
                 "This linked financial record must be corrected from its own screen"
@@ -1799,6 +1813,11 @@ class RalLedgerRepository(
             )
             val reversal = AccountingEngine.createReversalEntry(originalEntry, journalEntryId)
             val originalType = TransactionType.valueOf(originalEntity.transactionType)
+
+            plannedPaymentDao.getRecordByJournalEntry(journalEntryId)?.let { payment ->
+                require(payment.reversedAt == null) { "This planned payment has already been reversed" }
+                plannedPaymentDao.updateRecord(payment.copy(reversedAt = System.currentTimeMillis()))
+            }
 
             when (originalType) {
                 TransactionType.INTEREST_CREDIT -> {
@@ -1971,6 +1990,231 @@ class RalLedgerRepository(
                 it.counterpartyId?.let(counterpartyNames::get)
             )
         }
+    }
+
+    // Planned payments are forecasts only. They affect the ledger only when an actual payment is posted.
+    val plannedPaymentsFlow: Flow<List<PlannedPayment>> = combine(
+        plannedPaymentDao.getAllFlow(),
+        plannedPaymentDao.getAllRecordsFlow(),
+        categoryDao.getAllCategoriesFlow(),
+        counterpartyDao.getAllFlow()
+    ) { plans, records, categories, counterparties ->
+        val categoryNames = categories.associate { it.id to it.name }
+        val counterpartyNames = counterparties.associate { it.id to it.name }
+        val paymentsByPlan = records.groupBy { it.plannedPaymentId }
+        plans.map { plan ->
+            PlannedPayment(
+                id = plan.id,
+                description = plan.description,
+                counterparty = plan.counterpartyId?.let(counterpartyNames::get) ?: plan.counterparty,
+                amount = Money(plan.amountCentavos),
+                dueDate = plan.dueDate,
+                expenseCategoryId = plan.expenseCategoryId,
+                categoryName = categoryNames[plan.expenseCategoryId] ?: "Expense category",
+                status = PlannedPaymentStatus.valueOf(plan.status),
+                isArchived = plan.isArchived,
+                createdAt = plan.createdAt,
+                notes = plan.notes,
+                counterpartyId = plan.counterpartyId,
+                payments = paymentsByPlan[plan.id].orEmpty().map { payment ->
+                    PlannedPaymentRecord(
+                        id = payment.id,
+                        plannedPaymentId = payment.plannedPaymentId,
+                        journalEntryId = payment.journalEntryId,
+                        amount = Money(payment.amountCentavos),
+                        paymentDate = payment.paymentDate,
+                        notes = payment.notes,
+                        reversedAt = payment.reversedAt
+                    )
+                }
+            )
+        }
+    }
+
+    suspend fun createPlannedPayment(
+        description: String,
+        counterparty: String,
+        amount: Money,
+        dueDate: Long,
+        expenseCategoryId: String,
+        counterpartyId: String? = null,
+        notes: String = ""
+    ): String {
+        validatePlannedPaymentValues(description, counterparty, amount, dueDate, notes)
+        val id = UUID.randomUUID().toString()
+        database.withTransaction {
+            validatePlannedPaymentCategory(expenseCategoryId)
+            val savedCounterparty = validateCounterparty(counterpartyId)
+            plannedPaymentDao.insert(
+                PlannedPaymentEntity(
+                    id = id,
+                    description = description.trim(),
+                    counterparty = savedCounterparty?.name ?: counterparty.trim(),
+                    amountCentavos = amount.centavos,
+                    dueDate = dueDate,
+                    expenseCategoryId = expenseCategoryId,
+                    notes = notes.trim(),
+                    status = PlannedPaymentStatus.PLANNED.name,
+                    createdAt = System.currentTimeMillis(),
+                    counterpartyId = savedCounterparty?.id
+                )
+            )
+        }
+        return id
+    }
+
+    suspend fun updatePlannedPayment(
+        id: String,
+        description: String,
+        counterparty: String,
+        amount: Money,
+        dueDate: Long,
+        expenseCategoryId: String,
+        counterpartyId: String? = null,
+        notes: String = ""
+    ) {
+        validatePlannedPaymentValues(description, counterparty, amount, dueDate, notes)
+        database.withTransaction {
+            val current = plannedPaymentDao.getById(id)
+                ?: throw IllegalArgumentException("This planned payment no longer exists")
+            require(!current.isArchived && current.status == PlannedPaymentStatus.PLANNED.name) {
+                "Only active planned payments can be edited"
+            }
+            require(plannedPaymentDao.countRecords(id) == 0L) {
+                "A payment has been recorded. Reverse its history before editing this plan."
+            }
+            validatePlannedPaymentCategory(expenseCategoryId, current.expenseCategoryId)
+            val savedCounterparty = validateCounterparty(counterpartyId, current.counterpartyId)
+            plannedPaymentDao.update(
+                current.copy(
+                    description = description.trim(),
+                    counterparty = savedCounterparty?.name ?: counterparty.trim(),
+                    amountCentavos = amount.centavos,
+                    dueDate = dueDate,
+                    expenseCategoryId = expenseCategoryId,
+                    notes = notes.trim(),
+                    counterpartyId = savedCounterparty?.id
+                )
+            )
+        }
+    }
+
+    suspend fun cancelPlannedPayment(id: String) = setPlannedPaymentStatus(id, PlannedPaymentStatus.CANCELLED)
+    suspend fun reactivatePlannedPayment(id: String) = setPlannedPaymentStatus(id, PlannedPaymentStatus.PLANNED)
+
+    private suspend fun setPlannedPaymentStatus(id: String, status: PlannedPaymentStatus) {
+        database.withTransaction {
+            val plan = plannedPaymentDao.getById(id)
+                ?: throw IllegalArgumentException("This planned payment no longer exists")
+            require(!plan.isArchived) { "Restore this planned payment before changing its status" }
+            require(plannedPaymentDao.countActiveRecords(id) == 0L) {
+                "Reverse the active payment before changing this plan's status"
+            }
+            when (status) {
+                PlannedPaymentStatus.CANCELLED -> require(plan.status == PlannedPaymentStatus.PLANNED.name) {
+                    "Only planned payments can be cancelled"
+                }
+                PlannedPaymentStatus.PLANNED -> {
+                    require(plan.status == PlannedPaymentStatus.CANCELLED.name) {
+                        "Only cancelled payments can be reactivated"
+                    }
+                    validatePlannedPaymentCategory(plan.expenseCategoryId)
+                }
+            }
+            plannedPaymentDao.update(plan.copy(status = status.name))
+        }
+    }
+
+    suspend fun setPlannedPaymentArchived(id: String, isArchived: Boolean) {
+        database.withTransaction {
+            val plan = plannedPaymentDao.getById(id)
+                ?: throw IllegalArgumentException("This planned payment no longer exists")
+            plannedPaymentDao.update(plan.copy(isArchived = isArchived))
+        }
+    }
+
+    suspend fun deletePlannedPayment(id: String) {
+        database.withTransaction {
+            require(plannedPaymentDao.getById(id) != null) { "This planned payment no longer exists" }
+            require(plannedPaymentDao.countRecords(id) == 0L) {
+                "This payment has accounting history. Archive it to preserve the audit trail."
+            }
+            plannedPaymentDao.delete(id)
+        }
+    }
+
+    suspend fun recordPlannedPayment(
+        id: String,
+        accountId: String,
+        actualAmount: Money,
+        paymentDate: Long,
+        paymentNotes: String = ""
+    ): String = database.withTransaction {
+        val plan = plannedPaymentDao.getById(id)
+            ?: throw IllegalArgumentException("This planned payment no longer exists")
+        require(!plan.isArchived && plan.status == PlannedPaymentStatus.PLANNED.name) {
+            "Restore and reactivate this plan before recording a payment"
+        }
+        require(plannedPaymentDao.countActiveRecords(id) == 0L) {
+            "This plan already has an active payment. Reverse it before recording another."
+        }
+        require(actualAmount.isPositive) { "Enter an amount greater than zero" }
+        require(paymentDate > 0L) { "Choose a valid payment date" }
+        require(paymentDate <= System.currentTimeMillis()) { "Payment date cannot be in the future" }
+        require(paymentNotes.length <= 2_000) { "Payment notes must be 2,000 characters or fewer" }
+        validateFinancialAccount(accountId)
+        val category = validatePlannedPaymentCategory(plan.expenseCategoryId)
+        val savedCounterparty = plan.counterpartyId?.let { counterpartyDao.getById(it) }
+        val counterpartyName = savedCounterparty?.name ?: plan.counterparty
+        val entry = AccountingEngine.createExpenseEntry(accountId, category.id, actualAmount, plan.description, paymentDate)
+        postJournalEntry(
+            entry = entry,
+            transactionType = TransactionType.EXPENSE,
+            amount = actualAmount,
+            primaryAccountId = accountId,
+            categoryId = category.id,
+            counterparty = counterpartyName,
+            notes = listOf(plan.notes, paymentNotes.trim()).filter { it.isNotBlank() }.joinToString("\n")
+        )
+        val journalId = entry.id
+        plannedPaymentDao.insertRecord(
+            PlannedPaymentRecordEntity(
+                id = UUID.randomUUID().toString(),
+                plannedPaymentId = id,
+                journalEntryId = journalId,
+                amountCentavos = actualAmount.centavos,
+                paymentDate = paymentDate,
+                notes = paymentNotes.trim()
+            )
+        )
+        journalId
+    }
+
+    suspend fun reversePlannedPaymentRecord(recordId: String) {
+        database.withTransaction {
+            val record = plannedPaymentDao.getRecordById(recordId)
+                ?: throw IllegalArgumentException("This payment history no longer exists")
+            require(record.reversedAt == null) { "This payment has already been reversed" }
+            reverseTransactionInCurrentTransaction(record.journalEntryId)
+        }
+    }
+
+    private fun validatePlannedPaymentValues(description: String, counterparty: String, amount: Money, dueDate: Long, notes: String) {
+        require(description.isNotBlank()) { "Description is required" }
+        require(description.length <= 160) { "Description must be 160 characters or fewer" }
+        require(counterparty.length <= 120) { "Payee must be 120 characters or fewer" }
+        require(amount.isPositive) { "Planned amount must be positive" }
+        require(dueDate > 0L) { "Choose a valid due date" }
+        require(notes.length <= 2_000) { "Notes must be 2,000 characters or fewer" }
+    }
+
+    private suspend fun validatePlannedPaymentCategory(categoryId: String, allowArchivedId: String? = null): CategoryEntity {
+        val category = categoryDao.getCategoryById(categoryId)
+            ?: throw IllegalArgumentException("Select a valid expense category")
+        require(category.type == CategoryType.EXPENSE.name && (!category.isArchived || category.id == allowArchivedId)) {
+            "Choose an active expense category"
+        }
+        return category
     }
 
     suspend fun createExpectedIncome(

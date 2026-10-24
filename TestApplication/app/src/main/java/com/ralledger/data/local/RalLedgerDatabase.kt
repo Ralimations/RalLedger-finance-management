@@ -23,6 +23,7 @@ import com.ralledger.data.local.dao.TransactionTagDao
 import com.ralledger.data.local.dao.SavedTransactionFilterDao
 import com.ralledger.data.local.dao.CounterpartyDao
 import com.ralledger.data.local.dao.TransactionTemplateDao
+import com.ralledger.data.local.dao.PlannedPaymentDao
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
@@ -46,6 +47,8 @@ import com.ralledger.data.local.entity.JournalEntryTagEntity
 import com.ralledger.data.local.entity.SavedTransactionFilterEntity
 import com.ralledger.data.local.entity.CounterpartyEntity
 import com.ralledger.data.local.entity.TransactionTemplateEntity
+import com.ralledger.data.local.entity.PlannedPaymentEntity
+import com.ralledger.data.local.entity.PlannedPaymentRecordEntity
 import com.ralledger.domain.model.AccountCategory
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.CategoryType
@@ -77,9 +80,11 @@ import kotlinx.coroutines.launch
         JournalEntryTagEntity::class,
         SavedTransactionFilterEntity::class,
         CounterpartyEntity::class,
-        TransactionTemplateEntity::class
+        TransactionTemplateEntity::class,
+        PlannedPaymentEntity::class,
+        PlannedPaymentRecordEntity::class
     ],
-    version = 18,
+    version = 19,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -100,9 +105,10 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun savedTransactionFilterDao(): SavedTransactionFilterDao
     abstract fun counterpartyDao(): CounterpartyDao
     abstract fun transactionTemplateDao(): TransactionTemplateDao
+    abstract fun plannedPaymentDao(): PlannedPaymentDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 18
+        const val CURRENT_SCHEMA_VERSION = 19
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -527,6 +533,48 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS planned_payments (
+                        id TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        counterparty TEXT NOT NULL,
+                        amountCentavos INTEGER NOT NULL,
+                        dueDate INTEGER NOT NULL,
+                        expenseCategoryId TEXT NOT NULL,
+                        notes TEXT NOT NULL DEFAULT '',
+                        status TEXT NOT NULL,
+                        isArchived INTEGER NOT NULL DEFAULT 0,
+                        createdAt INTEGER NOT NULL,
+                        counterpartyId TEXT,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(expenseCategoryId) REFERENCES categories(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(counterpartyId) REFERENCES counterparties(id) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_planned_payments_expenseCategoryId ON planned_payments(expenseCategoryId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_planned_payments_counterpartyId ON planned_payments(counterpartyId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_planned_payments_dueDate ON planned_payments(dueDate)")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS planned_payment_records (
+                        id TEXT NOT NULL,
+                        plannedPaymentId TEXT NOT NULL,
+                        journalEntryId TEXT NOT NULL,
+                        amountCentavos INTEGER NOT NULL,
+                        paymentDate INTEGER NOT NULL,
+                        notes TEXT NOT NULL,
+                        reversedAt INTEGER,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(plannedPaymentId) REFERENCES planned_payments(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(journalEntryId) REFERENCES journal_entries(id) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_planned_payment_records_plannedPaymentId ON planned_payment_records(plannedPaymentId)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_planned_payment_records_journalEntryId ON planned_payment_records(journalEntryId)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
 
@@ -537,7 +585,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

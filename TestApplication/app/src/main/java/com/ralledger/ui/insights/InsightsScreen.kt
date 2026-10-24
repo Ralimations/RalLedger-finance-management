@@ -66,6 +66,8 @@ import com.ralledger.domain.usecase.InsightsBucket
 import com.ralledger.domain.usecase.InsightsDateRange
 import com.ralledger.domain.usecase.InsightsPeriod
 import com.ralledger.domain.usecase.InsightsPeriodType
+import com.ralledger.domain.usecase.FinancialProjectPortfolioCalculator
+import com.ralledger.domain.usecase.InsightsResult
 import com.ralledger.ui.settings.displayDate
 import java.time.Instant
 import java.time.LocalDate
@@ -114,6 +116,14 @@ fun InsightsScreen(
     }
     val calculation = remember(state.transactions, state.categories, selectedPeriod) {
         InsightsCalculator.calculate(state.transactions, state.categories, selectedPeriod)
+    }
+    val projectPortfolio = remember(state.transactions, state.categories, state.projects, selectedPeriod) {
+        FinancialProjectPortfolioCalculator.calculate(
+            transactions = state.transactions,
+            categories = state.categories,
+            projects = state.projects,
+            period = selectedPeriod
+        )
     }
     val receivablesAging = remember(state.receivables, today) {
         ReceivablesAgingCalculator.calculate(state.receivables, today)
@@ -195,6 +205,14 @@ fun InsightsScreen(
         }
 
         item { PeriodSummaryCard(calculation.income, calculation.expenses, calculation.net) }
+
+        item {
+            PersonalBusinessSummaryCard(
+                personal = projectPortfolio.personal,
+                business = projectPortfolio.business,
+                unassigned = projectPortfolio.unassigned
+            )
+        }
 
         item {
             CashFlowChart(calculation.buckets)
@@ -550,6 +568,89 @@ private fun PeriodSummaryCard(income: Money, expenses: Money, net: Money) {
                 SummaryAmount("Income", income, MaterialTheme.colorScheme.primary)
                 SummaryAmount("Expenses", expenses, MaterialTheme.colorScheme.error)
                 SummaryAmount("Net", net, if (net.isNegative) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PersonalBusinessSummaryCard(
+    personal: InsightsResult,
+    business: InsightsResult,
+    unassigned: InsightsResult
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Personal and Business", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                Text(
+                    "Based on project assignments in this period. Unassigned activity is listed separately.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            ProjectScopeSummaryRow("Personal", personal)
+            Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
+            ProjectScopeSummaryRow("Business", business)
+            Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant))
+            ProjectScopeSummaryRow("Unassigned", unassigned)
+            Text(
+                "Assign transactions from their menu to include them in a Personal or Business total.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProjectScopeSummaryRow(label: String, result: InsightsResult) {
+    var breakdownExpanded by remember(label) { mutableStateOf(false) }
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text(label, style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold))
+            Text(
+                "Net ${displayMoney(result.net)}",
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                color = if (result.net.isNegative) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.secondary
+            )
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Income", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(displayMoney(result.income), style = MaterialTheme.typography.labelSmall)
+        }
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Expenses", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(displayMoney(result.expenses), style = MaterialTheme.typography.labelSmall)
+        }
+        if (result.incomeSources.isNotEmpty() || result.categoryTotals.isNotEmpty()) {
+            TextButton(onClick = { breakdownExpanded = !breakdownExpanded }) {
+                Text(if (breakdownExpanded) "Hide income and spending details" else "Income sources and spending categories")
+            }
+            if (breakdownExpanded) {
+                if (result.incomeSources.isNotEmpty()) {
+                    AmountBreakdown("Income by source", result.incomeSources.map { it.name to it.amount })
+                }
+                if (result.categoryTotals.isNotEmpty()) {
+                    AmountBreakdown("Spending by category", result.categoryTotals.map { it.name to it.amount })
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AmountBreakdown(title: String, values: List<Pair<String, Money>>) {
+    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+        Text(title, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        values.forEach { (name, amount) ->
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(name, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                Text(displayMoney(amount), style = MaterialTheme.typography.bodySmall)
             }
         }
     }

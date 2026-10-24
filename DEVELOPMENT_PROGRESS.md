@@ -469,7 +469,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Category and saved-counterparty foreign keys restrict deletion; category and counterparty merges reassign live plans. Encrypted backup now includes plans and payment/reversal events, validates their journal/account/category links, and restores them with older backups defaulting to empty lists.
 - Added schema-1/schema-2 migration coverage through schema 19 and a lifecycle/merge/post/reverse/re-record/archive/backup instrumentation test. Verification passed `:app:testDebugUnitTest` (67 tests, 0 failures/errors/skips), `:app:lintDebug` (28 warnings, 0 errors), `:app:compileDebugAndroidTestKotlin`, and `:app:assembleDebug`. Android-test source compilation confirms the new instrumentation test builds; connected execution is unavailable because both listed emulators are offline and no AVD is configured.
 - Refreshed `releases/RalLedger-debug.apk`: 23,869,534 bytes; SHA-256 `9BC96AF3ED7C48F3EDA7FA541CEFE938A6C52A924A7EEA32CF3D2F4EA1F101CB`. `apksigner` verifies the v2 signature; the manifest reports `com.ralledger`, versionCode 2, versionName 2.0. The APK is signed with the Android debug key, not a production key.
-- At this checkpoint, project tracking, savings-growth statistics, and broader personal/business rollups remain open. Custom reports support transaction-label filters, which can separate labeled activity.
+- At that checkpoint, project tracking, savings-growth statistics, and personal/business rollups remained open. Custom reports supported transaction-label filters, which could separate labeled activity.
 
 ## Schema 20 — Saved custom reports
 
@@ -488,4 +488,12 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification passed `:app:testDebugUnitTest` (69 tests, 0 failures), `:app:lintDebug` (29 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`.
 - Refreshed `releases/RalLedger-debug.apk`: 23,448,469 bytes; SHA-256 `733F50752C90B3760D37F687599A0226E14FA531C9113BF3A2A88E0C5B612680`. `apksigner` verifies the v2 signature. Package version is 2.0 (versionCode 2); the APK is signed with the Android debug key, not a production key.
 - Published commit `48d34eac3cfb6850676f48ed97fd031858009265` to `Ralimations/RalLedger-finance-management` on `main`. Git and GitHub both confirm that `main` points to this commit; the GitHub tree confirms the APK path and byte size.
-- Remaining checks include connected schema-1/schema-2 migration and project lifecycle execution, plus the broader savings-growth, personal/business rollup, and small-screen release work in the feature matrix.
+- Remaining checks at that checkpoint included connected schema-1/schema-2 migration and project lifecycle execution, savings-growth analytics, and small-screen release work.
+
+## Personal-versus-business Insights — 2026-10-24
+
+- Insights now separates the currently selected date range into Personal and Business activity based on each assigned project's kind. Each scope shows income, expenses, net, expandable income-source totals, and category spending. Transactions without a project remain visible in a separate Unassigned section and are not silently counted as Personal or Business.
+- The portfolio calculator selects source journal entries by project kind and includes each linked reversal on its own posting date. It uses the existing Insights calculator for period boundaries, totals, categories, and income sources; it does not hardcode report values.
+- Added unit coverage for project-kind aggregation, an original transaction and its reversal, unassigned activity, category totals, and income sources. Verification passed `:app:testDebugUnitTest` (70 tests, 0 failures), `:app:lintDebug` (29 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`.
+- Refreshed `releases/RalLedger-debug.apk`: 23,895,199 bytes; SHA-256 `9EF4BA591B50DB9F98F0141F408468784BE269839E2F76062C8667E138EAB513`. `apksigner` verifies the v2 signature. The APK remains version 2.0 and debug-signed, with no production signing configuration.
+- No emulator UI walkthrough was possible because both available emulator transports are offline and no AVD is configured. Remaining work includes savings-growth analytics, small-screen validation, and connected migration/lifecycle checks from the prior milestone.

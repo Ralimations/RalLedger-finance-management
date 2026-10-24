@@ -6,14 +6,13 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.widget.RemoteViews
+import androidx.core.net.toUri
 import com.ralledger.MainActivity
 import com.ralledger.R
 import com.ralledger.RalLedgerApplication
 import com.ralledger.domain.model.DashboardSummary
 import com.ralledger.ui.settings.FinancialSettings
-import com.ralledger.ui.settings.formatLedgerMoney
 
 class AvailableMoneyWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, appWidgetIds: IntArray) {
@@ -39,20 +38,18 @@ class AvailableMoneyWidgetProvider : AppWidgetProvider() {
         ) {
             widgetIds.forEach { widgetId ->
                 val views = RemoteViews(context.packageName, R.layout.widget_available_money)
+                val balanceText = availableMoneyWidgetText(summary, settings, appLockEnabled, unavailable)
                 when {
                     unavailable -> {
                         views.setTextViewText(R.id.widget_balance, context.getString(R.string.widget_data_unavailable))
                         views.setTextViewText(R.id.widget_caption, context.getString(R.string.widget_recovery_caption))
                     }
-                    appLockEnabled -> {
+                    appLockEnabled && !unavailable -> {
                         views.setTextViewText(R.id.widget_balance, context.getString(R.string.widget_balance_hidden))
                         views.setTextViewText(R.id.widget_caption, context.getString(R.string.widget_unlock_caption))
                     }
-                    summary != null -> {
-                        views.setTextViewText(
-                            R.id.widget_balance,
-                            formatLedgerMoney(summary.availableToSpendFunds, "PHP", settings.currencyDisplayFormat)
-                        )
+                    balanceText != null -> {
+                        views.setTextViewText(R.id.widget_balance, balanceText)
                         views.setTextViewText(R.id.widget_caption, context.getString(R.string.widget_available_caption))
                     }
                     else -> {
@@ -72,7 +69,7 @@ class AvailableMoneyWidgetProvider : AppWidgetProvider() {
         private fun activityPendingIntent(context: Context, type: String?, widgetId: Int): PendingIntent {
             val intent = Intent(context, MainActivity::class.java).apply {
                 action = if (type == null) Intent.ACTION_MAIN else "com.ralledger.widget.QUICK_ADD"
-                data = Uri.parse("ralledger://widget/${type?.lowercase() ?: "home"}/$widgetId")
+                data = "ralledger://widget/${type?.lowercase() ?: "home"}/$widgetId".toUri()
                 if (type != null) putExtra(EXTRA_WIDGET_TRANSACTION_TYPE, type)
                 addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             }

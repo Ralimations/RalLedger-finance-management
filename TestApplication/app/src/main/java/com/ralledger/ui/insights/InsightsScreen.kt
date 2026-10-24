@@ -68,6 +68,8 @@ import com.ralledger.domain.usecase.InsightsPeriod
 import com.ralledger.domain.usecase.InsightsPeriodType
 import com.ralledger.domain.usecase.FinancialProjectPortfolioCalculator
 import com.ralledger.domain.usecase.InsightsResult
+import com.ralledger.domain.usecase.SavingsGrowthCalculator
+import com.ralledger.domain.usecase.SavingsGrowthReport
 import com.ralledger.ui.settings.displayDate
 import java.time.Instant
 import java.time.LocalDate
@@ -123,6 +125,14 @@ fun InsightsScreen(
             categories = state.categories,
             projects = state.projects,
             period = selectedPeriod
+        )
+    }
+    val savingsGrowth = remember(state.journalEntries, state.accounts, state.interestProducts, calculation.buckets) {
+        SavingsGrowthCalculator.calculate(
+            journalEntries = state.journalEntries,
+            accounts = state.accounts,
+            interestProducts = state.interestProducts,
+            buckets = calculation.buckets
         )
     }
     val receivablesAging = remember(state.receivables, today) {
@@ -219,6 +229,8 @@ fun InsightsScreen(
         }
 
         item { BalanceHistoryChart(balanceHistory) }
+
+        item { SavingsGrowthChart(savingsGrowth) }
 
         item {
             Card(
@@ -536,6 +548,125 @@ private fun BalanceHistoryChart(points: List<com.ralledger.domain.usecase.NetWor
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SavingsGrowthChart(report: SavingsGrowthReport) {
+    val points = report.snapshots
+    var selectedDate by remember(points) { mutableStateOf(points.lastOrNull()?.date) }
+    val selected = points.firstOrNull { it.date == selectedDate } ?: points.lastOrNull()
+    val chartWidth = (points.size * 54).coerceAtLeast(280).dp
+    val lineColor = MaterialTheme.colorScheme.tertiary
+    val baselineColor = MaterialTheme.colorScheme.outlineVariant
+    val periodGrowth = report.change
+    val latestDisplay = displayMoney(report.endingBalance)
+    val periodGrowthDisplay = displayMoney(periodGrowth)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(modifier = Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text("Savings growth", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                Text(
+                    "Actual balances in savings and time-deposit accounts",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            if (points.isEmpty()) {
+                Text(
+                    "Add a savings account, time deposit, or interest-bearing savings profile to see its balance history.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                Column(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    Canvas(
+                        Modifier.width(chartWidth).height(150.dp)
+                            .pointerInput(points) {
+                                detectTapGestures { tap ->
+                                    val index = (tap.x / size.width * points.size).toInt().coerceIn(0, points.lastIndex)
+                                    selectedDate = points[index].date
+                                }
+                            }
+                            .semantics {
+                                contentDescription = "Savings growth chart. Current balance $latestDisplay. Change during this period $periodGrowthDisplay. Tap a point to inspect its period end balance."
+                            }
+                    ) {
+                        val horizontalInset = 10.dp.toPx()
+                        val verticalInset = 12.dp.toPx()
+                        val amounts = points.map { it.balance.centavos.toDouble() }
+                        val rawMin = amounts.minOrNull() ?: 0.0
+                        val rawMax = amounts.maxOrNull() ?: 0.0
+                        val span = (rawMax - rawMin).takeIf { it > 0.0 } ?: maxOf(kotlin.math.abs(rawMax) * 0.2, 1.0)
+                        val minValue = rawMin - span * 0.08
+                        val maxValue = rawMax + span * 0.08
+                        val valueRange = (maxValue - minValue).coerceAtLeast(1.0)
+                        val chartHeight = size.height - verticalInset * 2
+                        val chartSpan = size.width - horizontalInset * 2
+                        val selectedIndex = points.indexOfFirst { it.date == selectedDate }
+                        fun point(index: Int): Offset {
+                            val x = if (points.size == 1) size.width / 2f
+                            else horizontalInset + chartSpan * index / (points.size - 1)
+                            val y = size.height - verticalInset -
+                                ((points[index].balance.centavos.toDouble() - minValue) / valueRange * chartHeight).toFloat()
+                            return Offset(x, y)
+                        }
+
+                        drawLine(
+                            color = baselineColor,
+                            start = Offset(horizontalInset, size.height - verticalInset),
+                            end = Offset(size.width - horizontalInset, size.height - verticalInset),
+                            strokeWidth = 1.dp.toPx()
+                        )
+                        val path = Path()
+                        points.indices.forEach { index ->
+                            val location = point(index)
+                            if (index == 0) path.moveTo(location.x, location.y) else path.lineTo(location.x, location.y)
+                        }
+                        drawPath(path, lineColor, style = Stroke(width = 3.dp.toPx()))
+                        points.indices.forEach { index ->
+                            drawCircle(
+                                color = lineColor,
+                                radius = if (index == selectedIndex) 5.dp.toPx() else 3.dp.toPx(),
+                                center = point(index)
+                            )
+                        }
+                    }
+                    Row(modifier = Modifier.width(chartWidth), horizontalArrangement = Arrangement.SpaceBetween) {
+                        points.forEach { snapshot ->
+                            Text(
+                                snapshot.label,
+                                modifier = Modifier.width(52.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (snapshot.date == selectedDate) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+                }
+                selected?.let { snapshot ->
+                    Text("Period end · ${displayDate(snapshot.date)}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        SavingsGrowthValueRow("Start of range", report.startingBalance, lineColor)
+                        SavingsGrowthValueRow("Selected range end", snapshot.balance, lineColor)
+                        SavingsGrowthValueRow("Change over range", periodGrowth, if (periodGrowth.isNegative) MaterialTheme.colorScheme.error else lineColor)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SavingsGrowthValueRow(label: String, amount: Money, tint: Color) {
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(displayMoney(amount), style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), color = tint)
     }
 }
 

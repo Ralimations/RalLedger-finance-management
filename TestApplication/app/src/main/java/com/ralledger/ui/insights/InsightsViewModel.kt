@@ -13,6 +13,7 @@ import com.ralledger.domain.model.Receivable
 import com.ralledger.domain.model.Transaction
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.FinancialProject
+import com.ralledger.domain.model.InterestProduct
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -28,6 +29,7 @@ data class InsightsUiState(
     val transactions: List<Transaction> = emptyList(),
     val categories: List<Category> = emptyList(),
     val projects: List<FinancialProject> = emptyList(),
+    val interestProducts: List<InterestProduct> = emptyList(),
     val isLoading: Boolean = false
 )
 
@@ -62,9 +64,12 @@ class InsightsViewModel(
     private val stateWithProjects = combine(baseUiState, repository.financialProjectsFlow) { state, projects ->
         state.copy(projects = projects)
     }
+    private val stateWithSavingsProducts = combine(stateWithProjects, repository.interestProductsFlow) { state, products ->
+        state.copy(interestProducts = products)
+    }
 
     val uiState: StateFlow<InsightsUiState> = combine(
-        stateWithProjects,
+        stateWithSavingsProducts,
         repository.journalHistoryFlow,
         repository.debtsFlow
     ) { state, journalEntries, debts ->

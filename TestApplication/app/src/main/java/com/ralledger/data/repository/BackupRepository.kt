@@ -23,9 +23,11 @@ import com.ralledger.data.local.entity.SubscriptionPaymentEntity
 import com.ralledger.data.local.entity.TransactionTagEntity
 import com.ralledger.data.local.entity.JournalEntryTagEntity
 import com.ralledger.data.local.entity.SavedTransactionFilterEntity
+import com.ralledger.data.local.entity.TransactionTemplateEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
 import com.ralledger.domain.model.LineType
 import com.ralledger.domain.model.normalizeCounterpartyName
+import com.ralledger.domain.model.normalizeTransactionTemplateName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -67,7 +69,8 @@ data class BackupPreview(
     val reconciliations: Int,
     val validationErrors: List<String>,
     val userPreferencesIncluded: Boolean = false,
-    val counterparties: Int = 0
+    val counterparties: Int = 0,
+    val transactionTemplates: Int = 0
 ) {
     val canRestore: Boolean get() = validationErrors.isEmpty()
 }
@@ -126,6 +129,7 @@ class BackupRepository(
                 val subscriptionPayments = database.subscriptionPaymentDao()
                 val transactionTags = database.transactionTagDao()
                 val savedFilters = database.savedTransactionFilterDao()
+                val templates = database.transactionTemplateDao()
                 val journals = database.journalDao()
                 val receivables = database.receivableDao()
                 val subscriptions = database.subscriptionDao()
@@ -146,6 +150,7 @@ class BackupRepository(
                 transactionTags.clearAllAssignments()
                 transactionTags.clearTags()
                 savedFilters.clear()
+                templates.clear()
                 journals.clearJournalLines()
                 journals.clearJournalEntries()
                 receivables.clearReceivables()
@@ -177,6 +182,7 @@ class BackupRepository(
                 if (snapshot.transactionTags.isNotEmpty()) transactionTags.insertTags(snapshot.transactionTags)
                 if (snapshot.journalEntryTags.isNotEmpty()) transactionTags.insertAssignments(snapshot.journalEntryTags)
                 if (snapshot.savedTransactionFilters.isNotEmpty()) savedFilters.insertForRestore(snapshot.savedTransactionFilters)
+                if (snapshot.transactionTemplates.isNotEmpty()) templates.insertForRestore(snapshot.transactionTemplates)
                 if (snapshot.reconciliations.isNotEmpty()) reconciliations.insertReconciliations(snapshot.reconciliations)
 
                 snapshot.userPreferences?.let { preferences ->
@@ -252,6 +258,7 @@ class BackupRepository(
         transactionTags = database.transactionTagDao().getAllTags(),
         journalEntryTags = database.transactionTagDao().getAllAssignments(),
         savedTransactionFilters = database.savedTransactionFilterDao().getAll(),
+        transactionTemplates = database.transactionTemplateDao().getAll(),
         entries = database.journalDao().getAllJournalEntries(),
         lines = database.journalDao().getAllJournalLines(),
         receivables = database.receivableDao().getAllReceivables(),
@@ -347,6 +354,7 @@ class BackupRepository(
         val transactionTags: List<TransactionTagEntity>,
         val journalEntryTags: List<JournalEntryTagEntity>,
         val savedTransactionFilters: List<SavedTransactionFilterEntity>,
+        val transactionTemplates: List<TransactionTemplateEntity>,
         val entries: List<JournalEntryEntity>,
         val lines: List<JournalLineEntity>,
         val receivables: List<ReceivableEntity>,
@@ -376,6 +384,7 @@ class BackupRepository(
             put("transactionTags", JSONArray().also { array -> transactionTags.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalEntryTags", JSONArray().also { array -> journalEntryTags.sortedWith(compareBy<JournalEntryTagEntity> { it.journalEntryId }.thenBy { it.tagId }).forEach { array.put(it.toJson()) } })
             put("savedTransactionFilters", JSONArray().also { array -> savedTransactionFilters.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("transactionTemplates", JSONArray().also { array -> transactionTemplates.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalEntries", JSONArray().also { array -> entries.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("journalLines", JSONArray().also { array -> lines.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("receivables", JSONArray().also { array -> receivables.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
@@ -411,6 +420,8 @@ class BackupRepository(
             checkUnique("transaction tag name", transactionTags) { it.normalizedName }
             checkUnique("saved transaction filter", savedTransactionFilters) { it.id }
             checkUnique("saved transaction filter name", savedTransactionFilters) { it.normalizedName }
+            checkUnique("transaction template", transactionTemplates) { it.id }
+            checkUnique("transaction template name", transactionTemplates) { it.normalizedName }
             checkUnique("journal entry tag", journalEntryTags) { "${it.journalEntryId}\u0000${it.tagId}" }
             checkUnique("journal entry", entries) { it.id }
             checkUnique("journal line", lines) { it.id }
@@ -483,6 +494,41 @@ class BackupRepository(
                         filter.createdAt <= 0L || filter.createdAt > now || filter.updatedAt < filter.createdAt || filter.updatedAt > now
                 }) {
                 errors += "Saved transaction filter has an invalid name, criteria, or timestamp"
+            }
+            if (transactionTemplates.any { template ->
+                    val type = runCatching { com.ralledger.domain.model.TransactionType.valueOf(template.transactionType) }.getOrNull()
+                    val account = accounts.firstOrNull { it.id == template.accountId }
+                    val accountType = account?.let { runCatching { com.ralledger.domain.model.AccountType.valueOf(it.accountType) }.getOrNull() }
+                    val destination = template.destinationAccountId?.let { id -> accounts.firstOrNull { it.id == id } }
+                    val destinationType = destination?.let { runCatching { com.ralledger.domain.model.AccountType.valueOf(it.accountType) }.getOrNull() }
+                    val category = template.categoryId?.let { id -> categories.firstOrNull { it.id == id } }
+                    val feeCategory = template.feeCategoryId?.let { id -> categories.firstOrNull { it.id == id } }
+                    val validPrimaryCategory = when (type) {
+                        com.ralledger.domain.model.TransactionType.INCOME -> category?.type == "INCOME"
+                        com.ralledger.domain.model.TransactionType.EXPENSE -> category?.type == "EXPENSE"
+                        com.ralledger.domain.model.TransactionType.TRANSFER -> template.categoryId == null
+                        else -> false
+                    }
+                    val validFeeCategory = template.feeCategoryId == null || feeCategory?.type == "EXPENSE"
+                    val validAccounts = account != null && accountType != null && accountType.isAsset && !accountType.isReceivable &&
+                        (template.destinationAccountId == null || (destination != null && destinationType != null && destinationType.isAsset && !destinationType.isReceivable))
+                    val validTypeFields = when (type) {
+                        com.ralledger.domain.model.TransactionType.INCOME,
+                        com.ralledger.domain.model.TransactionType.EXPENSE -> template.destinationAccountId == null &&
+                            template.feeCentavos == 0L && template.feeCategoryId == null
+                        com.ralledger.domain.model.TransactionType.TRANSFER -> template.destinationAccountId != null &&
+                            template.destinationAccountId != template.accountId && (template.feeCentavos == 0L || template.feeCategoryId != null)
+                        else -> false
+                    }
+                    template.id.isBlank() || template.name.isBlank() || template.name.trim().length > 60 ||
+                        template.normalizedName != normalizeTransactionTemplateName(template.name) ||
+                        type !in setOf(com.ralledger.domain.model.TransactionType.INCOME, com.ralledger.domain.model.TransactionType.EXPENSE, com.ralledger.domain.model.TransactionType.TRANSFER) ||
+                        template.amountCentavos <= 0L || template.feeCentavos < 0L || !validAccounts || !validPrimaryCategory ||
+                        !validFeeCategory || !validTypeFields || template.description.length > 200 || template.counterparty.length > 120 ||
+                        template.notes.length > 500 || template.createdAt <= 0L || template.createdAt > now ||
+                        template.updatedAt < template.createdAt || template.updatedAt > now
+                }) {
+                errors += "Transaction template has an invalid name, amount, account, category, type, or timestamp"
             }
             if (journalEntryTags.any { it.journalEntryId !in entryIds || it.tagId !in transactionTagsById }) {
                 errors += "Transaction label assignment references a missing label or journal entry"
@@ -818,6 +864,7 @@ class BackupRepository(
                 transactionTags = transactionTags.size,
                 savedTransactionFilters = savedTransactionFilters.size,
                 taggedJournalEntries = journalEntryTags.map { it.journalEntryId }.toSet().size,
+                transactionTemplates = transactionTemplates.size,
                 journalEntries = entries.size,
                 journalLines = lines.size,
                 receivables = receivables.size,
@@ -855,6 +902,7 @@ class BackupRepository(
                     transactionTags = json.optJSONArray("transactionTags")?.objects()?.map { it.toTransactionTag() }.orEmpty(),
                     journalEntryTags = json.optJSONArray("journalEntryTags")?.objects()?.map { it.toJournalEntryTag() }.orEmpty(),
                     savedTransactionFilters = json.optJSONArray("savedTransactionFilters")?.objects()?.map { it.toSavedTransactionFilter() }.orEmpty(),
+                    transactionTemplates = json.optJSONArray("transactionTemplates")?.objects()?.map { it.toTransactionTemplate() }.orEmpty(),
                     entries = json.getJSONArray("journalEntries").objects().map { it.toJournalEntry() },
                     lines = json.getJSONArray("journalLines").objects().map { it.toJournalLine() },
                     receivables = json.getJSONArray("receivables").objects().map { it.toReceivable() },
@@ -1068,6 +1116,22 @@ private fun JSONObject.toSavedTransactionFilter() = SavedTransactionFilterEntity
     accountId = stringOrNull("accountId"), categoryId = stringOrNull("categoryId"),
     startInclusive = longOrNull("startInclusive"), endExclusive = longOrNull("endExclusive"),
     tagId = stringOrNull("tagId"), createdAt = getLong("createdAt"), updatedAt = getLong("updatedAt")
+)
+private fun TransactionTemplateEntity.toJson() = JSONObject().apply {
+    put("id", id); put("name", name); put("normalizedName", normalizedName); put("transactionType", transactionType)
+    put("amountCentavos", amountCentavos); put("feeCentavos", feeCentavos); put("accountId", accountId)
+    putNullable("destinationAccountId", destinationAccountId); putNullable("categoryId", categoryId)
+    putNullable("feeCategoryId", feeCategoryId); put("counterparty", counterparty); put("description", description)
+    put("notes", notes); put("isArchived", isArchived); put("createdAt", createdAt); put("updatedAt", updatedAt)
+}
+private fun JSONObject.toTransactionTemplate() = TransactionTemplateEntity(
+    id = getString("id"), name = getString("name"), normalizedName = getString("normalizedName"),
+    transactionType = getString("transactionType"), amountCentavos = getLong("amountCentavos"),
+    feeCentavos = getLong("feeCentavos"), accountId = getString("accountId"),
+    destinationAccountId = stringOrNull("destinationAccountId"), categoryId = stringOrNull("categoryId"),
+    feeCategoryId = stringOrNull("feeCategoryId"), counterparty = getString("counterparty"),
+    description = getString("description"), notes = getString("notes"), isArchived = optBoolean("isArchived", false),
+    createdAt = getLong("createdAt"), updatedAt = getLong("updatedAt")
 )
 
 private fun JournalEntryEntity.toJson() = JSONObject().apply {

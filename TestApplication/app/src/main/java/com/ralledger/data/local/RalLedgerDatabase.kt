@@ -22,6 +22,7 @@ import com.ralledger.data.local.dao.SubscriptionPaymentDao
 import com.ralledger.data.local.dao.TransactionTagDao
 import com.ralledger.data.local.dao.SavedTransactionFilterDao
 import com.ralledger.data.local.dao.CounterpartyDao
+import com.ralledger.data.local.dao.TransactionTemplateDao
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
@@ -44,6 +45,7 @@ import com.ralledger.data.local.entity.TransactionTagEntity
 import com.ralledger.data.local.entity.JournalEntryTagEntity
 import com.ralledger.data.local.entity.SavedTransactionFilterEntity
 import com.ralledger.data.local.entity.CounterpartyEntity
+import com.ralledger.data.local.entity.TransactionTemplateEntity
 import com.ralledger.domain.model.AccountCategory
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.CategoryType
@@ -74,9 +76,10 @@ import kotlinx.coroutines.launch
         TransactionTagEntity::class,
         JournalEntryTagEntity::class,
         SavedTransactionFilterEntity::class,
-        CounterpartyEntity::class
+        CounterpartyEntity::class,
+        TransactionTemplateEntity::class
     ],
-    version = 17,
+    version = 18,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -96,9 +99,10 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun transactionTagDao(): TransactionTagDao
     abstract fun savedTransactionFilterDao(): SavedTransactionFilterDao
     abstract fun counterpartyDao(): CounterpartyDao
+    abstract fun transactionTemplateDao(): TransactionTemplateDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 17
+        const val CURRENT_SCHEMA_VERSION = 18
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -488,6 +492,41 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS transaction_templates (
+                        id TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        normalizedName TEXT NOT NULL,
+                        transactionType TEXT NOT NULL,
+                        amountCentavos INTEGER NOT NULL,
+                        feeCentavos INTEGER NOT NULL,
+                        accountId TEXT NOT NULL,
+                        destinationAccountId TEXT,
+                        categoryId TEXT,
+                        feeCategoryId TEXT,
+                        counterparty TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        notes TEXT NOT NULL,
+                        isArchived INTEGER NOT NULL DEFAULT 0,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(accountId) REFERENCES accounts(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(destinationAccountId) REFERENCES accounts(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(categoryId) REFERENCES categories(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(feeCategoryId) REFERENCES categories(id) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_transaction_templates_normalizedName ON transaction_templates(normalizedName)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_transaction_templates_accountId ON transaction_templates(accountId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_transaction_templates_destinationAccountId ON transaction_templates(destinationAccountId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_transaction_templates_categoryId ON transaction_templates(categoryId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_transaction_templates_feeCategoryId ON transaction_templates(feeCategoryId)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
 
@@ -498,7 +537,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

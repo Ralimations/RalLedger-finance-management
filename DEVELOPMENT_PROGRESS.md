@@ -1,7 +1,7 @@
 # RalLedger v2.0 Development Progress
 
 Updated: 2026-10-24
-Branch: `main` (updated from `feature/ralledger-v2-live-ready`)
+Branch: `feature/ralledger-v2-live-ready` (local follow-up; no push or merge in this checkpoint)
 Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Delivered in this checkpoint
@@ -452,3 +452,13 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Merged the saved-client update into `main` and pushed commit `1b502a353f57ba7afbc0c20021ea51632206d968` to `Ralimations/RalLedger-finance-management`.
 - The pushed repository tree contains `releases/RalLedger-debug.apk` at 23,485,819 bytes; its Git blob matches that publication's APK. The APK is a debug build, not production-signed.
 - At that publication point, 67 unit tests, lint, APK assembly, Android-test compilation and the focused schema-16 counterparty Room/backup test passed. A full connected-suite attempt stopped before the runner launched, so broader device and migration coverage remained.
+
+## Transaction templates — 2026-10-24
+
+- Added schema 18 saved transaction templates for income, expense, and transfers, including transfer fees, selected accounts/categories, source or counterparty, description, notes, and archive state.
+- Templates support case/whitespace-insensitive unique names, create/edit, search, archive/restore, confirmed deletion, and prefilling a standard transaction form. Applying a template never posts automatically; the user reviews and presses Post.
+- Account/category references use restrictive foreign keys; deletion guards block removal while templates refer to records, and category merge updates both transaction and transfer-fee category links. Encrypted backups validate and restore templates while older backups default to an empty template list.
+- Added instrumentation for template CRUD, normalized duplicate rejection, reference guards, category merge, and encrypted backup/restore, plus schema-1/schema-2 migration coverage through version 18. These instrumentation sources compile; device execution is still pending.
+- Final verification passed `:app:assembleDebug`, `:app:testDebugUnitTest` (67 tests, 0 failures), `:app:lintDebug` (28 warnings, 0 errors), and `:app:compileDebugAndroidTestKotlin`. The connected emulator remained offline, so no live-device migration or template workflow is claimed.
+- Refreshed `releases/RalLedger-debug.apk` from the verified build (23,504,293 bytes; SHA-256 `BEAE6F1995C18836BEBD29E6FE02C5E8766ADBEEB1F55AEFE4814962E50A66A4`). `apksigner` verifies the v2 signature. It remains a debug-signed APK, version `1.0`, not a production-signed release.
+- GitHub destination availability is now confirmed by the user. This checkpoint remains local on the feature branch and has not been pushed or merged.

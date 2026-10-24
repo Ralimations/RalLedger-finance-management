@@ -13,6 +13,7 @@ import com.ralledger.domain.model.TransactionFilter
 import com.ralledger.domain.model.TransactionTypeFilter
 import com.ralledger.domain.model.TransactionTag
 import com.ralledger.domain.model.SavedTransactionFilter
+import com.ralledger.domain.model.TransactionTemplate
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -37,6 +38,9 @@ class TransactionsViewModel(
     val savedFilters: StateFlow<List<SavedTransactionFilter>> = repository.savedTransactionFiltersFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val transactionTemplates: StateFlow<List<TransactionTemplate>> = repository.transactionTemplatesFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
     private val _typeFilter = MutableStateFlow(TransactionTypeFilter.ALL)
@@ -55,6 +59,8 @@ class TransactionsViewModel(
     val tagMessage: StateFlow<String?> = _tagMessage
     private val _savedFilterMessage = MutableStateFlow<String?>(null)
     val savedFilterMessage: StateFlow<String?> = _savedFilterMessage
+    private val _templateMessage = MutableStateFlow<String?>(null)
+    val templateMessage: StateFlow<String?> = _templateMessage
 
     val activeFilter: StateFlow<TransactionFilter> = combine(_searchQuery, _typeFilter, _accountFilterId, _categoryFilterId, _dateRange) {
             query, type, accountId, categoryId, range ->
@@ -135,6 +141,24 @@ class TransactionsViewModel(
     fun deleteSavedFilter(id: String) = runSavedFilterOperation("Saved filter deleted.") {
         repository.deleteSavedTransactionFilter(id)
     }
+
+    fun createTransactionTemplate(template: TransactionTemplate) = runTemplateOperation("Template saved.") {
+        repository.createTransactionTemplate(template)
+    }
+
+    fun updateTransactionTemplate(template: TransactionTemplate) = runTemplateOperation("Template updated.") {
+        repository.updateTransactionTemplate(template)
+    }
+
+    fun setTransactionTemplateArchived(id: String, isArchived: Boolean) = runTemplateOperation(
+        if (isArchived) "Template archived." else "Template restored."
+    ) { repository.setTransactionTemplateArchived(id, isArchived) }
+
+    fun deleteTransactionTemplate(id: String) = runTemplateOperation("Template deleted.") {
+        repository.deleteTransactionTemplate(id)
+    }
+
+    fun clearTemplateMessage() { _templateMessage.value = null }
 
     fun clearSavedFilterMessage() {
         _savedFilterMessage.value = null
@@ -257,6 +281,15 @@ class TransactionsViewModel(
             } catch (error: Exception) {
                 _savedFilterMessage.value = error.localizedMessage ?: "The saved filter could not be changed."
             }
+        }
+    }
+
+    private fun runTemplateOperation(successMessage: String, action: suspend () -> Any?) {
+        viewModelScope.launch {
+            _templateMessage.value = null
+            runCatching { action() }
+                .onSuccess { _templateMessage.value = successMessage }
+                .onFailure { _templateMessage.value = it.message ?: "The transaction template could not be changed." }
         }
     }
 

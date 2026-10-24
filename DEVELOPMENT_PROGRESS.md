@@ -545,3 +545,16 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification passed `:app:testDebugUnitTest` (81 tests), `:app:lintDebug` (33 warnings, 0 errors), and `:app:assembleDebug`. Manual 1080×2400 emulator smoke opened Quick Add, calculated `1 + 2 = 3.00`, inserted the result, and canceled without posting. No active test accounts were present, so populated balance-list and small-screen layout review remain open. Connected instrumentation was not rerun for this UI-only change.
 - Refreshed `releases/RalLedger-debug.apk`: 76,343,987 bytes; SHA-256 `11BF24398CB33B4F502530C2AA0A8090E97BF8181757796645B8C603DE9C04E1`. The v2 APK signature verifies; package remains `com.ralledger`, version 2.0 / versionCode 2, signed with the Android debug key.
 - Published source commit `861984402a0f7860044dd446130177ca16647888` to `Ralimations/RalLedger-finance-management` on `main`, including `releases/RalLedger-debug.apk` (76,343,987 bytes). GitHub accepted the push and warned that the APK exceeds its 50 MiB recommended file size. Production signing and a multi-account small-screen walkthrough remain outstanding.
+
+## Income and expense category availability — 2026-10-24
+
+- Confirmed the category model keeps `INCOME` and `EXPENSE` independent. Fresh databases seed four income categories and eight expense categories; transaction pickers filter to the selected transaction type.
+- Opened the installed version 2.0 app on the available 1080×2400 Android emulator and confirmed the Categories manager displays distinct Income and Expenses sections with seeded categories. No financial records or categories were added or changed during this check.
+- This is an availability check only. Category subcategory, merge, history, and smaller-screen walkthroughs remain open; the broader release checklist and production signing are still incomplete.
+
+## Current build and connected verification — 2026-10-24
+
+- Using the installed JDK 25 and approved Gradle downloads, ran `:app:testDebugUnitTest`, `:app:lintDebug`, `:app:assembleDebug`, `:app:compileDebugAndroidTestKotlin`, and `:app:connectedDebugAndroidTest` on `Medium_Phone(AVD) - 17` (Android API 37).
+- Results: 81 unit tests and 37 connected Android tests passed with 0 failures, errors, or skips; lint reported 33 warnings and 0 errors; debug assembly and Android-test Kotlin compilation succeeded. Two offline emulator entries were skipped.
+- The generated debug APK and `releases/RalLedger-debug.apk` are both 76,343,987 bytes with SHA-256 `11BF24398CB33B4F502530C2AA0A8090E97BF8181757796645B8C603DE9C04E1`. `apksigner` verifies the v2 signature. The APK is signed with the Android debug key, not a production key.
+- No application code or APK changed in this verification-only pass. Remaining live-use work includes production signing, outstanding manual flows and responsive-layout checks listed in `FEATURE_CRUD_MATRIX.md`, and review of lint warnings.

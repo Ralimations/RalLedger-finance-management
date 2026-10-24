@@ -518,3 +518,10 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Refreshed `releases/RalLedger-debug.apk`: 23,574,552 bytes; SHA-256 `0BB0C3989F5A16EAB5B57E515FF7006D29D178B5E4B069CAC334027CEDC88ECF`. `apksigner` verifies the v2 signature. Package version remains 2.0 (versionCode 2); this APK is debug-signed, not production-signed.
 - Published commit `41852c210bae6c75cdb47efb7b36a312b5a8afe4` to `Ralimations/RalLedger-finance-management` on `main` under the user's explicit authorization. GitHub confirms `main` points to this commit and `releases/RalLedger-debug.apk` is present at 23,574,552 bytes.
 - Remaining live-use checks include connected migration/recovery execution, screen walkthroughs on small devices, and partial lifecycle items in `FEATURE_CRUD_MATRIX.md`.
+
+## Connected migration and restore verification — 2026-10-24
+
+- Brought the configured `Medium_Phone` Android API 37 emulator online and ran `:app:connectedDebugAndroidTest`; all 34 connected tests passed with 0 failures, errors, or skips. The suite covered CRUD/reversal/backup flows, schema-1 and schema-2 upgrades through schema 22, DataStore journal serialization, pre-commit rollback recovery, post-commit preference completion, and preference-write retry recovery.
+- The emulator tests use in-memory databases or named migration fixtures. The recovery-journal serialization test clears its dedicated journal in a `finally` block.
+- The existing 71-test unit suite and build/lint verification remain green (29 lint warnings, 0 errors). No application source or APK changed during this verification follow-up; the debug APK remains at `releases/RalLedger-debug.apk`, version 2.0 / versionCode 2, SHA-256 `0BB0C3989F5A16EAB5B57E515FF7006D29D178B5E4B069CAC334027CEDC88ECF`.
+- Updated `FEATURE_CRUD_MATRIX.md` to record connected results. GitHub `main` was `07c14d2150e0d9020413bc2f6af4ae2a0350b64a` before this documentation follow-up; UI walkthroughs for the new charts, small-screen sizing, device app-lock behavior, and actual notification delivery remain open.

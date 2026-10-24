@@ -449,9 +449,9 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## Latest GitHub publication — 2026-10-24
 
-- Published the schema-18 transaction-template milestone to `main` in `Ralimations/RalLedger-finance-management`.
-- Updated `releases/RalLedger-debug.apk` to the schema-18 build: 23,504,293 bytes; SHA-256 `BEAE6F1995C18836BEBD29E6FE02C5E8766ADBEEB1F55AEFE4814962E50A66A4`. `apksigner` verifies its v2 signature. It is debug-signed, version `1.0`, and not production-signed.
-- Verification: 67 unit tests pass; `assembleDebug`, lint (0 errors, 28 warnings), and Android-test Kotlin compilation pass. The connected emulator remained offline, so schema-1/schema-2 migrations and template CRUD/backup tests compile but remain unverified on device.
+- Published the saved custom reports milestone to `main` in `Ralimations/RalLedger-finance-management` as commit `da2928ceb7cac8ba545771379b89c0a37795a33c` (`feat: add saved custom reports`). GitHub confirms `main` points to this commit.
+- Updated `releases/RalLedger-debug.apk` to the schema-20 build: 24,091,643 bytes; SHA-256 `19BF52F7F55B282F8D379780389FFC7C3468A0CE5382EBC9B431F5D8B0A9BD94`. The v2 APK signature verifies. It is debug-signed, version `2.0`, and not production-signed. GitHub confirms the APK is present on `main`.
+- Verification: 68 unit tests pass; `assembleDebug`, lint (0 errors, 28 warnings), and Android-test Kotlin compilation pass. The connected emulator remained offline, so the new migration and report CRUD/merge/backup instrumentation compiles but remains unverified on device.
 
 ## Transaction templates — 2026-10-24
 

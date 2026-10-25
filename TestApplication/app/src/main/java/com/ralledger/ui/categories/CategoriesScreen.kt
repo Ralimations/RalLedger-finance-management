@@ -1,5 +1,6 @@
 package com.ralledger.ui.categories
 import com.ralledger.ui.settings.displayMoney
+import com.ralledger.ui.components.DiscardChangesDialog
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -373,12 +374,23 @@ private fun CategoryFormDialog(
     var typeExpanded by remember { mutableStateOf(false) }
     var parentExpanded by remember { mutableStateOf(false) }
     var error by remember(category?.id) { mutableStateOf<String?>(null) }
+    val originalName = remember(category?.id) { name }
+    val originalType = remember(category?.id) { type }
+    val originalParentId = remember(category?.id) { parentId }
+    val originalIconName = remember(category?.id) { iconName }
+    val originalColorHex = remember(category?.id) { colorHex }
+    var confirmDiscard by remember(category?.id) { mutableStateOf(false) }
+    val requestDismiss = {
+        if (name != originalName || type != originalType || parentId != originalParentId ||
+            iconName != originalIconName || colorHex != originalColorHex
+        ) confirmDiscard = true else onDismiss()
+    }
     val parentOptions = categories.filter {
         it.type == type && it.parentCategoryId == null && it.id != category?.id && !it.isArchived
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (category == null) "Add category" else "Edit category") },
         text = {
             Column(
@@ -464,8 +476,11 @@ private fun CategoryFormDialog(
                 else onSave(name.trim(), type, parentId, iconName, colorHex)
             }) { Text(if (category == null) "Create" else "Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }
 
 @Composable

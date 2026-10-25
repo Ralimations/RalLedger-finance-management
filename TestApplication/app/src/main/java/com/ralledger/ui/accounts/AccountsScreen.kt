@@ -1,6 +1,7 @@
 package com.ralledger.ui.accounts
 import com.ralledger.ui.settings.displayMoney
 import com.ralledger.ui.components.MoneyAmountField
+import com.ralledger.ui.components.DiscardChangesDialog
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -385,12 +386,27 @@ private fun AccountFormDialog(
     var selectedColor by remember(account?.id) { mutableStateOf(account?.colorHex ?: accountColors[1]) }
     var includeInDashboard by remember(account?.id) { mutableStateOf(account?.includeInDashboardTotals ?: true) }
     var expanded by remember { mutableStateOf(false) }
+    val originalName = remember(account?.id) { name }
+    val originalInstitution = remember(account?.id) { institution }
+    val originalDescription = remember(account?.id) { description }
+    val originalBalanceText = remember(account?.id) { balanceText }
+    val originalType = remember(account?.id) { selectedType }
+    val originalIcon = remember(account?.id) { selectedIcon }
+    val originalColor = remember(account?.id) { selectedColor }
+    val originalDashboardInclusion = remember(account?.id) { includeInDashboard }
+    var confirmDiscard by remember(account?.id) { mutableStateOf(false) }
+    val requestDismiss = {
+        if (name != originalName || institution != originalInstitution || description != originalDescription ||
+            (account == null && balanceText != originalBalanceText) || selectedType != originalType ||
+            selectedIcon != originalIcon || selectedColor != originalColor || includeInDashboard != originalDashboardInclusion
+        ) confirmDiscard = true else onDismiss()
+    }
     val selectableTypes = AccountType.entries.filter {
         it != AccountType.EQUITY && it != AccountType.INCOME && it != AccountType.EXPENSE
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (account == null) "Add account" else "Edit account") },
         text = {
             Column(
@@ -514,8 +530,11 @@ private fun AccountFormDialog(
                 }
             }) { Text(if (account == null) "Create" else "Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }
 
 @Composable

@@ -82,6 +82,7 @@ import com.ralledger.domain.model.TransactionFilter
 import com.ralledger.domain.model.TransactionTemplate
 import com.ralledger.ui.settings.TransactionListDensity
 import com.ralledger.ui.components.AccountBalancesSummary
+import com.ralledger.ui.components.DiscardChangesDialog
 import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.ui.settings.displayDate
 import java.math.BigDecimal
@@ -1339,8 +1340,15 @@ private fun TransactionTagEditorDialog(
     var name by remember(tag?.id) { mutableStateOf(tag?.name.orEmpty()) }
     var colorHex by remember(tag?.id) { mutableStateOf(tag?.colorHex ?: "#6750A4") }
     var validationMessage by remember(tag?.id) { mutableStateOf<String?>(null) }
+    val originalName = remember(tag?.id) { name }
+    val originalColorHex = remember(tag?.id) { colorHex }
+    var confirmDiscard by remember(tag?.id) { mutableStateOf(false) }
+    val requestDismiss = {
+        if (name != originalName || colorHex != originalColorHex) confirmDiscard = true
+        else onDismiss()
+    }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (tag == null) "New label" else "Edit label") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -1372,6 +1380,9 @@ private fun TransactionTagEditorDialog(
                 if (validationMessage == null) onSave(name.trim(), colorHex)
             }) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }

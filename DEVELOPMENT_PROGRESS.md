@@ -673,6 +673,14 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `FB00BD37FB6E31F26F3F1F3E4AA20C658FEF9FEC350CA13994ABDF1E05440A55`. It is debug-signed, not a production release.
 - This iteration remains local and unpublished. Discard guards for the remaining secondary editors, shared non-amount controls, accessible device walkthroughs, and full cross-flow regression are still open.
 
+## Phase II — Account, category, and template editor discard protection — 2026-10-25
+
+- Added changed-draft confirmation to Account, Category, Transaction Template, and Label editors. Account snapshots include the opening balance only when creating a new account; editing an existing ledger account still cannot alter its opening balance.
+- Template guards cover transaction type, calculator-enabled amount and fee, source/destination accounts, categories, counterparty, description, and notes. Existing save operations remain unchanged.
+- Verification passed `:app:testDebugUnitTest` (103 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing. UI review remains blocked by the offline emulator and absent AVD.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `1B6C75E81BB9910AE81F7C206F27BE9AB4929A0358A66E77D638CEB9A03DD9CF`. It is debug-signed, not a production release.
+- This iteration remains local and unpublished. Payment, transaction-correction, and other dismissible operational dialogs still need unsaved-change review; accessible device walkthroughs and full cross-flow regression remain open.
+
 ## Phase II — Secondary Planning editor discard protection — 2026-10-25
 
 - Added changed-draft confirmation to Counterparty, Financial Project, Custom Report, Interest Profile, and Interest Credit editors.

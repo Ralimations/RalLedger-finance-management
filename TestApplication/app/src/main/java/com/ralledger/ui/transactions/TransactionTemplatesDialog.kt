@@ -33,6 +33,7 @@ import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.TransactionTemplate
 import com.ralledger.domain.model.TransactionType
+import com.ralledger.ui.components.DiscardChangesDialog
 import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.ui.settings.displayMoney
 import java.util.UUID
@@ -180,13 +181,31 @@ private fun TransactionTemplateEditorDialog(
     var description by remember(template?.id) { mutableStateOf(template?.description.orEmpty()) }
     var notes by remember(template?.id) { mutableStateOf(template?.notes.orEmpty()) }
     var error by remember(template?.id) { mutableStateOf<String?>(null) }
+    val originalName = remember(template?.id) { name }
+    val originalType = remember(template?.id) { type }
+    val originalAmountText = remember(template?.id) { amountText }
+    val originalFeeText = remember(template?.id) { feeText }
+    val originalAccountId = remember(template?.id, accounts) { accountId }
+    val originalDestinationId = remember(template?.id, accounts) { destinationId }
+    val originalCategoryId = remember(template?.id) { categoryId }
+    val originalFeeCategoryId = remember(template?.id) { feeCategoryId }
+    val originalCounterparty = remember(template?.id) { counterparty }
+    val originalDescription = remember(template?.id) { description }
+    val originalNotes = remember(template?.id) { notes }
+    var confirmDiscard by remember(template?.id) { mutableStateOf(false) }
+    val requestDismiss = {
+        if (name != originalName || type != originalType || amountText != originalAmountText || feeText != originalFeeText ||
+            accountId != originalAccountId || destinationId != originalDestinationId || categoryId != originalCategoryId ||
+            feeCategoryId != originalFeeCategoryId || counterparty != originalCounterparty || description != originalDescription || notes != originalNotes
+        ) confirmDiscard = true else onDismiss()
+    }
     val accountsForSelection = accounts.filter { !it.isArchived || it.id == template?.accountId || it.id == template?.destinationAccountId }
     val categoriesForSelection = categories.filter { !it.isArchived || it.id == template?.categoryId || it.id == template?.feeCategoryId }
     val categoryOptions = categoriesForSelection.filter { it.type == templateCategoryType(type) }
     val feeCategoryOptions = categoriesForSelection.filter { it.type == CategoryType.EXPENSE }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (template == null) "New transaction template" else "Edit transaction template") },
         text = {
             Column(
@@ -273,8 +292,11 @@ private fun TransactionTemplateEditorDialog(
                 }
             }) { Text("Save template") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }
 
 @Composable

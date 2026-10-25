@@ -58,6 +58,7 @@ import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
 import com.ralledger.ui.components.MoneyAmountField
+import com.ralledger.ui.components.DiscardChangesDialog
 import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.SubscriptionPayment
 import com.ralledger.domain.model.SubscriptionStatus
@@ -481,10 +482,23 @@ private fun SubscriptionEditorDialog(
     var frequencyExpanded by remember { mutableStateOf(false) }
     var counterpartyExpanded by remember { mutableStateOf(false) }
     var inputError by remember { mutableStateOf<String?>(null) }
+    val originalName = remember(subscription?.id) { name }
+    val originalMerchant = remember(subscription?.id) { merchant }
+    val originalCounterpartyId = remember(subscription?.id) { selectedCounterpartyId }
+    val originalAmountText = remember(subscription?.id) { amountText }
+    val originalNotes = remember(subscription?.id) { notes }
+    val originalAccountId = remember(subscription?.id) { selectedAccountId }
+    val originalFrequency = remember(subscription?.id) { selectedFrequency }
+    val originalBillingDate = remember(subscription?.id) { nextBillingDate }
+    var confirmDiscard by remember(subscription?.id) { mutableStateOf(false) }
+    val isDirty = name != originalName || merchant != originalMerchant || selectedCounterpartyId != originalCounterpartyId ||
+        amountText != originalAmountText || notes != originalNotes || selectedAccountId != originalAccountId ||
+        selectedFrequency != originalFrequency || nextBillingDate != originalBillingDate
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
 
     val datePickerState = if (datePickerOpen) rememberDatePickerState(initialSelectedDateMillis = nextBillingDate) else null
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (subscription == null) "Add subscription" else "Edit subscription") },
         text = {
             Column(
@@ -562,8 +576,12 @@ private fun SubscriptionEditorDialog(
                 }
             }) { Text(if (subscription == null) "Save subscription" else "Save changes") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 
     if (datePickerOpen && datePickerState != null) {
         DatePickerDialog(

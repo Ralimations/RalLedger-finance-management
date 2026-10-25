@@ -61,6 +61,7 @@ import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Receivable
 import com.ralledger.domain.model.ReceivableStatus
 import com.ralledger.ui.components.MoneyAmountField
+import com.ralledger.ui.components.DiscardChangesDialog
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -390,10 +391,20 @@ private fun ReceivableEditorDialog(
     var selectedCounterpartyId by remember(receivable?.id) { mutableStateOf(receivable?.counterpartyId) }
     var datePickerOpen by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val originalClient = remember(receivable?.id) { client }
+    val originalAmountText = remember(receivable?.id) { amountText }
+    val originalDescription = remember(receivable?.id) { description }
+    val originalDueDate = remember(receivable?.id) { dueDate }
+    val originalCategoryId = remember(receivable?.id) { selectedCategoryId }
+    val originalCounterpartyId = remember(receivable?.id) { selectedCounterpartyId }
+    var confirmDiscard by remember(receivable?.id) { mutableStateOf(false) }
+    val isDirty = client != originalClient || amountText != originalAmountText || description != originalDescription ||
+        dueDate != originalDueDate || selectedCategoryId != originalCategoryId || selectedCounterpartyId != originalCounterpartyId
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     val datePickerState = if (datePickerOpen) rememberDatePickerState(initialSelectedDateMillis = dueDate) else null
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (receivable == null) "Add receivable" else "Edit receivable details") },
         text = {
             Column(
@@ -464,8 +475,12 @@ private fun ReceivableEditorDialog(
                 }
             }) { Text(if (receivable == null) "Record receivable" else "Save details") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 
     if (datePickerOpen && datePickerState != null) {
         DatePickerDialog(

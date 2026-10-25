@@ -664,3 +664,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification passed `:app:testDebugUnitTest` (103 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing. The emulator is offline and no AVD is configured, so dialog layering and Back/outside interaction remain device-review items.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `0BEAC65F84C37F36B2F4A01F9A092F719D6E40E1703CC1419D896697089AD256`. It is debug-signed, not a production release.
 - This iteration remains local and unpublished. Remaining Phase II work includes guards on other specialized forms, shared non-amount controls, accessible device walkthroughs, and full cross-flow regression.
+
+## Phase II — Core commitment editor discard protection — 2026-10-25
+
+- Extended the shared discard confirmation to Receivable, Expected Income, Planned Payment, Bill/Loan, and Subscription editors.
+- The guard compares all editable values—including date, amount, account/category, and linked contact fields—to the values loaded when the editor opened. Untouched forms close directly; changed forms offer Keep editing or Discard. Existing save and posting callbacks are unchanged.
+- Verification passed `:app:testDebugUnitTest` (103 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing. No Android emulator is online and no AVD is configured, so dialogs need a device walkthrough.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `FB00BD37FB6E31F26F3F1F3E4AA20C658FEF9FEC350CA13994ABDF1E05440A55`. It is debug-signed, not a production release.
+- This iteration remains local and unpublished. Discard guards for the remaining secondary editors, shared non-amount controls, accessible device walkthroughs, and full cross-flow regression are still open.

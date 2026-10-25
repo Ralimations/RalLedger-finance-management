@@ -60,6 +60,7 @@ import com.ralledger.domain.model.DebtKind
 import com.ralledger.domain.model.DebtStatus
 import com.ralledger.domain.model.Money
 import com.ralledger.ui.components.MoneyAmountField
+import com.ralledger.ui.components.DiscardChangesDialog
 import com.ralledger.domain.model.Counterparty
 import java.util.Calendar
 import java.util.Date
@@ -317,10 +318,22 @@ private fun DebtEditorDialog(
     var counterpartyExpanded by remember { mutableStateOf(false) }
     var dateOpen by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val originalTitle = remember(debt?.id) { title }
+    val originalCounterparty = remember(debt?.id) { counterparty }
+    val originalCounterpartyId = remember(debt?.id) { selectedCounterpartyId }
+    val originalAmount = remember(debt?.id) { amount }
+    val originalDueDate = remember(debt?.id) { dueDate }
+    val originalCategoryId = remember(debt?.id, expenseCategories) { categoryId }
+    val originalAccountId = remember(debt?.id, assetAccounts) { accountId }
+    var confirmDiscard by remember(debt?.id) { mutableStateOf(false) }
+    val isDirty = title != originalTitle || counterparty != originalCounterparty ||
+        selectedCounterpartyId != originalCounterpartyId || amount != originalAmount || dueDate != originalDueDate ||
+        categoryId != originalCategoryId || accountId != originalAccountId
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     val dateState = if (dateOpen) rememberDatePickerState(initialSelectedDateMillis = dueDate) else null
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (debt == null) "Add ${kind.displayName.lowercase()}" else "Edit ${kind.displayName.lowercase()}") },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -383,8 +396,11 @@ private fun DebtEditorDialog(
                 }
             }) { Text(if (debt == null) "Save record" else "Save details") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
     if (dateOpen && dateState != null) {
         DatePickerDialog(
             onDismissRequest = { dateOpen = false },

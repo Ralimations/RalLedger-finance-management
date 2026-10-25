@@ -53,6 +53,7 @@ import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.Money
 import com.ralledger.ui.components.MoneyAmountField
+import com.ralledger.ui.components.DiscardChangesDialog
 import com.ralledger.domain.model.PlannedPayment
 import com.ralledger.domain.model.PlannedPaymentRecord
 import com.ralledger.domain.model.PlannedPaymentStatus
@@ -292,12 +293,23 @@ private fun PlannedPaymentEditorDialog(
     var date by remember(item?.id) { mutableStateOf(item?.dueDate ?: Calendar.getInstance().timeInMillis) }
     var datePickerOpen by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val originalDescription = remember(item?.id) { description }
+    val originalPayee = remember(item?.id) { payee }
+    val originalAmountText = remember(item?.id) { amountText }
+    val originalNotes = remember(item?.id) { notes }
+    val originalCategoryId = remember(item?.id) { categoryId }
+    val originalCounterpartyId = remember(item?.id) { counterpartyId }
+    val originalDueDate = remember(item?.id) { date }
+    var confirmDiscard by remember(item?.id) { mutableStateOf(false) }
+    val isDirty = description != originalDescription || payee != originalPayee || amountText != originalAmountText ||
+        notes != originalNotes || categoryId != originalCategoryId || counterpartyId != originalCounterpartyId || date != originalDueDate
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     val activeCategories = categories.filter { it.type == CategoryType.EXPENSE && (!it.isArchived || it.id == item?.expenseCategoryId) }
     val category = activeCategories.firstOrNull { it.id == categoryId }
     val counterparty = counterparties.firstOrNull { it.id == counterpartyId }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (item == null) "Add planned payment" else "Edit planned payment") },
         text = {
             Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -322,8 +334,11 @@ private fun PlannedPaymentEditorDialog(
                 }
             }) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
     if (datePickerOpen) {
         val picker = rememberDatePickerState(initialSelectedDateMillis = date)
         DatePickerDialog(onDismissRequest = { datePickerOpen = false }, confirmButton = {

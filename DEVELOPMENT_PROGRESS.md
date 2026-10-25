@@ -734,3 +734,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - The walkthrough used only generated test records. Screenshots and UI hierarchy captures remain in ignored `.ralledger-local/qa/`.
 - Refreshed `releases/RalLedger-debug.apk` from the verified build: 77,928,083 bytes; SHA-256 `0A20AF3EEBFF2A9E37412ADBD2549EBAB923F092ADCD9CD81F829098A29B79F1`. APK v2 signature verification passed. This is a debug-signed test APK, not a production-signed release.
 - Verification: 104 unit tests and 38 connected Android tests passed; debug lint reported 32 warnings and 0 errors; debug assembly and Android-test Kotlin compilation passed. App-lock credentials, TalkBack/accessibility, text scaling, manual import/export and complete module-by-module visual review remain open.
+
+## 2026-10-26 — App-lock gate instrumentation
+
+- Added an API 37 instrumentation test that enables app lock on an emulator without a configured credential, launches `MainActivity`, checks the visible lock-gate text through Android accessibility nodes, and asserts that the activity sets `WindowManager.LayoutParams.FLAG_SECURE`. The test restores the preference and closes the activity in `finally`.
+- Replaced the Compose test rule after Espresso 3.6.1 failed on API 37 while reflecting `InputManager.getInstance()`. The new test uses `ActivityScenario` and platform accessibility APIs, avoiding that incompatible Espresso synchronization path.
+- On the disposable API 37 emulator, separately set a synthetic Android screen credential, enabled app lock through the system prompt, sent the app to the background and reopened it, confirmed that the unlock prompt appeared before financial screens, authenticated, and disabled the lock. The credential was cleared after the walkthrough; no personal financial data was used.
+- Verification: 104 unit tests passed; all 39 connected API 37 instrumentation tests passed; `:app:lintDebug` completed with 32 warnings and 0 errors; `:app:assembleDebug` completed. The other attached emulator (`emulator-5562`) was offline and skipped.
+- This test-only iteration did not refresh or publish the APK. Remaining device review includes TalkBack/accessibility, text scaling, manual file-provider import/export, dashboard-preference persistence, and broader screen review. The available APK remains debug-signed.

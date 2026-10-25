@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import com.ralledger.RalLedgerApplication
+import com.ralledger.StartupState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,6 +19,9 @@ class SubscriptionReminderRescheduleReceiver : BroadcastReceiver() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 val app = context.applicationContext as RalLedgerApplication
+                val startupState = app.startupState.first { it != StartupState.Recovering }
+                if (startupState != StartupState.Ready) return@launch
+
                 val subscriptions = app.container.repository.subscriptionsFlow.first()
                 val settings = app.container.financialPreferences.settings.first()
                 SubscriptionReminderScheduler.sync(context, subscriptions, settings)

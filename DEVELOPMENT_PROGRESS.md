@@ -838,3 +838,10 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Manually created, updated, renamed, and deleted synthetic saved filters. Reopening the filter sheet after Update displayed “Saved filter updated from current filters.” All temporary saved views were deleted; no financial transactions were created. The previously verified Apply and process-restart persistence flow at 411dp remains covered by the prior checkpoint above.
 - Review screenshots are in ignored `.ralledger-local/qa/phase2-saved-filters-320-font130-multi.png`, `phase2-saved-filters-320-font130-bottom2.png`, `phase2-saved-filter-rename-320-font130.png`, and `phase2-saved-filter-update-320-font130.png`; they are not committed.
 - Emulator display was restored to 1080×2400 at 420dpi with 1.0x text. The compact-width saved-filter manager gate is complete; full TalkBack, the remaining Phase II device journeys, and other release gates remain open.
+
+## Phase II — Settings TalkBack spot check — 2026-10-26
+
+- Enabled TalkBack temporarily on API 37 and inspected Settings → Appearance, Data & Backup, and Security. Settings destinations exposed descriptive accessible names; appearance mode and palette choices appeared as focusable, clickable options, with the selected choices reported as checked.
+- Data & Backup exposed labeled Import financial file, Export Transactions, Save Encrypted Backup, and Restore from Backup actions. Security exposed a labeled App lock switch and explained that Android screen lock must be configured before app lock can be enabled. No backup, restore, import, export, or security setting was changed.
+- Restored the emulator accessibility service to its original disabled state. This was a read-only spot check of three settings screens; TalkBack focus order, form controls, remaining modules, and the full journey checklist still need review.
+- No app source changed, automated tests were not rerun, and the APK was not rebuilt. Latest source verification remains 110 unit tests and 42 connected API 37 tests passed, lint at 29 warnings / 0 errors, and successful debug APK assembly. The available APK remains debug-signed.

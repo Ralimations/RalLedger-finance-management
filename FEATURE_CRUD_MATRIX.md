@@ -128,3 +128,9 @@ Still requiring explicit manual review: secure-device app-lock setup/unlock/relo
 - The API 37 instrumentation test moves a widget and confirms the order survives Activity recreation; it restores the original DataStore settings in cleanup.
 - A separate emulator walkthrough moved Available Money below Net Worth, force-stopped and reopened the app, verified the same order in Settings, and restored the original order. No financial data was present. Screenshot evidence is in ignored `.ralledger-local/qa/dashboard-order-after-force-stop.png`.
 - Verification: 107 unit tests and 42 connected API 37 tests passed; lint reported 32 warnings and 0 errors; debug assembly was up to date and APK Signature Scheme v2 verified.
+
+## API 37 responsive visual checkpoint — 2026-10-26
+
+- Home and Settings were inspected at 320dp, 411dp, and 480dp. Light mode was checked at each size; dark mode was checked at 480dp. Visible content remained within the width and bottom-navigation bounds; vertical content remained scrollable.
+- Display size, 420dpi density, and light mode were restored after capture. Screenshots are in ignored `.ralledger-local/qa/`.
+- This is targeted visual coverage only; other modules, larger text scales, and TalkBack focus remain open.

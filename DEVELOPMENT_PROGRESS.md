@@ -794,3 +794,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification: 107 unit tests and all 42 connected API 37 instrumentation tests passed; lint reported 32 warnings and 0 errors; debug assembly was up to date and APK Signature Scheme v2 verification passed. `emulator-5562` remained offline and was skipped.
 - The existing local debug APK remains 76,768,527 bytes with SHA-256 `683A76CF256A4D60D69A7B9658C2E3E545EFE03F12E95068FFD1748B2FD92C76`; no app production source changed in this test-focused slice. It is debug-signed, not production-signed.
 - Full TalkBack review, remaining-screen accessibility, other-module text scaling, manual file-provider import/export, and broad screen-by-screen review remain open. This update is local and unpublished.
+
+## Phase II — Responsive Home and Settings checkpoint — 2026-10-26
+
+- Visually checked Home and Settings on API 37 at 320dp (840×1860), 411dp (1080×2400), and 480dp (1260×2800), with 420dpi density. Checked light mode at all three sizes and dark mode at 480dp for both screens.
+- At 320dp, content remains vertically scrollable below the fold; visible labels and cards do not overlap bottom navigation. At 480dp, cards and summary rows use the available width without horizontal clipping. Large-screen dark mode retains readable text and status colors.
+- Screenshots are in ignored `.ralledger-local/qa/`: `home-compact-light.png`, `home-typical-light.png`, `home-large-light.png`, `home-large-dark.png`, `settings-compact-light.png`, `settings-large-light.png`, and `settings-large-dark.png`. The emulator was restored to 1080×2400, 420dpi, light mode.
+- No financial records were present; app source and APK were unchanged. Latest regression is 107 unit tests and 42 connected API 37 tests passed; lint reported 32 warnings and 0 errors; the debug APK remains v2-verified.
+- This checkpoint covers Home and Settings only. Other modules, larger text scales, full TalkBack focus, and manual file-provider flows still need review.

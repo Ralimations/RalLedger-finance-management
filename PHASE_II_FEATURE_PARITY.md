@@ -74,3 +74,9 @@ This map compares existing controls with the Phase II destination. Financial ope
 - A connected API 37 test verifies a widget move survives Activity recreation. A manual emulator check additionally verified the order after force-stop and process relaunch, then restored the original preference order.
 - Regression status: 107 unit tests and 42 connected API 37 instrumentation tests pass; lint reports 32 warnings and 0 errors. The app code did not change in this test-focused slice; the previously verified debug APK remains current.
 - Screenshot evidence is stored in ignored `.ralledger-local/qa/dashboard-order-after-force-stop.png`. Broader TalkBack and full screen verification remain open.
+
+## Responsive Home and Settings check — 2026-10-26
+
+- API 37 screenshots cover Home and Settings at 320dp, 411dp, and 480dp in light mode, plus 480dp in dark mode. Visible content remained within the width and bottom-navigation bounds; vertical content remained scrollable.
+- The emulator was returned to 1080×2400, 420dpi, light mode. Images are retained in ignored `.ralledger-local/qa/`.
+- Other modules, larger font scales, and full screen-reader focus remain unverified.

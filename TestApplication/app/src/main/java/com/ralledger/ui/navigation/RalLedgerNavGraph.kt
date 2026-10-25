@@ -7,16 +7,19 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.EventNote
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.ReceiptLong
@@ -31,11 +34,15 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -45,12 +52,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -358,6 +365,7 @@ fun RalLedgerMainScreen(
 }
 
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun QuickAddTransactionDialog(
     appContainer: AppContainer,
     defaultTransactionAccountId: String?,
@@ -378,6 +386,20 @@ fun QuickAddTransactionDialog(
     var accountMenuExpanded by remember { mutableStateOf(false) }
     var destinationMenuExpanded by remember { mutableStateOf(false) }
     var categoryMenuExpanded by remember { mutableStateOf(false) }
+    var hasUserEdited by remember { mutableStateOf(false) }
+    var showDiscardConfirmation by remember { mutableStateOf(false) }
+    var showDescription by remember { mutableStateOf(false) }
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { target -> target != SheetValue.Hidden || !isSaving }
+    )
+    val requestDismiss = {
+        when (quickAddDismissAction(hasUserEdited, isSaving)) {
+            QuickAddDismissAction.IGNORE -> Unit
+            QuickAddDismissAction.CONFIRM_DISCARD -> showDiscardConfirmation = true
+            QuickAddDismissAction.DISMISS -> onDismiss()
+        }
+    }
 
     val accounts by appContainer.repository.accountsFlow.collectAsState(initial = emptyList())
     val categories by appContainer.repository.categoriesFlow.collectAsState(initial = emptyList())
@@ -418,91 +440,136 @@ fun QuickAddTransactionDialog(
         }
     }
 
-    AlertDialog(
-        onDismissRequest = { if (!isSaving) onDismiss() },
-        title = { Text("Record Transaction") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    listOf("EXPENSE" to "Expense", "INCOME" to "Income", "TRANSFER" to "Transfer").forEach { (type, label) ->
-                        FilterChip(
-                            selected = txType == type,
-                            onClick = { txType = type; inputError = null },
-                            label = { Text(label) }
+    ModalBottomSheet(
+        onDismissRequest = requestDismiss,
+        sheetState = sheetState
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 720.dp)
+                .imePadding()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        when (txType) {
+                            "INCOME" -> "Add income"
+                            "TRANSFER" -> "Transfer money"
+                            else -> "Add expense"
+                        },
+                        style = androidx.compose.material3.MaterialTheme.typography.titleLarge
+                    )
+                    Text("A few details, then save.", style = androidx.compose.material3.MaterialTheme.typography.bodySmall)
+                }
+                IconButton(onClick = requestDismiss, enabled = !isSaving) {
+                    Icon(Icons.Default.Close, contentDescription = "Close transaction form")
+                }
+            }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("EXPENSE" to "Expense", "INCOME" to "Income", "TRANSFER" to "Transfer").forEach { (type, label) ->
+                    FilterChip(
+                        modifier = Modifier.weight(1f),
+                        selected = txType == type,
+                        onClick = { txType = type; inputError = null; hasUserEdited = true },
+                        label = { Text(label, maxLines = 1, fontSize = 12.sp) }
+                    )
+                }
+            }
+
+            AccountBalancesSummary(accounts)
+
+            MoneyAmountField(
+                value = amountStr,
+                onValueChange = { amountStr = it; inputError = null; hasUserEdited = true },
+                label = "Amount (${eligibleAccounts.find { it.id == accountId }?.currency ?: "PHP"})"
+            )
+
+            Box(modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = { accountMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "Account · ${eligibleAccounts.find { it.id == accountId }?.name ?: "Choose an account"}",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
+                }
+                DropdownMenu(expanded = accountMenuExpanded, onDismissRequest = { accountMenuExpanded = false }) {
+                    eligibleAccounts.forEach { account ->
+                        DropdownMenuItem(text = { Text(account.name) }, onClick = {
+                            accountId = account.id
+                            accountMenuExpanded = false
+                            hasUserEdited = true
+                        })
                     }
                 }
+            }
 
-                AccountBalancesSummary(accounts)
-
-                MoneyAmountField(
-                    value = amountStr,
-                    onValueChange = { amountStr = it; inputError = null },
-                    label = "Amount (PHP)"
-                )
-
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text("Description") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Box {
-                    TextButton(onClick = { accountMenuExpanded = true }) {
-                        Text("Account: ${eligibleAccounts.find { it.id == accountId }?.name ?: "Choose an account"}")
+            if (txType == "TRANSFER") {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { destinationMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "To account · ${eligibleAccounts.find { it.id == destAccountId }?.name ?: "Choose destination"}",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
-                    DropdownMenu(expanded = accountMenuExpanded, onDismissRequest = { accountMenuExpanded = false }) {
-                        eligibleAccounts.forEach { account ->
+                    DropdownMenu(expanded = destinationMenuExpanded, onDismissRequest = { destinationMenuExpanded = false }) {
+                        eligibleAccounts.filter { it.id != accountId }.forEach { account ->
                             DropdownMenuItem(text = { Text(account.name) }, onClick = {
-                                accountId = account.id
-                                accountMenuExpanded = false
+                                destAccountId = account.id
+                                destinationMenuExpanded = false
+                                hasUserEdited = true
                             })
                         }
                     }
                 }
-                if (txType == "TRANSFER") {
-                    Box {
-                        TextButton(onClick = { destinationMenuExpanded = true }) {
-                            Text("To: ${eligibleAccounts.find { it.id == destAccountId }?.name ?: "Choose destination"}")
-                        }
-                        DropdownMenu(expanded = destinationMenuExpanded, onDismissRequest = { destinationMenuExpanded = false }) {
-                            eligibleAccounts.filter { it.id != accountId }.forEach { account ->
-                                DropdownMenuItem(text = { Text(account.name) }, onClick = {
-                                    destAccountId = account.id
-                                    destinationMenuExpanded = false
-                                })
-                            }
-                        }
+            } else {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { categoryMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            "${if (txType == "INCOME") "Income source" else "Category"} · ${eligibleCategories.find { it.id == categoryId }?.name ?: "Choose"}",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
-                } else {
-                    Box {
-                        TextButton(onClick = { categoryMenuExpanded = true }) {
-                            Text("${if (txType == "INCOME") "Income source" else "Category"}: ${eligibleCategories.find { it.id == categoryId }?.name ?: "Choose"}")
-                        }
-                        DropdownMenu(expanded = categoryMenuExpanded, onDismissRequest = { categoryMenuExpanded = false }) {
-                            eligibleCategories.forEach { category ->
-                                DropdownMenuItem(text = { Text(category.name) }, onClick = {
-                                    categoryId = category.id
-                                    categoryMenuExpanded = false
-                                })
-                            }
+                    DropdownMenu(expanded = categoryMenuExpanded, onDismissRequest = { categoryMenuExpanded = false }) {
+                        eligibleCategories.forEach { category ->
+                            DropdownMenuItem(text = { Text(category.name) }, onClick = {
+                                categoryId = category.id
+                                categoryMenuExpanded = false
+                                hasUserEdited = true
+                            })
                         }
                     }
                 }
-                inputError?.let { Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    scope.launch {
-                        if (isSaving) return@launch
+
+            TextButton(onClick = { showDescription = !showDescription }) {
+                Text(if (showDescription) "Hide description" else "Add description (optional)")
+            }
+            if (showDescription) {
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it; hasUserEdited = true },
+                    label = { Text("Description") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            inputError?.let { Text(it, color = androidx.compose.material3.MaterialTheme.colorScheme.error) }
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TextButton(onClick = requestDismiss, enabled = !isSaving) {
+                    Text("Cancel")
+                }
+                Button(
+                    modifier = Modifier.weight(1f),
+                    onClick = {
+                        if (isSaving) return@Button
                         val amount = Money.parse(amountStr)
                         val validationError = when {
                             amount == null || !amount.isPositive -> "Enter a valid amount greater than zero."
@@ -513,39 +580,51 @@ fun QuickAddTransactionDialog(
                         }
                         if (validationError != null) {
                             inputError = validationError
-                            return@launch
+                            return@Button
                         }
 
                         isSaving = true
-                        try {
-                            when (txType) {
-                                "EXPENSE" -> {
-                                    appContainer.repository.recordExpense(accountId, categoryId, amount!!, description)
-                                    onDismiss()
+                        scope.launch {
+                            try {
+                                when (txType) {
+                                    "EXPENSE" -> appContainer.repository.recordExpense(accountId, categoryId, amount!!, description)
+                                    "INCOME" -> appContainer.repository.recordIncome(accountId, categoryId, amount!!, description)
+                                    else -> appContainer.repository.recordTransfer(accountId, destAccountId, amount!!, description = description)
                                 }
-                                "INCOME" -> {
-                                    appContainer.repository.recordIncome(accountId, categoryId, amount!!, description)
-                                    onDismiss()
-                                }
-                                else -> {
-                                    appContainer.repository.recordTransfer(accountId, destAccountId, amount!!, description = description)
-                                    onDismiss()
-                                }
+                                onDismiss()
+                            } catch (error: Exception) {
+                                inputError = error.localizedMessage ?: "The transaction could not be saved."
+                            } finally {
+                                isSaving = false
                             }
-                        } catch (error: Exception) {
-                            inputError = error.localizedMessage ?: "The transaction could not be saved."
-                        } finally {
-                            isSaving = false
                         }
-                    }
-                },
-                enabled = !isSaving
-            ) {
-                Text(if (isSaving) "Saving…" else "Save")
+                    },
+                    enabled = !isSaving
+                ) {
+                    Text(if (isSaving) "Saving…" else "Save transaction")
+                }
             }
-        },
-        dismissButton = {
-            Button(onClick = onDismiss, enabled = !isSaving) { Text("Cancel") }
+            Spacer(Modifier.height(8.dp))
         }
-    )
+    }
+
+    if (showDiscardConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDiscardConfirmation = false },
+            title = { Text("Discard this transaction?") },
+            text = { Text("Your unsaved changes will be lost.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDiscardConfirmation = false
+                    onDismiss()
+                }) { Text("Discard") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDiscardConfirmation = false
+                    scope.launch { sheetState.show() }
+                }) { Text("Keep editing") }
+            }
+        )
+    }
 }

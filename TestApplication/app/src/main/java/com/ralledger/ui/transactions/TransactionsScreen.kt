@@ -4,6 +4,8 @@ import com.ralledger.ui.settings.displayMoney
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,7 +15,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
@@ -99,7 +100,7 @@ import java.util.TimeZone
 private enum class FilterDateTarget { FROM, TO }
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 fun TransactionsScreen(
     viewModel: TransactionsViewModel,
     onManageCategories: () -> Unit,
@@ -164,7 +165,10 @@ fun TransactionsScreen(
                     text = "Transaction Journal",
                     style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
                 )
-                Row {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
                     TextButton(onClick = onManageCategories) { Text("Categories") }
                     TextButton(onClick = { showTagManager = true }) { Text("Labels") }
                     TextButton(onClick = { showTemplateManager = true }) { Text("Templates") }
@@ -190,9 +194,10 @@ fun TransactionsScreen(
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 listOf(
                     TransactionTypeFilter.ALL to "All",
@@ -252,9 +257,10 @@ fun TransactionsScreen(
             ) {
                 Text("More filters", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text("Narrow the journal by account, category, label, or date.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     FilterDropdownChip(
                         title = "Account",
@@ -283,9 +289,10 @@ fun TransactionsScreen(
                         Text("To: ${dateRange.second?.let { displayDate(it - 1L) } ?: "Any date"}")
                     }
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     FilterChip(
                         selected = typeFilter == TransactionTypeFilter.OTHER,

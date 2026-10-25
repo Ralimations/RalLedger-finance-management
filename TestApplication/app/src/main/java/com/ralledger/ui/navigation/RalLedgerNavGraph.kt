@@ -117,11 +117,11 @@ sealed class Screen(
     val compactTitle: String = title
 ) {
     object Dashboard : Screen("dashboard", "Home", Icons.Default.Dashboard)
-    object Accounts : Screen("accounts", "Accounts", Icons.Default.AccountBalance, "Account")
+    object Accounts : Screen("accounts", "Accounts", Icons.Default.AccountBalance, "Acct")
     object Transactions : Screen("transactions", "Activity", Icons.Default.ReceiptLong)
-    object Planning : Screen("planning", "Planning", Icons.Default.EventNote)
+    object Planning : Screen("planning", "Planning", Icons.Default.EventNote, "Plan")
     object Categories : Screen("categories", "Categories", Icons.Default.Label)
-    object Insights : Screen("insights", "Insights", Icons.Default.Analytics)
+    object Insights : Screen("insights", "Insights", Icons.Default.Analytics, "Stats")
     object Settings : Screen("settings", "Settings", Icons.Default.Settings)
 }
 

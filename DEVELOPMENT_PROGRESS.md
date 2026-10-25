@@ -714,3 +714,13 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification passed `:app:testDebugUnitTest` (104 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `060248B2F8E9E11C8ECB4A8D795B185B4CA2B4D67C81AE0018467F1263DCCAC9`. This is debug-signed, not a production release.
 - This iteration remains local and unpublished. Import format limitations and the remaining Phase II device/accessibility walkthroughs are still tracked in `FEATURE_CRUD_MATRIX.md`.
+
+## Phase II — API 37 visual validation and system-bar contrast — 2026-10-26
+
+- Created a disposable project-local API 37 x86_64 emulator in `.ralledger-local/avd` using the already-installed Android system image. No real financial data was used.
+- Ran the full connected Android-test suite on `emulator-5554`: 38 tests, 0 failures. This includes import preview/parser, repeated in-file statement rows, duplicate re-import protection, balanced posting, CRUD, backup, and migration coverage.
+- Inspected Home, Universal Quick Action Hub, and Add Expense at 1080×2400 (about 411×914 dp), compact 720×1600 at 320 dpi (360×800 dp), and large 1600×3200 at 420 dpi (about 609×1219 dp). Checked light and dark mode. Compact Home stacks the owed-money summaries; the large Home keeps its summaries readable.
+- Fixed Android 15+ edge-to-edge status and navigation icon contrast by selecting light/dark system-bar icons from the active app theme. Rechecked the light Home screenshot and confirmed the status icons are visible.
+- Verification passed `:app:testDebugUnitTest` (104 tests, 0 failures), `:app:connectedDebugAndroidTest` (38 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing.
+- Visual screenshots are in ignored local path `.ralledger-local/qa/`; they are not included in Git. This run visually checked the Home, Quick Action Hub, and Expense form; the full 17-journey manual walkthrough, accessibility/TalkBack review, and broader module-by-module UI coverage remain open.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `0A20AF3EEBFF2A9E37412ADBD2549EBAB923F092ADCD9CD81F829098A29B79F1`. It is debug-signed, not a production release. Changes remain local and unpublished.

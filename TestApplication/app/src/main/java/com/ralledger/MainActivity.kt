@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -27,11 +28,13 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -40,6 +43,7 @@ import kotlinx.coroutines.launch
 import com.ralledger.ui.navigation.RalLedgerMainScreen
 import com.ralledger.ui.theme.RalLedgerTheme
 import com.ralledger.ui.theme.ThemeSettings
+import com.ralledger.ui.theme.ThemeMode
 import com.ralledger.ui.widgets.EXTRA_WIDGET_TRANSACTION_TYPE
 import com.ralledger.ui.widgets.normalizeWidgetTransactionType
 
@@ -101,6 +105,17 @@ class MainActivity : FragmentActivity() {
             }
 
             RalLedgerTheme(settings = themeSettings) {
+                val darkTheme = when (themeSettings.mode) {
+                    ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                    ThemeMode.LIGHT -> false
+                    ThemeMode.DARK -> true
+                }
+                SideEffect {
+                    WindowCompat.getInsetsController(window, window.decorView).apply {
+                        isAppearanceLightStatusBars = !darkTheme
+                        isAppearanceLightNavigationBars = !darkTheme
+                    }
+                }
                 when {
                     lockEnabled == null -> Surface(modifier = Modifier.fillMaxSize()) {
                         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {

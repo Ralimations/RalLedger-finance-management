@@ -59,8 +59,13 @@ import com.ralledger.domain.model.Debt
 import com.ralledger.domain.model.DebtKind
 import com.ralledger.domain.model.DebtStatus
 import com.ralledger.domain.model.Money
-import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.ui.components.DiscardChangesDialog
+import com.ralledger.ui.components.FinancialAccountSelector
+import com.ralledger.ui.components.FinancialCategorySelector
+import com.ralledger.ui.components.FinancialDateSelector
+import com.ralledger.ui.components.FinancialDescriptionField
+import com.ralledger.ui.components.FinancialNotesField
+import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.domain.model.Counterparty
 import java.util.Calendar
 import java.util.Date
@@ -313,8 +318,6 @@ private fun DebtEditorDialog(
     val assetAccounts = accounts.filter { it.accountType.isAsset && !it.accountType.isReceivable && (!it.isArchived || it.id == debt?.fundingAccountId) }
     var categoryId by remember(debt?.id, expenseCategories) { mutableStateOf(debt?.categoryId ?: expenseCategories.firstOrNull()?.id.orEmpty()) }
     var accountId by remember(debt?.id, assetAccounts) { mutableStateOf(debt?.fundingAccountId ?: assetAccounts.firstOrNull()?.id.orEmpty()) }
-    var categoryExpanded by remember { mutableStateOf(false) }
-    var accountExpanded by remember { mutableStateOf(false) }
     var counterpartyExpanded by remember { mutableStateOf(false) }
     var dateOpen by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -337,13 +340,11 @@ private fun DebtEditorDialog(
         title = { Text(if (debt == null) "Add ${kind.displayName.lowercase()}" else "Edit ${kind.displayName.lowercase()}") },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(title, { title = it; error = null }, label = { Text("Name or description") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(
+                FinancialDescriptionField(title, { title = it; error = null }, label = "Name or description")
+                FinancialDescriptionField(
                     counterparty,
                     { counterparty = it; selectedCounterpartyId = null },
-                    label = { Text(if (kind == DebtKind.BILL) "Payee (optional)" else "Lender (optional)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    label = if (kind == DebtKind.BILL) "Payee (optional)" else "Lender (optional)"
                 )
                 SelectDebtValue(
                     "Saved contact",
@@ -366,18 +367,26 @@ private fun DebtEditorDialog(
                 if (debt == null) {
                     MoneyAmountField(amount, { amount = it; error = null }, "${if (kind == DebtKind.BILL) "Bill" else "Loan"} amount (PHP)")
                     if (kind == DebtKind.BILL) {
-                        SelectDebtValue("Expense category", expenseCategories.firstOrNull { it.id == categoryId }?.name ?: "Choose category", categoryExpanded, { categoryExpanded = it }) {
-                            expenseCategories.forEach { item -> DropdownMenuItem(text = { Text(item.name) }, onClick = { categoryId = item.id; categoryExpanded = false }) }
-                        }
+                        FinancialCategorySelector(
+                            categories = expenseCategories,
+                            selectedId = categoryId,
+                            onSelect = { categoryId = it },
+                            label = "Expense category",
+                            emptyLabel = "Choose category"
+                        )
                     } else {
-                        SelectDebtValue("Deposit to account", assetAccounts.firstOrNull { it.id == accountId }?.name ?: "Choose account", accountExpanded, { accountExpanded = it }) {
-                            assetAccounts.forEach { item -> DropdownMenuItem(text = { Text(item.name) }, onClick = { accountId = item.id; accountExpanded = false }) }
-                        }
+                        FinancialAccountSelector(
+                            accounts = assetAccounts,
+                            selectedId = accountId,
+                            onSelect = { accountId = it },
+                            label = "Deposit to account",
+                            emptyLabel = "Choose account"
+                        )
                     }
                 } else {
                     Text("Amount and category are locked after recording so the ledger history stays accurate.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                TextButton(onClick = { dateOpen = true }) { Text("Due date: ${formatDebtDate(dueDate)}") }
+                FinancialDateSelector(value = formatDebtDate(dueDate), onClick = { dateOpen = true }, label = "Due date")
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -441,8 +450,6 @@ private fun DebtPaymentDialog(
     var categoryId by remember(debt.id, expenseCategories) { mutableStateOf(initialCategoryId) }
     var date by remember(debt.id) { mutableStateOf(initialDate) }
     var notes by remember(debt.id) { mutableStateOf("") }
-    var accountExpanded by remember { mutableStateOf(false) }
-    var categoryExpanded by remember { mutableStateOf(false) }
     var dateOpen by remember { mutableStateOf(false) }
     var confirmDiscard by remember(debt.id) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -456,16 +463,24 @@ private fun DebtPaymentDialog(
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Outstanding principal: ${displayMoney(debt.outstandingAmount)}", fontWeight = FontWeight.SemiBold)
-                SelectDebtValue("Pay from account", assetAccounts.firstOrNull { it.id == accountId }?.name ?: "Choose account", accountExpanded, { accountExpanded = it }) {
-                    assetAccounts.forEach { item -> DropdownMenuItem(text = { Text(item.name) }, onClick = { accountId = item.id; accountExpanded = false }) }
-                }
+                FinancialAccountSelector(
+                    accounts = assetAccounts,
+                    selectedId = accountId,
+                    onSelect = { accountId = it },
+                    label = "Pay from account",
+                    emptyLabel = "Choose account"
+                )
                 MoneyAmountField(principal, { principal = it; error = null }, "Principal paid (PHP)")
                 MoneyAmountField(interest, { interest = it; error = null }, "Interest or fee (PHP)")
-                SelectDebtValue("Interest expense category", expenseCategories.firstOrNull { it.id == categoryId }?.name ?: "Choose category", categoryExpanded, { categoryExpanded = it }) {
-                    expenseCategories.forEach { item -> DropdownMenuItem(text = { Text(item.name) }, onClick = { categoryId = item.id; categoryExpanded = false }) }
-                }
-                OutlinedTextField(notes, { notes = it }, label = { Text("Notes (optional)") }, modifier = Modifier.fillMaxWidth())
-                TextButton(onClick = { dateOpen = true }) { Text("Payment date: ${formatDebtDate(date)}") }
+                FinancialCategorySelector(
+                    categories = expenseCategories,
+                    selectedId = categoryId,
+                    onSelect = { categoryId = it },
+                    label = "Interest expense category",
+                    emptyLabel = "Choose category"
+                )
+                FinancialNotesField(notes, { notes = it }, label = "Notes (optional)")
+                FinancialDateSelector(value = formatDebtDate(date), onClick = { dateOpen = true }, label = "Payment date")
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },

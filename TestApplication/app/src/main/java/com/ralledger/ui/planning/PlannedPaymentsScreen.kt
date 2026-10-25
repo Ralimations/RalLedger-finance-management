@@ -52,8 +52,13 @@ import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.Money
-import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.ui.components.DiscardChangesDialog
+import com.ralledger.ui.components.FinancialAccountSelector
+import com.ralledger.ui.components.FinancialCategorySelector
+import com.ralledger.ui.components.FinancialDateSelector
+import com.ralledger.ui.components.FinancialDescriptionField
+import com.ralledger.ui.components.FinancialNotesField
+import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.domain.model.PlannedPayment
 import com.ralledger.domain.model.PlannedPaymentRecord
 import com.ralledger.domain.model.PlannedPaymentStatus
@@ -305,7 +310,6 @@ private fun PlannedPaymentEditorDialog(
         notes != originalNotes || categoryId != originalCategoryId || counterpartyId != originalCounterpartyId || date != originalDueDate
     val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     val activeCategories = categories.filter { it.type == CategoryType.EXPENSE && (!it.isArchived || it.id == item?.expenseCategoryId) }
-    val category = activeCategories.firstOrNull { it.id == categoryId }
     val counterparty = counterparties.firstOrNull { it.id == counterpartyId }
 
     AlertDialog(
@@ -313,13 +317,19 @@ private fun PlannedPaymentEditorDialog(
         title = { Text(if (item == null) "Add planned payment" else "Edit planned payment") },
         text = {
             Column(Modifier.verticalScroll(androidx.compose.foundation.rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(description, { description = it }, label = { Text("Description") }, singleLine = true)
-                OutlinedTextField(payee, { payee = it }, label = { Text("Payee") }, singleLine = true)
-                SelectionField("Expense category", category?.name ?: "Choose category", activeCategories.map { it.name to it.id }, { categoryId = it })
+                FinancialDescriptionField(description, { description = it }, label = "Description")
+                FinancialDescriptionField(payee, { payee = it }, label = "Payee")
+                FinancialCategorySelector(
+                    categories = activeCategories,
+                    selectedId = categoryId,
+                    onSelect = { categoryId = it },
+                    label = "Expense category",
+                    emptyLabel = "Choose category"
+                )
                 SelectionField("Saved counterparty (optional)", counterparty?.name ?: "None", listOf("None" to "") + counterparties.filter { !it.isArchived || it.id == item?.counterpartyId }.map { it.name to it.id }, { counterpartyId = it.ifBlank { null } })
                 MoneyAmountField(amountText, { amountText = it }, "Planned amount")
-                OutlinedButton(onClick = { datePickerOpen = true }) { Text("Due ${displayDate(date)}") }
-                OutlinedTextField(notes, { notes = it }, label = { Text("Notes (optional)") }, minLines = 2)
+                FinancialDateSelector(value = displayDate(date), onClick = { datePickerOpen = true }, label = "Due")
+                FinancialNotesField(notes, { notes = it }, label = "Notes (optional)")
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -362,7 +372,6 @@ private fun RecordPaymentDialog(
     var amountText by remember(plan.id) { mutableStateOf(initialAmountText) }
     var notes by remember(plan.id) { mutableStateOf("") }
     var date by remember(plan.id) { mutableStateOf(initialDate) }
-    var accountMenu by remember { mutableStateOf(false) }
     var datePickerOpen by remember { mutableStateOf(false) }
     var confirmDiscard by remember(plan.id) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -376,14 +385,17 @@ private fun RecordPaymentDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("This posts the actual amount as an expense and updates the account balance.", style = MaterialTheme.typography.bodySmall)
-                OutlinedButton(onClick = { accountMenu = true }, modifier = Modifier.fillMaxWidth()) { Text(selectedAccount?.name ?: "Choose account") }
-                DropdownMenu(expanded = accountMenu, onDismissRequest = { accountMenu = false }) {
-                    accounts.forEach { account -> DropdownMenuItem(text = { Text(account.name) }, onClick = { accountId = account.id; accountMenu = false }) }
-                }
+                FinancialAccountSelector(
+                    accounts = accounts,
+                    selectedId = accountId,
+                    onSelect = { accountId = it },
+                    label = "Payment account",
+                    emptyLabel = "Choose account"
+                )
                 if (accounts.isEmpty()) Text("Add or restore an asset account first.", color = MaterialTheme.colorScheme.error)
                 MoneyAmountField(amountText, { amountText = it }, "Actual amount")
-                OutlinedButton(onClick = { datePickerOpen = true }) { Text("Paid ${displayDate(date)}") }
-                OutlinedTextField(notes, { notes = it }, label = { Text("Payment notes (optional)") }, minLines = 2)
+                FinancialDateSelector(value = displayDate(date), onClick = { datePickerOpen = true }, label = "Paid")
+                FinancialNotesField(notes, { notes = it }, label = "Payment notes (optional)")
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },

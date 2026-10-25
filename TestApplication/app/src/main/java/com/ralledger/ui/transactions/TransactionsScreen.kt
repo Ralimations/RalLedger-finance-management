@@ -36,8 +36,6 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -83,6 +81,11 @@ import com.ralledger.domain.model.TransactionTemplate
 import com.ralledger.ui.settings.TransactionListDensity
 import com.ralledger.ui.components.AccountBalancesSummary
 import com.ralledger.ui.components.DiscardChangesDialog
+import com.ralledger.ui.components.FinancialAccountSelector
+import com.ralledger.ui.components.FinancialCategorySelector
+import com.ralledger.ui.components.FinancialDateSelector
+import com.ralledger.ui.components.FinancialDescriptionField
+import com.ralledger.ui.components.FinancialNotesField
 import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.ui.settings.displayDate
 import java.math.BigDecimal
@@ -904,22 +907,22 @@ private fun RecordTransactionDialog(
                     }
                 }
 
-                AccountDropdown(
-                    label = if (selectedTab == 2) "From Account" else "Account",
+                FinancialAccountSelector(
                     accounts = eligibleAccounts,
                     selectedId = selectedAccountId,
-                    onSelect = { selectedAccountId = it }
+                    onSelect = { selectedAccountId = it },
+                    label = if (selectedTab == 2) "From Account" else "Account"
                 )
 
                 if (selectedTab == 2) {
-                    AccountDropdown(
-                        label = "To Account",
+                    FinancialAccountSelector(
                         accounts = eligibleAccounts,
                         selectedId = selectedDestAccountId,
-                        onSelect = { selectedDestAccountId = it }
+                        onSelect = { selectedDestAccountId = it },
+                        label = "To Account"
                     )
                 } else {
-                    CategoryDropdown(
+                    FinancialCategorySelector(
                         categories = visibleCategories,
                         selectedId = selectedCategoryId,
                         onSelect = { selectedCategoryId = it }
@@ -927,7 +930,7 @@ private fun RecordTransactionDialog(
                 }
 
                 if (selectedTab == 2) {
-                    CategoryDropdown(
+                    FinancialCategorySelector(
                         categories = visibleFeeCategories,
                         selectedId = selectedFeeCategoryId,
                         onSelect = { selectedFeeCategoryId = it },
@@ -951,33 +954,24 @@ private fun RecordTransactionDialog(
                     )
                 }
 
-                OutlinedTextField(
+                FinancialDescriptionField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Description") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+                    label = "Description"
                 )
                 if (selectedTab != 2) {
-                    OutlinedTextField(
+                    FinancialDescriptionField(
                         value = counterparty,
                         onValueChange = { counterparty = it },
-                        label = { Text("Source or counterparty") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
+                        label = "Source or counterparty"
                     )
                 }
-                OutlinedTextField(
+                FinancialNotesField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("Notes") },
-                    modifier = Modifier.fillMaxWidth(),
-                    minLines = 2,
-                    maxLines = 3
+                    label = "Notes"
                 )
-                TextButton(onClick = { showDatePicker = true }) {
-                    Text("Date: ${displayDate(selectedTimestamp)}")
-                }
+                FinancialDateSelector(value = displayDate(selectedTimestamp), onClick = { showDatePicker = true })
                 inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -1056,86 +1050,6 @@ private fun RecordTransactionDialog(
 }
 
 private fun moneyForInput(money: Money): String = BigDecimal.valueOf(money.centavos, 2).toPlainString()
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AccountDropdown(
-    label: String,
-    accounts: List<Account>,
-    selectedId: String,
-    onSelect: (String) -> Unit
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val selectedName = accounts.find { it.id == selectedId }?.name ?: "Select Account"
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded }
-    ) {
-        OutlinedTextField(
-            value = selectedName,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            accounts.forEach { acc ->
-                DropdownMenuItem(
-                    text = { Text(acc.name) },
-                    onClick = {
-                        onSelect(acc.id)
-                        expanded = false
-                    }
-                )
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun CategoryDropdown(
-    categories: List<Category>,
-    selectedId: String,
-    onSelect: (String) -> Unit,
-    label: String = "Category"
-) {
-    var expanded by remember { mutableStateOf(false) }
-    val selectedName = categories.find { it.id == selectedId }?.name ?: "Select Category"
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded }
-    ) {
-        OutlinedTextField(
-            value = selectedName,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(label) },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            categories.forEach { cat ->
-                DropdownMenuItem(
-                    text = { Text(cat.name) },
-                    onClick = {
-                        onSelect(cat.id)
-                        expanded = false
-                    }
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun TransactionProjectAssignmentDialog(

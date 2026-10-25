@@ -696,3 +696,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification passed `:app:testDebugUnitTest` (103 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing. The connected emulator remains offline (`emulator-5562`); no interactive device review was possible.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `548B95D2970ECF8B932B8C0B7142F72F75DBF21CC0A1E40E8A23FA29FAB273F3`. It is debug-signed, not a production release.
 - This iteration remains local and unpublished. Device walkthroughs, accessibility review and full cross-flow regression remain open.
+
+## Phase II — Shared financial form controls — 2026-10-25
+
+- Added reusable account/category selectors, a compact date action, and shared description and notes fields in `ui/components/FinancialFormFields.kt`. The selectors use the eligible account/category lists supplied by each screen; date-picker ownership and timezone conversion remain with the calling screen.
+- Adopted the controls in transaction entry/correction, receivable details and collection/write-off, subscription setup/payment, planned-payment setup/recording, and debt setup/payment. Existing journal operations and validations are unchanged. `MoneyAmountField` remains the shared amount/calculator control.
+- Verification passed `:app:testDebugUnitTest` (103 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing. The connected emulator remains offline (`emulator-5562`), preventing interactive UI review.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `51ABDE6DF5999F41A6CD0253613E53AD8F5A2D11F2C67119C871A8D5702844BC`. It is debug-signed, not a production release.
+- This iteration remains local and unpublished. Shared control adoption in the remaining forms, device/accessibility walkthroughs, and full cross-flow regression remain open.

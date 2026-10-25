@@ -60,8 +60,13 @@ import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Receivable
 import com.ralledger.domain.model.ReceivableStatus
-import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.ui.components.DiscardChangesDialog
+import com.ralledger.ui.components.FinancialAccountSelector
+import com.ralledger.ui.components.FinancialCategorySelector
+import com.ralledger.ui.components.FinancialDateSelector
+import com.ralledger.ui.components.FinancialDescriptionField
+import com.ralledger.ui.components.FinancialNotesField
+import com.ralledger.ui.components.MoneyAmountField
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -386,7 +391,6 @@ private fun ReceivableEditorDialog(
     var description by remember(receivable?.id) { mutableStateOf(receivable?.description.orEmpty()) }
     var dueDate by remember(receivable?.id) { mutableStateOf(receivable?.dueDate ?: System.currentTimeMillis() + 30L * 86_400_000L) }
     var selectedCategoryId by remember(receivable?.id) { mutableStateOf(receivable?.linkedCategoryId ?: categories.firstOrNull()?.id.orEmpty()) }
-    var categoryExpanded by remember { mutableStateOf(false) }
     var counterpartyExpanded by remember { mutableStateOf(false) }
     var selectedCounterpartyId by remember(receivable?.id) { mutableStateOf(receivable?.counterpartyId) }
     var datePickerOpen by remember { mutableStateOf(false) }
@@ -411,10 +415,10 @@ private fun ReceivableEditorDialog(
                 modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                OutlinedTextField(
+                FinancialDescriptionField(
                     client,
                     { client = it; selectedCounterpartyId = null; error = null },
-                    label = { Text("Client / counterparty") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                    label = "Client / counterparty"
                 )
                 ExposedDropdownMenuBox(
                     expanded = counterpartyExpanded,
@@ -443,24 +447,18 @@ private fun ReceivableEditorDialog(
                 }
                 if (receivable == null) {
                     MoneyAmountField(amountText, { amountText = it; error = null }, "Amount owed (PHP)")
-                    ExposedDropdownMenuBox(expanded = categoryExpanded, onExpandedChange = { categoryExpanded = !categoryExpanded }) {
-                        OutlinedTextField(
-                            value = categories.firstOrNull { it.id == selectedCategoryId }?.name ?: "Select income source",
-                            onValueChange = {}, readOnly = true, label = { Text("Income source") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
-                        )
-                        ExposedDropdownMenu(expanded = categoryExpanded, onDismissRequest = { categoryExpanded = false }) {
-                            categories.forEach { category ->
-                                DropdownMenuItem(text = { Text(category.name) }, onClick = { selectedCategoryId = category.id; categoryExpanded = false })
-                            }
-                        }
-                    }
+                    FinancialCategorySelector(
+                        categories = categories,
+                        selectedId = selectedCategoryId,
+                        onSelect = { selectedCategoryId = it },
+                        label = "Income source",
+                        emptyLabel = "Select income source"
+                    )
                 } else {
                     Text("Original amount and income source stay attached to the posted journal entry.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                TextButton(onClick = { datePickerOpen = true }) { Text("Due date: ${formatDate(dueDate)}") }
-                OutlinedTextField(description, { description = it }, label = { Text("Description / invoice reference") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                FinancialDateSelector(value = formatDate(dueDate), onClick = { datePickerOpen = true }, label = "Due date")
+                FinancialNotesField(description, { description = it }, label = "Description / invoice reference")
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -506,12 +504,10 @@ private fun CollectPaymentDialog(
     var selectedAccountId by remember(receivable.id) { mutableStateOf(initialAccountId) }
     var amountText by remember(receivable.id) { mutableStateOf(initialAmountText) }
     var notes by remember(receivable.id) { mutableStateOf("") }
-    var expanded by remember { mutableStateOf(false) }
     var confirmDiscard by remember(receivable.id) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val isDirty = selectedAccountId != initialAccountId || amountText != initialAmountText || notes.isNotBlank()
     val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
-    val selectedName = accounts.firstOrNull { it.id == selectedAccountId }?.name ?: "Select destination account"
 
     AlertDialog(
         onDismissRequest = requestDismiss,
@@ -519,19 +515,13 @@ private fun CollectPaymentDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("${receivable.clientName} · up to ${displayMoney(receivable.outstandingAmount)}")
-                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-                    OutlinedTextField(
-                        value = selectedName, onValueChange = {}, readOnly = true,
-                        label = { Text("Deposit account") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        accounts.forEach { account ->
-                            DropdownMenuItem(text = { Text(account.name) }, onClick = { selectedAccountId = account.id; expanded = false })
-                        }
-                    }
-                }
+                FinancialAccountSelector(
+                    accounts = accounts,
+                    selectedId = selectedAccountId,
+                    onSelect = { selectedAccountId = it },
+                    label = "Deposit account",
+                    emptyLabel = "Select destination account"
+                )
                 MoneyAmountField(amountText, { amountText = it; error = null }, "Collection amount (PHP)")
                 OutlinedTextField(notes, { notes = it }, label = { Text("Notes / receipt reference") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -568,12 +558,10 @@ private fun WriteOffDialog(
     var amountText by remember(receivable.id) { mutableStateOf(initialAmountText) }
     var notes by remember(receivable.id) { mutableStateOf("") }
     var selectedCategoryId by remember(receivable.id) { mutableStateOf(initialCategoryId) }
-    var expanded by remember { mutableStateOf(false) }
     var confirmDiscard by remember(receivable.id) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val isDirty = amountText != initialAmountText || notes.isNotBlank() || selectedCategoryId != initialCategoryId
     val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
-    val categoryName = categories.firstOrNull { it.id == selectedCategoryId }?.name ?: "Select expense category"
 
     AlertDialog(
         onDismissRequest = requestDismiss,
@@ -582,21 +570,15 @@ private fun WriteOffDialog(
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("This records an expense and reduces this receivable. The original income recognition stays unchanged.")
                 Text("Outstanding: ${displayMoney(receivable.outstandingAmount)}")
-                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
-                    OutlinedTextField(
-                        value = categoryName, onValueChange = {}, readOnly = true,
-                        label = { Text("Bad-debt expense category") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        categories.forEach { category ->
-                            DropdownMenuItem(text = { Text(category.name) }, onClick = { selectedCategoryId = category.id; expanded = false })
-                        }
-                    }
-                }
+                FinancialCategorySelector(
+                    categories = categories,
+                    selectedId = selectedCategoryId,
+                    onSelect = { selectedCategoryId = it },
+                    label = "Bad-debt expense category",
+                    emptyLabel = "Select expense category"
+                )
                 MoneyAmountField(amountText, { amountText = it; error = null }, "Amount to write off (PHP)")
-                OutlinedTextField(notes, { notes = it }, label = { Text("Reason / notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                FinancialNotesField(notes, { notes = it }, label = "Reason / notes")
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },

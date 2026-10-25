@@ -63,6 +63,11 @@ import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.SubscriptionPayment
 import com.ralledger.domain.model.SubscriptionStatus
 import com.ralledger.domain.model.Counterparty
+import com.ralledger.ui.components.FinancialAccountSelector
+import com.ralledger.ui.components.FinancialCategorySelector
+import com.ralledger.ui.components.FinancialDateSelector
+import com.ralledger.ui.components.FinancialDescriptionField
+import com.ralledger.ui.components.FinancialNotesField
 import java.util.Date
 import com.ralledger.ui.settings.displayDate
 
@@ -394,7 +399,6 @@ private fun SubscriptionPaymentDialog(
     var selectedCategoryId by remember(subscription.id) { mutableStateOf(initialCategoryId) }
     var notes by remember(subscription.id) { mutableStateOf("") }
     var paymentDate by remember(subscription.id) { mutableStateOf(initialPaymentDate) }
-    var categoryExpanded by remember { mutableStateOf(false) }
     var datePickerOpen by remember { mutableStateOf(false) }
     var confirmDiscard by remember(subscription.id) { mutableStateOf(false) }
     var inputError by remember { mutableStateOf<String?>(null) }
@@ -412,23 +416,15 @@ private fun SubscriptionPaymentDialog(
             ) {
                 Text("Payment account: ${subscription.assignedAccountName}", style = MaterialTheme.typography.bodySmall)
                 MoneyAmountField(amountText, { amountText = it; inputError = null }, "Amount (PHP)")
-                ExposedDropdownMenuBox(expanded = categoryExpanded, onExpandedChange = { categoryExpanded = !categoryExpanded }) {
-                    OutlinedTextField(
-                        value = expenseCategories.firstOrNull { it.id == selectedCategoryId }?.name ?: "Choose expense category",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Expense category") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(expanded = categoryExpanded, onDismissRequest = { categoryExpanded = false }) {
-                        expenseCategories.forEach { category ->
-                            DropdownMenuItem(text = { Text(category.name) }, onClick = { selectedCategoryId = category.id; categoryExpanded = false })
-                        }
-                    }
-                }
-                TextButton(onClick = { datePickerOpen = true }) { Text("Payment date: ${formatDate(paymentDate)}") }
-                OutlinedTextField(notes, { notes = it }, label = { Text("Notes (optional)") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                FinancialCategorySelector(
+                    categories = expenseCategories,
+                    selectedId = selectedCategoryId,
+                    onSelect = { selectedCategoryId = it },
+                    label = "Expense category",
+                    emptyLabel = "Choose expense category"
+                )
+                FinancialDateSelector(value = formatDate(paymentDate), onClick = { datePickerOpen = true }, label = "Payment date")
+                FinancialNotesField(notes, { notes = it }, label = "Notes (optional)")
                 if (expenseCategories.isEmpty()) Text("Create an active expense category before recording a payment.", color = MaterialTheme.colorScheme.error)
                 inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
@@ -488,7 +484,6 @@ private fun SubscriptionEditorDialog(
         mutableStateOf(subscription?.nextBillingDate ?: System.currentTimeMillis() + 30L * 86_400_000L)
     }
     var datePickerOpen by remember { mutableStateOf(false) }
-    var accountExpanded by remember { mutableStateOf(false) }
     var frequencyExpanded by remember { mutableStateOf(false) }
     var counterpartyExpanded by remember { mutableStateOf(false) }
     var inputError by remember { mutableStateOf<String?>(null) }
@@ -515,11 +510,11 @@ private fun SubscriptionEditorDialog(
                 modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                OutlinedTextField(name, { name = it; inputError = null }, label = { Text("Subscription name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(
+                FinancialDescriptionField(name, { name = it; inputError = null }, label = "Subscription name")
+                FinancialDescriptionField(
                     merchant,
                     { merchant = it; selectedCounterpartyId = null },
-                    label = { Text("Merchant / service") }, singleLine = true, modifier = Modifier.fillMaxWidth()
+                    label = "Merchant / service"
                 )
                 ExposedDropdownMenuBox(expanded = counterpartyExpanded, onExpandedChange = { counterpartyExpanded = !counterpartyExpanded }) {
                     OutlinedTextField(
@@ -543,17 +538,13 @@ private fun SubscriptionEditorDialog(
                     }
                 }
 
-                ExposedDropdownMenuBox(expanded = accountExpanded, onExpandedChange = { accountExpanded = !accountExpanded }) {
-                    OutlinedTextField(
-                        value = accounts.find { it.id == selectedAccountId }?.name ?: "Select payment account",
-                        onValueChange = {}, readOnly = true, label = { Text("Payment account") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = accountExpanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(expanded = accountExpanded, onDismissRequest = { accountExpanded = false }) {
-                        accounts.forEach { account -> DropdownMenuItem(text = { Text(account.name) }, onClick = { selectedAccountId = account.id; accountExpanded = false }) }
-                    }
-                }
+                FinancialAccountSelector(
+                    accounts = accounts,
+                    selectedId = selectedAccountId,
+                    onSelect = { selectedAccountId = it },
+                    label = "Payment account",
+                    emptyLabel = "Select payment account"
+                )
 
                 ExposedDropdownMenuBox(expanded = frequencyExpanded, onExpandedChange = { frequencyExpanded = !frequencyExpanded }) {
                     OutlinedTextField(
@@ -570,8 +561,8 @@ private fun SubscriptionEditorDialog(
                 }
 
                 MoneyAmountField(amountText, { amountText = it; inputError = null }, "Billing amount (PHP)")
-                TextButton(onClick = { datePickerOpen = true }) { Text("Next billing date: ${formatDate(nextBillingDate)}") }
-                OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
+                FinancialDateSelector(value = formatDate(nextBillingDate), onClick = { datePickerOpen = true }, label = "Next billing date")
+                FinancialNotesField(notes, { notes = it })
                 inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },

@@ -786,3 +786,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification: 107 unit tests passed; all 41 API 37 connected instrumentation tests passed; lint reported 32 warnings and 0 errors; debug APK assembly succeeded. `emulator-5562` remained offline and was skipped.
 - Refreshed `releases/RalLedger-debug.apk`: 76,768,527 bytes; SHA-256 `683A76CF256A4D60D69A7B9658C2E3E545EFE03F12E95068FFD1748B2FD92C76`. APK Signature Scheme v2 verification passed; the APK is debug-signed, not production-signed.
 - No real financial data was used. Full TalkBack focus review across the remaining screens, other-module text scaling, reordered-widget persistence, manual file-provider import/export, and broad screen-by-screen UI review remain open. This update is local and unpublished.
+
+## Phase II — Dashboard widget-order persistence — 2026-10-26
+
+- Added API 37 instrumentation for moving a dashboard widget and verifying that the saved order returns after Activity recreation. The test captures and restores the emulator's original dashboard preferences.
+- Manually verified a real process restart on `emulator-5554`: moved Available Money below Net Worth, force-stopped and reopened RalLedger, and confirmed Settings → Dashboard retained `Net Worth, Available Money` at the top. Restored the original order afterward; the app had no financial records. The post-relaunch screenshot is in ignored `.ralledger-local/qa/dashboard-order-after-force-stop.png`.
+- Verification: 107 unit tests and all 42 connected API 37 instrumentation tests passed; lint reported 32 warnings and 0 errors; debug assembly was up to date and APK Signature Scheme v2 verification passed. `emulator-5562` remained offline and was skipped.
+- The existing local debug APK remains 76,768,527 bytes with SHA-256 `683A76CF256A4D60D69A7B9658C2E3E545EFE03F12E95068FFD1748B2FD92C76`; no app production source changed in this test-focused slice. It is debug-signed, not production-signed.
+- Full TalkBack review, remaining-screen accessibility, other-module text scaling, manual file-provider import/export, and broad screen-by-screen review remain open. This update is local and unpublished.

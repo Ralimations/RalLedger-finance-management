@@ -6,6 +6,9 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ralledger.MainActivity
+import com.ralledger.ui.dashboard.DashboardPreferences
+import com.ralledger.ui.dashboard.DashboardWidget
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -50,6 +53,63 @@ class DashboardSettingsAccessibilityInstrumentedTest {
         } finally {
             scenario?.close()
             runBlocking { appLockPreferences.setEnabled(false) }
+        }
+    }
+
+    @Test
+    fun dashboardWidgetOrderPersistsThroughActivityRecreation() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val targetContext = instrumentation.targetContext
+        val appLockPreferences = AppLockPreferences(targetContext)
+        val dashboardPreferences = DashboardPreferences(targetContext)
+        runBlocking { appLockPreferences.setEnabled(false) }
+        val originalSettings = runBlocking { dashboardPreferences.settings.first() }
+
+        var scenario: ActivityScenario<MainActivity>? = null
+        try {
+            scenario = ActivityScenario.launch(MainActivity::class.java)
+            assertTrue(waitForUi(instrumentation) { performClickOnLabeledNode(instrumentation, "Settings") })
+            assertTrue(waitForUi(instrumentation) { performClickOnLabeledNode(instrumentation, "Dashboard") })
+            assertTrue(
+                "Dashboard widget settings should finish opening; visible: ${visibleAccessibilityText(instrumentation)}",
+                waitForUi(instrumentation) { "Dashboard widgets" in visibleAccessibilityText(instrumentation) }
+            )
+
+            val initialOrder = dashboardWidgetOrder(instrumentation)
+            assertTrue(
+                "Dashboard widget titles should be exposed in order; found $initialOrder",
+                initialOrder.size >= 2
+            )
+            val expectedOrder = initialOrder.toMutableList().apply {
+                this[0] = initialOrder[1]
+                this[1] = initialOrder[0]
+            }
+            assertTrue(
+                "The first widget should move down one position",
+                waitForUi(instrumentation) {
+                    performClickOnLabeledNode(instrumentation, "Move ${initialOrder.first().title} down")
+                }
+            )
+            assertTrue("The moved order should appear before restarting", waitForUi(instrumentation) {
+                dashboardWidgetOrder(instrumentation) == expectedOrder
+            })
+
+            scenario.recreate()
+            assertTrue(waitForUi(instrumentation) { performClickOnLabeledNode(instrumentation, "Settings") })
+            assertTrue(waitForUi(instrumentation) { performClickOnLabeledNode(instrumentation, "Dashboard") })
+            assertTrue(waitForUi(instrumentation) {
+                "Dashboard widgets" in visibleAccessibilityText(instrumentation)
+            })
+            assertTrue(
+                "The dashboard widget order should persist after Activity recreation",
+                waitForUi(instrumentation) { dashboardWidgetOrder(instrumentation) == expectedOrder }
+            )
+        } finally {
+            scenario?.close()
+            runBlocking {
+                appLockPreferences.setEnabled(false)
+                dashboardPreferences.restore(originalSettings)
+            }
         }
     }
 
@@ -156,6 +216,30 @@ class DashboardSettingsAccessibilityInstrumentedTest {
             findLabeledCheckableNode(root, label)
         } finally {
             root.recycle()
+        }
+    }
+
+    private fun dashboardWidgetOrder(instrumentation: android.app.Instrumentation): List<DashboardWidget> {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return emptyList()
+        val order = mutableListOf<DashboardWidget>()
+        try {
+            collectDashboardWidgetOrder(root, order)
+        } finally {
+            root.recycle()
+        }
+        return order
+    }
+
+    private fun collectDashboardWidgetOrder(node: AccessibilityNodeInfo, output: MutableList<DashboardWidget>) {
+        val text = node.text?.toString()
+        DashboardWidget.entries.firstOrNull { it.title == text }?.let(output::add)
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            try {
+                collectDashboardWidgetOrder(child, output)
+            } finally {
+                child.recycle()
+            }
         }
     }
 

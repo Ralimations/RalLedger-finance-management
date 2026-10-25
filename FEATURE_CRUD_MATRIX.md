@@ -122,3 +122,9 @@ Still requiring explicit manual review: secure-device app-lock setup/unlock/relo
 - Added instrumentation coverage for opening Settings → Dashboard and finding Recent transactions as a labeled checkable control.
 - Verification: 107 unit tests and 41 connected API 37 tests passed; lint reported 32 warnings and 0 errors; APK assembly and v2 signature verification passed. See `DEVELOPMENT_PROGRESS.md` for APK size and SHA-256.
 - Targeted semantics are covered; full TalkBack focus review and remaining-screen accessibility checks are still open.
+
+## API 37 dashboard widget-order persistence supplement — 2026-10-26
+
+- The API 37 instrumentation test moves a widget and confirms the order survives Activity recreation; it restores the original DataStore settings in cleanup.
+- A separate emulator walkthrough moved Available Money below Net Worth, force-stopped and reopened the app, verified the same order in Settings, and restored the original order. No financial data was present. Screenshot evidence is in ignored `.ralledger-local/qa/dashboard-order-after-force-stop.png`.
+- Verification: 107 unit tests and 42 connected API 37 tests passed; lint reported 32 warnings and 0 errors; debug assembly was up to date and APK Signature Scheme v2 verified.

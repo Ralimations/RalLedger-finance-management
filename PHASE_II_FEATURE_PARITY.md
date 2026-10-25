@@ -68,3 +68,9 @@ This map compares existing controls with the Phase II destination. Financial ope
 - Added explicit accessible descriptions to app-bar actions, Settings section cards, and the dashboard widget Switch. The API 37 instrumentation test navigates to Settings → Dashboard and confirms the Recent transactions Switch is labeled and checkable.
 - Verification on the current source: 107 unit tests and 41 connected Android tests passed; lint reported 32 warnings and 0 errors; APK assembly and APK Signature Scheme v2 verification passed.
 - This closes the targeted widget-label check only. Full TalkBack focus review across finance forms and the remaining screens is still outstanding.
+
+## Dashboard widget order persistence — 2026-10-26
+
+- A connected API 37 test verifies a widget move survives Activity recreation. A manual emulator check additionally verified the order after force-stop and process relaunch, then restored the original preference order.
+- Regression status: 107 unit tests and 42 connected API 37 instrumentation tests pass; lint reports 32 warnings and 0 errors. The app code did not change in this test-focused slice; the previously verified debug APK remains current.
+- Screenshot evidence is stored in ignored `.ralledger-local/qa/dashboard-order-after-force-stop.png`. Broader TalkBack and full screen verification remain open.

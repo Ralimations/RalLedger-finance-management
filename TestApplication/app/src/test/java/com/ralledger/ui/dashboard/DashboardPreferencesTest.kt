@@ -45,4 +45,37 @@ class DashboardPreferencesTest {
         assertFalse(DashboardWidget.AVAILABLE_MONEY in settings.visible)
         assertTrue(DashboardWidget.NET_WORTH in settings.visible)
     }
+
+    @Test
+    fun oldDataStoreVisibilityAddsTheNewActivityWidgetByDefault() {
+        val oldWidgets = DashboardWidget.entries.filterNot { it == DashboardWidget.RECENT_TRANSACTIONS }
+        val oldOrder = oldWidgets.joinToString(",") { it.name }
+        val oldVisibility = listOf(DashboardWidget.AVAILABLE_MONEY, DashboardWidget.MONTHLY_FLOW)
+            .joinToString(",") { it.name }
+
+        assertFalse(dashboardOrderIncludesRecentTransactions(oldOrder))
+        assertTrue(
+            DashboardWidget.RECENT_TRANSACTIONS in decodeVisibleWidgets(
+                oldVisibility,
+                defaultRecentTransactionsVisible = true
+            )
+        )
+        assertFalse(
+            DashboardWidget.RECENT_TRANSACTIONS in decodeVisibleWidgets(
+                oldVisibility,
+                defaultRecentTransactionsVisible = false
+            )
+        )
+    }
+
+    @Test
+    fun legacyBackupWidgetSettingsAppendRecentWithoutReorderingExistingWidgets() {
+        val oldOrder = DashboardWidget.entries.filterNot { it == DashboardWidget.RECENT_TRANSACTIONS }.map { it.name }
+        val oldVisible = listOf(DashboardWidget.AVAILABLE_MONEY.name, DashboardWidget.MONTHLY_FLOW.name)
+
+        val (order, visible) = migrateLegacyDashboardWidgetLists(oldOrder, oldVisible)
+
+        assertEquals(oldOrder + DashboardWidget.RECENT_TRANSACTIONS.name, order)
+        assertEquals(oldVisible + DashboardWidget.RECENT_TRANSACTIONS.name, visible)
+    }
 }

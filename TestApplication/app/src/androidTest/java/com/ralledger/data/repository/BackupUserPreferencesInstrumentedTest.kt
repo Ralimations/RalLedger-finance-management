@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.ralledger.data.local.RalLedgerDatabase
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.domain.model.AccountType
+import com.ralledger.ui.dashboard.DashboardWidget
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -50,8 +51,8 @@ class BackupUserPreferencesInstrumentedTest {
             subscriptionReminderDaysBefore = 3,
             themeMode = "DARK",
             themePalette = "SAGE",
-            dashboardWidgetOrder = listOf("MONTHLY_FLOW", "AVAILABLE_MONEY", "NET_WORTH", "RESERVED_SAVINGS", "MONEY_OWED", "SUBSCRIPTIONS"),
-            visibleDashboardWidgets = listOf("AVAILABLE_MONEY", "MONTHLY_FLOW", "SUBSCRIPTIONS")
+            dashboardWidgetOrder = listOf("MONTHLY_FLOW", "AVAILABLE_MONEY", "NET_WORTH", "RESERVED_SAVINGS", "MONEY_OWED", "SUBSCRIPTIONS", "RECENT_TRANSACTIONS"),
+            visibleDashboardWidgets = listOf("AVAILABLE_MONEY", "MONTHLY_FLOW", "SUBSCRIPTIONS", "RECENT_TRANSACTIONS")
         )
         val sourcePreferences = MemoryBackupPreferencesStore(settings)
         val targetPreferences = MemoryBackupPreferencesStore(BackupUserPreferences())
@@ -89,6 +90,24 @@ class BackupUserPreferencesInstrumentedTest {
             source.close()
             destination.close()
         }
+    }
+
+    @Test
+    fun olderBackupAddsRecentTransactionsWidgetWithoutChangingExistingOrder() {
+        val previousWidgets = DashboardWidget.entries
+            .filterNot { it == DashboardWidget.RECENT_TRANSACTIONS }
+            .map { it.name }
+        val previouslyVisible = listOf(DashboardWidget.AVAILABLE_MONEY.name, DashboardWidget.MONTHLY_FLOW.name)
+        val oldBackupPreferences = BackupUserPreferences(
+            dashboardWidgetOrder = previousWidgets,
+            visibleDashboardWidgets = previouslyVisible
+        ).toJson()
+
+        val migrated = BackupUserPreferences.fromJson(oldBackupPreferences)
+
+        assertEquals(previousWidgets + DashboardWidget.RECENT_TRANSACTIONS.name, migrated.dashboardWidgetOrder)
+        assertEquals(previouslyVisible + DashboardWidget.RECENT_TRANSACTIONS.name, migrated.visibleDashboardWidgets)
+        assertTrue(migrated.validationErrors(emptyList()).isEmpty())
     }
 
     @Test

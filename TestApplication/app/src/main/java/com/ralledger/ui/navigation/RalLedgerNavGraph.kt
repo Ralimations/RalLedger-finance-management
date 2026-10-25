@@ -236,7 +236,13 @@ fun RalLedgerMainScreen(
             ) {
             composable(Screen.Dashboard.route) {
                 val vm: DashboardViewModel = viewModel(factory = DashboardViewModel.Factory(appContainer.repository))
-                DashboardScreen(viewModel = vm, settings = dashboardSettings)
+                DashboardScreen(
+                    viewModel = vm,
+                    settings = dashboardSettings,
+                    onSeeAllTransactions = {
+                        navController.navigate(Screen.Transactions.route) { launchSingleTop = true }
+                    }
+                )
             }
             composable(Screen.Accounts.route) {
                 AccountsScreen(viewModel = accountsVm)

@@ -10,6 +10,7 @@ import com.ralledger.domain.usecase.InsightsPeriodType
 import com.ralledger.ui.dashboard.DashboardPreferences
 import com.ralledger.ui.dashboard.DashboardSettings
 import com.ralledger.ui.dashboard.DashboardWidget
+import com.ralledger.ui.dashboard.migrateLegacyDashboardWidgetLists
 import com.ralledger.ui.settings.CurrencyDisplayFormat
 import com.ralledger.ui.settings.DateDisplayFormat
 import com.ralledger.ui.settings.FinancialPreferences
@@ -117,20 +118,26 @@ data class BackupUserPreferences(
     companion object {
         private val REMINDER_DAYS = setOf(0, 1, 3)
 
-        fun fromJson(json: JSONObject) = BackupUserPreferences(
-            defaultTransactionAccountId = if (json.isNull("defaultTransactionAccountId")) null
-                else json.getString("defaultTransactionAccountId"),
-            defaultInsightsPeriod = json.getString("defaultInsightsPeriod"),
-            dateDisplayFormat = json.getString("dateDisplayFormat"),
-            transactionListDensity = json.getString("transactionListDensity"),
-            currencyDisplayFormat = json.getString("currencyDisplayFormat"),
-            subscriptionRemindersEnabled = json.getBoolean("subscriptionRemindersEnabled"),
-            subscriptionReminderDaysBefore = json.getInt("subscriptionReminderDaysBefore"),
-            themeMode = json.getString("themeMode"),
-            themePalette = json.getString("themePalette"),
-            dashboardWidgetOrder = json.getJSONArray("dashboardWidgetOrder").strings(),
-            visibleDashboardWidgets = json.getJSONArray("visibleDashboardWidgets").strings()
-        )
+        fun fromJson(json: JSONObject): BackupUserPreferences {
+            val (dashboardWidgetOrder, visibleDashboardWidgets) = migrateLegacyDashboardWidgetLists(
+                order = json.getJSONArray("dashboardWidgetOrder").strings(),
+                visible = json.getJSONArray("visibleDashboardWidgets").strings()
+            )
+            return BackupUserPreferences(
+                defaultTransactionAccountId = if (json.isNull("defaultTransactionAccountId")) null
+                    else json.getString("defaultTransactionAccountId"),
+                defaultInsightsPeriod = json.getString("defaultInsightsPeriod"),
+                dateDisplayFormat = json.getString("dateDisplayFormat"),
+                transactionListDensity = json.getString("transactionListDensity"),
+                currencyDisplayFormat = json.getString("currencyDisplayFormat"),
+                subscriptionRemindersEnabled = json.getBoolean("subscriptionRemindersEnabled"),
+                subscriptionReminderDaysBefore = json.getInt("subscriptionReminderDaysBefore"),
+                themeMode = json.getString("themeMode"),
+                themePalette = json.getString("themePalette"),
+                dashboardWidgetOrder = dashboardWidgetOrder,
+                visibleDashboardWidgets = visibleDashboardWidgets
+            )
+        }
     }
 }
 

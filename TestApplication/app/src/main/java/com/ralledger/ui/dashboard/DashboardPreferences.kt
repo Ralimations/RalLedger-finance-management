@@ -15,7 +15,8 @@ enum class DashboardWidget(val title: String, val detail: String) {
     RESERVED_SAVINGS("Reserved savings", "Money set aside for goals"),
     MONEY_OWED("Money owed", "Receivables and payables"),
     MONTHLY_FLOW("This month", "Income, expenses and net flow"),
-    SUBSCRIPTIONS("Recurring subscriptions", "Estimated monthly total")
+    SUBSCRIPTIONS("Recurring subscriptions", "Estimated monthly total"),
+    RECENT_TRANSACTIONS("Recent transactions", "Latest posted activity")
 }
 
 data class DashboardSettings(
@@ -29,25 +30,40 @@ class DashboardPreferences(context: Context) {
     private val store = context.applicationContext.dashboardDataStore
 
     val settings: Flow<DashboardSettings> = store.data.map { preferences ->
+        val storedOrder = preferences[ORDER_KEY]
         DashboardSettings(
-            order = normalizeDashboardOrder(preferences[ORDER_KEY]),
-            visible = decodeVisibleWidgets(preferences[VISIBLE_KEY])
+            order = normalizeDashboardOrder(storedOrder),
+            visible = decodeVisibleWidgets(
+                preferences[VISIBLE_KEY],
+                defaultRecentTransactionsVisible = !dashboardOrderIncludesRecentTransactions(storedOrder)
+            )
         )
     }
 
     suspend fun setVisible(widget: DashboardWidget, isVisible: Boolean) {
         store.edit { preferences ->
-            val current = decodeVisibleWidgets(preferences[VISIBLE_KEY]).toMutableSet()
+            val storedOrder = preferences[ORDER_KEY]
+            val current = decodeVisibleWidgets(
+                preferences[VISIBLE_KEY],
+                defaultRecentTransactionsVisible = !dashboardOrderIncludesRecentTransactions(storedOrder)
+            ).toMutableSet()
             if (isVisible) current += widget else current -= widget
+            preferences[ORDER_KEY] = normalizeDashboardOrder(storedOrder).joinToString(",") { it.name }
             preferences[VISIBLE_KEY] = current.sortedBy { it.ordinal }.joinToString(",") { it.name }
         }
     }
 
     suspend fun move(widget: DashboardWidget, offset: Int) {
         store.edit { preferences ->
-            val order = normalizeDashboardOrder(preferences[ORDER_KEY])
+            val storedOrder = preferences[ORDER_KEY]
+            val order = normalizeDashboardOrder(storedOrder)
             val updated = moveDashboardWidget(order, widget, offset)
-            if (updated != order) preferences[ORDER_KEY] = updated.joinToString(",") { it.name }
+            val visible = decodeVisibleWidgets(
+                preferences[VISIBLE_KEY],
+                defaultRecentTransactionsVisible = !dashboardOrderIncludesRecentTransactions(storedOrder)
+            )
+            preferences[ORDER_KEY] = updated.joinToString(",") { it.name }
+            preferences[VISIBLE_KEY] = visible.sortedBy { it.ordinal }.joinToString(",") { it.name }
         }
     }
 
@@ -73,10 +89,39 @@ internal fun normalizeDashboardOrder(encoded: String?): List<DashboardWidget> {
 }
 
 internal fun decodeVisibleWidgets(encoded: String?): Set<DashboardWidget> {
+    return decodeVisibleWidgets(encoded, defaultRecentTransactionsVisible = false)
+}
+
+internal fun decodeVisibleWidgets(
+    encoded: String?,
+    defaultRecentTransactionsVisible: Boolean
+): Set<DashboardWidget> {
     if (encoded == null) return DashboardWidget.entries.toSet()
-    return encoded.split(',')
+    val visible = encoded.split(',')
         .mapNotNull { name -> DashboardWidget.entries.firstOrNull { it.name == name } }
         .toSet()
+        .toMutableSet()
+    if (defaultRecentTransactionsVisible) visible += DashboardWidget.RECENT_TRANSACTIONS
+    return visible
+}
+
+internal fun dashboardOrderIncludesRecentTransactions(encoded: String?): Boolean =
+    DashboardWidget.RECENT_TRANSACTIONS.name in encoded.orEmpty().split(',')
+
+/** Older backups contain the previous widget set; new activity starts visible for those backups. */
+internal fun migrateLegacyDashboardWidgetLists(
+    order: List<String>,
+    visible: List<String>
+): Pair<List<String>, List<String>> {
+    val newWidget = DashboardWidget.RECENT_TRANSACTIONS.name
+    val previousWidgets = DashboardWidget.entries.map { it.name }.filterNot { it == newWidget }.toSet()
+    val isLegacyShape = order.size == previousWidgets.size && order.toSet() == previousWidgets &&
+        visible.size == visible.toSet().size && visible.all { it in previousWidgets }
+    return if (isLegacyShape) {
+        (order + newWidget) to (visible + newWidget)
+    } else {
+        order to visible
+    }
 }
 
 internal fun moveDashboardWidget(order: List<DashboardWidget>, widget: DashboardWidget, offset: Int): List<DashboardWidget> {

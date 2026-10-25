@@ -58,6 +58,7 @@ import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
 import com.ralledger.ui.components.MoneyAmountField
+import com.ralledger.ui.components.DiscardChangesDialog
 import kotlinx.coroutines.launch
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -331,13 +332,21 @@ private fun BudgetEditorDialog(
     var amountText by remember(budget?.id) {
         mutableStateOf(budget?.limit?.centavos?.let(::moneyInput).orEmpty())
     }
+    val originalCategoryId = remember(budget?.id) { budget?.categoryId ?: categories.firstOrNull()?.id.orEmpty() }
+    val originalAmountText = remember(budget?.id) { budget?.limit?.centavos?.let(::moneyInput).orEmpty() }
+    val originalMonth = remember(budget?.id) { budget?.period ?: month }
     var categoryExpanded by remember { mutableStateOf(false) }
     var localError by remember(budget?.id) { mutableStateOf<String?>(null) }
+    var confirmDiscard by remember(budget?.id) { mutableStateOf(false) }
+    val isDirty = categoryId != originalCategoryId || amountText != originalAmountText || month != originalMonth
+    val requestDismiss = {
+        if (isDirty) confirmDiscard = true else onDismiss()
+    }
     val selectedCategory = allCategories.firstOrNull { it.id == categoryId }
     val options = (categories + listOfNotNull(selectedCategory?.takeIf { it.isArchived })).distinctBy { it.id }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (budget == null) "Add budget" else "Edit budget") },
         text = {
             Column(
@@ -394,8 +403,14 @@ private fun BudgetEditorDialog(
                 }
             }) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(
+            onDiscard = { confirmDiscard = false; onDismiss() },
+            onKeepEditing = { confirmDiscard = false }
+        )
+    }
 }
 
 private fun moneyInput(centavos: Long): String = "${centavos / 100}.${(centavos % 100).toString().padStart(2, '0')}"

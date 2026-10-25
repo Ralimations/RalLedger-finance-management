@@ -51,6 +51,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Money
 import com.ralledger.ui.components.MoneyAmountField
+import com.ralledger.ui.components.DiscardChangesDialog
 import com.ralledger.domain.model.SavingsGoal
 import com.ralledger.domain.model.SavingsGoalEventType
 import com.ralledger.ui.settings.displayDate
@@ -252,8 +253,17 @@ private fun SavingsGoalEditorDialog(goal: SavingsGoal?, onDismiss: () -> Unit, o
     var dateText by remember(goal?.id) { mutableStateOf(goal?.targetDate?.let(::formatGoalDateInput).orEmpty()) }
     var notes by remember(goal?.id) { mutableStateOf(goal?.notes.orEmpty()) }
     var error by remember(goal?.id) { mutableStateOf<String?>(null) }
+    val originalName = remember(goal?.id) { goal?.name.orEmpty() }
+    val originalTargetText = remember(goal?.id) { goal?.targetAmount?.let { "%.2f".format(Locale.US, it.centavos / 100.0) }.orEmpty() }
+    val originalDateText = remember(goal?.id) { goal?.targetDate?.let(::formatGoalDateInput).orEmpty() }
+    val originalNotes = remember(goal?.id) { goal?.notes.orEmpty() }
+    var confirmDiscard by remember(goal?.id) { mutableStateOf(false) }
+    val isDirty = name != originalName || targetText != originalTargetText || dateText != originalDateText || notes != originalNotes
+    val requestDismiss = {
+        if (isDirty) confirmDiscard = true else onDismiss()
+    }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (goal == null) "Add savings goal" else "Edit savings goal") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()).heightIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -278,8 +288,14 @@ private fun SavingsGoalEditorDialog(goal: SavingsGoal?, onDismiss: () -> Unit, o
                 }
             }) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(
+            onDiscard = { confirmDiscard = false; onDismiss() },
+            onKeepEditing = { confirmDiscard = false }
+        )
+    }
 }
 
 @Composable

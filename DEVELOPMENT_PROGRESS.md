@@ -655,3 +655,12 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification passed `:app:testDebugUnitTest` (103 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing. ADB reports emulator-5562 offline and no AVD is configured, so visual and interaction review remains pending.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `E1A1BAD5F0EA052BAB4B1B527FE86D69BBB79B464F06922A0C6FFEA35EEED287`. It is debug-signed, not a production release.
 - This iteration remains local and unpublished. Specialized-form discard guards, shared non-amount controls, accessible device walkthroughs, and full cross-flow regression remain open.
+
+## Phase II — Planning editor discard protection — 2026-10-25
+
+- Added a shared confirmation dialog for discarding unsaved changes.
+- Budget editors detect changes to category, amount, or month. Savings Goal editors detect changes to name, target, target date, or notes. Cancel, system Back, and outside dismissal close an untouched form directly; edited forms require Keep editing or Discard.
+- Existing Save operations and repository validation remain unchanged. Discard guards for other specialized editors are still open.
+- Verification passed `:app:testDebugUnitTest` (103 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing. The emulator is offline and no AVD is configured, so dialog layering and Back/outside interaction remain device-review items.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `0BEAC65F84C37F36B2F4A01F9A092F719D6E40E1703CC1419D896697089AD256`. It is debug-signed, not a production release.
+- This iteration remains local and unpublished. Remaining Phase II work includes guards on other specialized forms, shared non-amount controls, accessible device walkthroughs, and full cross-flow regression.

@@ -64,7 +64,7 @@ import com.ralledger.domain.model.Money
 import com.ralledger.domain.usecase.InsightsPeriodType
 import com.ralledger.ui.accounts.AccountsScreen
 import com.ralledger.ui.components.AccountBalancesSummary
-import com.ralledger.ui.components.MoneyCalculatorAction
+import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.ui.accounts.AccountsViewModel
 import com.ralledger.ui.categories.CategoriesScreen
 import com.ralledger.ui.categories.CategoriesViewModel
@@ -75,6 +75,7 @@ import com.ralledger.ui.dashboard.DashboardWidget
 import com.ralledger.ui.insights.InsightsScreen
 import com.ralledger.ui.insights.InsightsViewModel
 import com.ralledger.ui.planning.PlanningScreen
+import com.ralledger.ui.planning.PlanningQuickAction
 import com.ralledger.ui.planning.CustomReportsViewModel
 import com.ralledger.ui.planning.FinancialProjectsViewModel
 import com.ralledger.ui.planning.BudgetsViewModel
@@ -134,7 +135,9 @@ fun RalLedgerMainScreen(
     val showBottomNavLabels = LocalConfiguration.current.screenWidthDp >= 320
 
     var showAddDialog by remember { mutableStateOf(false) }
+    var showQuickActionHub by remember { mutableStateOf(false) }
     var dialogInitialTransactionType by remember { mutableStateOf("EXPENSE") }
+    var pendingPlanningAction by remember { mutableStateOf<PlanningQuickAction?>(null) }
     val themeSettings by appContainer.themePreferences.settings.collectAsState(initial = ThemeSettings())
     val dashboardSettings by appContainer.dashboardPreferences.settings.collectAsState(initial = DashboardSettings())
     val financialSettings by appContainer.financialPreferences.settings.collectAsState(initial = FinancialSettings())
@@ -157,12 +160,11 @@ fun RalLedgerMainScreen(
             TopAppBar(
                 title = { Text("RalLedger") },
                 actions = {
-                    if (currentRoute == Screen.Dashboard.route || currentRoute == Screen.Insights.route) {
+                    if (currentRoute in navScreens.map { it.route }) {
                         IconButton(onClick = {
-                            dialogInitialTransactionType = "EXPENSE"
-                            showAddDialog = true
+                            showQuickActionHub = true
                         }) {
-                            Icon(Icons.Default.Add, contentDescription = "Record transaction")
+                            Icon(Icons.Default.Add, contentDescription = "Add")
                         }
                     }
                     IconButton(onClick = {
@@ -263,7 +265,9 @@ fun RalLedgerMainScreen(
                     interestProductsViewModel = interestProductsVm,
                     counterpartiesViewModel = counterpartiesVm,
                     customReportsViewModel = customReportsVm,
-                    financialProjectsViewModel = financialProjectsVm
+                    financialProjectsViewModel = financialProjectsVm,
+                    quickActionRequest = pendingPlanningAction,
+                    onQuickActionHandled = { pendingPlanningAction = null }
                 )
             }
             composable(Screen.Insights.route) {
@@ -323,6 +327,24 @@ fun RalLedgerMainScreen(
             }
         }
 
+            if (showQuickActionHub) {
+                QuickActionHubSheet(
+                    onDismiss = { showQuickActionHub = false },
+                    onTransactionSelected = { type ->
+                        dialogInitialTransactionType = type
+                        showQuickActionHub = false
+                        showAddDialog = true
+                    },
+                    onPlanningActionSelected = { action ->
+                        pendingPlanningAction = action
+                        showQuickActionHub = false
+                        navController.navigate(Screen.Planning.route) {
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
+
             if (showAddDialog) {
                 QuickAddTransactionDialog(
                     appContainer = appContainer,
@@ -352,19 +374,29 @@ fun QuickAddTransactionDialog(
     var destAccountId by remember { mutableStateOf("") }
     var categoryId by remember { mutableStateOf("") }
     var inputError by remember { mutableStateOf<String?>(null) }
+    var isSaving by remember { mutableStateOf(false) }
     var accountMenuExpanded by remember { mutableStateOf(false) }
     var destinationMenuExpanded by remember { mutableStateOf(false) }
     var categoryMenuExpanded by remember { mutableStateOf(false) }
 
     val accounts by appContainer.repository.accountsFlow.collectAsState(initial = emptyList())
     val categories by appContainer.repository.categoriesFlow.collectAsState(initial = emptyList())
+    val transactions by appContainer.repository.transactionsFlow.collectAsState(initial = emptyList())
     val eligibleAccounts = accounts.filter { it.accountType.isAsset && !it.isArchived }
     val eligibleCategories = categories.filter {
         !it.isArchived && it.type.name == if (txType == "INCOME") "INCOME" else "EXPENSE"
     }
-    LaunchedEffect(eligibleAccounts, defaultTransactionAccountId) {
+    LaunchedEffect(eligibleAccounts, defaultTransactionAccountId, transactions, txType) {
         val eligibleIds = eligibleAccounts.map { it.id }.toSet()
+        val expectedType = if (txType == "INCOME") "INCOME" else if (txType == "EXPENSE") "EXPENSE" else null
+        val lastUsedAccountId = expectedType?.let { type ->
+            transactions.asSequence()
+                .filter { it.transactionType.name == type && !it.isReversed }
+                .maxByOrNull { it.timestamp }
+                ?.accountId
+        }
         val defaultAccount = defaultTransactionAccountId?.takeIf { it in eligibleIds }
+            ?: lastUsedAccountId?.takeIf { it in eligibleIds }
             ?: eligibleAccounts.firstOrNull()?.id.orEmpty()
         if (accountId.isBlank() || accountId !in eligibleIds) accountId = defaultAccount
         val fallbackDestination = eligibleAccounts.firstOrNull { it.id != accountId }?.id.orEmpty()
@@ -372,12 +404,22 @@ fun QuickAddTransactionDialog(
             destAccountId = fallbackDestination
         }
     }
-    LaunchedEffect(eligibleCategories, txType) {
-        if (categoryId !in eligibleCategories.map { it.id }) categoryId = eligibleCategories.firstOrNull()?.id ?: ""
+    LaunchedEffect(eligibleCategories, transactions, txType) {
+        if (categoryId !in eligibleCategories.map { it.id }) {
+            val expectedType = if (txType == "INCOME") "INCOME" else if (txType == "EXPENSE") "EXPENSE" else null
+            val lastUsedCategoryId = expectedType?.let { type ->
+                transactions.asSequence()
+                    .filter { it.transactionType.name == type && !it.isReversed }
+                    .maxByOrNull { it.timestamp }
+                    ?.categoryId
+            }
+            categoryId = lastUsedCategoryId?.takeIf { id -> eligibleCategories.any { it.id == id } }
+                ?: eligibleCategories.firstOrNull()?.id.orEmpty()
+        }
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSaving) onDismiss() },
         title = { Text("Record Transaction") },
         text = {
             Column(
@@ -398,14 +440,10 @@ fun QuickAddTransactionDialog(
 
                 AccountBalancesSummary(accounts)
 
-                OutlinedTextField(
+                MoneyAmountField(
                     value = amountStr,
                     onValueChange = { amountStr = it; inputError = null },
-                    label = { Text("Amount (PHP)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    trailingIcon = { MoneyCalculatorAction(amountStr) { amountStr = it; inputError = null } }
+                    label = "Amount (PHP)"
                 )
 
                 OutlinedTextField(
@@ -464,37 +502,50 @@ fun QuickAddTransactionDialog(
             Button(
                 onClick = {
                     scope.launch {
+                        if (isSaving) return@launch
                         val amount = Money.parse(amountStr)
+                        val validationError = when {
+                            amount == null || !amount.isPositive -> "Enter a valid amount greater than zero."
+                            accountId.isBlank() -> "Add or choose a financial account first."
+                            txType != "TRANSFER" && categoryId.isBlank() -> "Choose a category or income source."
+                            txType == "TRANSFER" && (destAccountId.isBlank() || destAccountId == accountId) -> "Choose a different destination account."
+                            else -> null
+                        }
+                        if (validationError != null) {
+                            inputError = validationError
+                            return@launch
+                        }
+
+                        isSaving = true
                         try {
-                            when {
-                                amount == null || !amount.isPositive -> inputError = "Enter a valid amount greater than zero."
-                                accountId.isBlank() -> inputError = "Add or choose a financial account first."
-                                txType != "TRANSFER" && categoryId.isBlank() -> inputError = "Choose a category or income source."
-                                txType == "TRANSFER" && (destAccountId.isBlank() || destAccountId == accountId) -> inputError = "Choose a different destination account."
-                                txType == "EXPENSE" -> {
-                                    appContainer.repository.recordExpense(accountId, categoryId, amount, description)
+                            when (txType) {
+                                "EXPENSE" -> {
+                                    appContainer.repository.recordExpense(accountId, categoryId, amount!!, description)
                                     onDismiss()
                                 }
-                                txType == "INCOME" -> {
-                                    appContainer.repository.recordIncome(accountId, categoryId, amount, description)
+                                "INCOME" -> {
+                                    appContainer.repository.recordIncome(accountId, categoryId, amount!!, description)
                                     onDismiss()
                                 }
                                 else -> {
-                                    appContainer.repository.recordTransfer(accountId, destAccountId, amount, description = description)
+                                    appContainer.repository.recordTransfer(accountId, destAccountId, amount!!, description = description)
                                     onDismiss()
                                 }
                             }
                         } catch (error: Exception) {
                             inputError = error.localizedMessage ?: "The transaction could not be saved."
+                        } finally {
+                            isSaving = false
                         }
                     }
-                }
+                },
+                enabled = !isSaving
             ) {
-                Text("Save")
+                Text(if (isSaving) "Saving…" else "Save")
             }
         },
         dismissButton = {
-            Button(onClick = onDismiss) { Text("Cancel") }
+            Button(onClick = onDismiss, enabled = !isSaving) { Text("Cancel") }
         }
     )
 }

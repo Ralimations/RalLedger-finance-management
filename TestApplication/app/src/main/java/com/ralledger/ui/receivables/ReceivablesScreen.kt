@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,7 +60,7 @@ import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Receivable
 import com.ralledger.domain.model.ReceivableStatus
-import com.ralledger.ui.components.MoneyCalculatorAction
+import com.ralledger.ui.components.MoneyAmountField
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -67,7 +68,11 @@ import java.util.Locale
 import com.ralledger.ui.settings.displayDate
 
 @Composable
-fun ReceivablesScreen(viewModel: ReceivablesViewModel) {
+fun ReceivablesScreen(
+    viewModel: ReceivablesViewModel,
+    quickActionRequest: com.ralledger.ui.planning.PlanningQuickAction? = null,
+    onQuickActionHandled: () -> Unit = {}
+) {
     val receivables by viewModel.receivables.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
@@ -81,6 +86,14 @@ fun ReceivablesScreen(viewModel: ReceivablesViewModel) {
     var writingOff by remember { mutableStateOf<Receivable?>(null) }
     var cancelling by remember { mutableStateOf<Receivable?>(null) }
     var pendingReversal by remember { mutableStateOf<Pair<String, String>?>(null) }
+
+    LaunchedEffect(quickActionRequest) {
+        if (quickActionRequest == com.ralledger.ui.planning.PlanningQuickAction.ADD_RECEIVABLE) {
+            editing = null
+            showEditor = true
+            onQuickActionHandled()
+        }
+    }
 
     val visibleReceivables = receivables.filter { receivable ->
         (includeArchived || !receivable.isArchived) &&
@@ -418,13 +431,7 @@ private fun ReceivableEditorDialog(
                     }
                 }
                 if (receivable == null) {
-                    OutlinedTextField(
-                        amountText, { amountText = it; error = null },
-                        label = { Text("Amount owed (PHP)") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; error = null } },
-                        singleLine = true, modifier = Modifier.fillMaxWidth()
-                    )
+                    MoneyAmountField(amountText, { amountText = it; error = null }, "Amount owed (PHP)")
                     ExposedDropdownMenuBox(expanded = categoryExpanded, onExpandedChange = { categoryExpanded = !categoryExpanded }) {
                         OutlinedTextField(
                             value = categories.firstOrNull { it.id == selectedCategoryId }?.name ?: "Select income source",
@@ -505,12 +512,7 @@ private fun CollectPaymentDialog(
                         }
                     }
                 }
-                OutlinedTextField(
-                    amountText, { amountText = it; error = null }, label = { Text("Collection amount (PHP)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; error = null } },
-                    singleLine = true, modifier = Modifier.fillMaxWidth()
-                )
+                MoneyAmountField(amountText, { amountText = it; error = null }, "Collection amount (PHP)")
                 OutlinedTextField(notes, { notes = it }, label = { Text("Notes / receipt reference") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
@@ -565,12 +567,7 @@ private fun WriteOffDialog(
                         }
                     }
                 }
-                OutlinedTextField(
-                    amountText, { amountText = it; error = null }, label = { Text("Amount to write off (PHP)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; error = null } },
-                    singleLine = true, modifier = Modifier.fillMaxWidth()
-                )
+                MoneyAmountField(amountText, { amountText = it; error = null }, "Amount to write off (PHP)")
                 OutlinedTextField(notes, { notes = it }, label = { Text("Reason / notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }

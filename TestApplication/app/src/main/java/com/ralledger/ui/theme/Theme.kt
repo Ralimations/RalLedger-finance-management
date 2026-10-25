@@ -24,19 +24,29 @@ private data class PaletteColors(
 
 private fun ThemePalette.colors() = when (this) {
     ThemePalette.OCEAN -> PaletteColors(
-        primary = Color(0xFF006B63), darkPrimary = Color(0xFF80D5C8), onDarkPrimary = Color(0xFF003731),
-        container = Color(0xFFBCECE4), onContainer = Color(0xFF00201D), darkContainer = Color(0xFF005048), onDarkContainer = Color(0xFFBCECE4),
-        secondary = Color(0xFF486560), tertiary = Color(0xFF456179)
+        primary = Color(0xFF0066CC), darkPrimary = Color(0xFF9CCBFF), onDarkPrimary = Color(0xFF003260),
+        container = Color(0xFFD7EAFE), onContainer = Color(0xFF092745), darkContainer = Color(0xFF064B8D), onDarkContainer = Color(0xFFD7EAFE),
+        secondary = Color(0xFF087E9B), tertiary = Color(0xFF6250A4)
     )
     ThemePalette.INDIGO -> PaletteColors(
-        primary = Color(0xFF5B5BD6), darkPrimary = Color(0xFFC2C1FF), onDarkPrimary = Color(0xFF292866),
+        primary = Color(0xFF4F46B5), darkPrimary = Color(0xFFC2C1FF), onDarkPrimary = Color(0xFF292866),
         container = Color(0xFFE2DFFF), onContainer = Color(0xFF17164A), darkContainer = Color(0xFF4544AB), onDarkContainer = Color(0xFFE2DFFF),
         secondary = Color(0xFF625B71), tertiary = Color(0xFF7D5260)
     )
     ThemePalette.SAGE -> PaletteColors(
-        primary = Color(0xFF526B3F), darkPrimary = Color(0xFFB8D49E), onDarkPrimary = Color(0xFF243816),
+        primary = Color(0xFF486235), darkPrimary = Color(0xFFB8D49E), onDarkPrimary = Color(0xFF243816),
         container = Color(0xFFD8EAC8), onContainer = Color(0xFF111F08), darkContainer = Color(0xFF3A5129), onDarkContainer = Color(0xFFD8EAC8),
         secondary = Color(0xFF5A6350), tertiary = Color(0xFF3E6664)
+    )
+    ThemePalette.CORAL -> PaletteColors(
+        primary = Color(0xFFBC344A), darkPrimary = Color(0xFFFFB3C0), onDarkPrimary = Color(0xFF5D0015),
+        container = Color(0xFFFFE0E5), onContainer = Color(0xFF39000A), darkContainer = Color(0xFF8E1D32), onDarkContainer = Color(0xFFFFE0E5),
+        secondary = Color(0xFF81565E), tertiary = Color(0xFF6B5B8E)
+    )
+    ThemePalette.AMBER -> PaletteColors(
+        primary = Color(0xFF925400), darkPrimary = Color(0xFFFFB957), onDarkPrimary = Color(0xFF3A1C00),
+        container = Color(0xFFFFE2B8), onContainer = Color(0xFF321B00), darkContainer = Color(0xFF704000), onDarkContainer = Color(0xFFFFE2B8),
+        secondary = Color(0xFF745B3B), tertiary = Color(0xFF55633B)
     )
 }
 

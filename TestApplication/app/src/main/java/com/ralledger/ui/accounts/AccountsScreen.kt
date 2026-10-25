@@ -1,6 +1,6 @@
 package com.ralledger.ui.accounts
 import com.ralledger.ui.settings.displayMoney
-import com.ralledger.ui.components.MoneyCalculatorAction
+import com.ralledger.ui.components.MoneyAmountField
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -317,14 +317,10 @@ private fun AccountReconciliationDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Recorded balance: ${displayMoney(account.currentLedgerBalance)}")
-                OutlinedTextField(
+                MoneyAmountField(
                     value = actualBalanceText,
                     onValueChange = { actualBalanceText = it; error = null },
-                    label = { Text("Verified balance (PHP)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    trailingIcon = { MoneyCalculatorAction(actualBalanceText) { actualBalanceText = it; error = null } },
-                    modifier = Modifier.fillMaxWidth()
+                    label = "Verified balance (PHP)"
                 )
                 difference?.let { Text("Adjustment: ${displayMoney(it)}", style = MaterialTheme.typography.labelLarge) }
                 OutlinedTextField(
@@ -409,16 +405,18 @@ private fun AccountFormDialog(
                             }
                         }
                     }
-                    OutlinedTextField(
-                        value = balanceText,
-                        onValueChange = { balanceText = it; inputError = null },
-                        label = { Text("Opening balance") },
-                        supportingText = { Text("Use the verified balance when this account is first added.") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        trailingIcon = { MoneyCalculatorAction(balanceText) { balanceText = it; inputError = null } },
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    Column {
+                        MoneyAmountField(
+                            value = balanceText,
+                            onValueChange = { balanceText = it; inputError = null },
+                            label = "Opening balance"
+                        )
+                        Text(
+                            "Use the verified balance when this account is first added.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 } else {
                     Text(
                         "${account.accountType.displayName} · Opening balance ${displayMoney(account.openingBalance)}",

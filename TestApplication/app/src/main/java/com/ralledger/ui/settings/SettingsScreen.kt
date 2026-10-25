@@ -8,6 +8,7 @@ import android.net.Uri
 import android.os.Build
 import android.provider.OpenableColumns
 import android.provider.Settings
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -19,16 +20,29 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Analytics
+import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -46,9 +60,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +86,16 @@ import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+private enum class SettingsSection(val title: String, val description: String, val icon: ImageVector) {
+    APPEARANCE("Appearance", "Theme mode and color palette", Icons.Default.Settings),
+    PREFERENCES("Preferences", "Default account, dates, currency, and reminders", Icons.Default.AccountBalanceWallet),
+    DASHBOARD("Dashboard", "Choose which Home summaries to show and reorder them", Icons.Default.Dashboard),
+    ORGANIZATION("Categories", "Manage income sources and expense categories", Icons.AutoMirrored.Filled.Label),
+    DATA("Data & Backup", "Import, export, encrypt, and restore financial records", Icons.AutoMirrored.Filled.ReceiptLong),
+    SECURITY("Security", "Protect app access on this device", Icons.Default.Settings),
+    ABOUT("About", "Version and product information", Icons.Default.Analytics)
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -95,6 +124,7 @@ fun SettingsScreen(
     onManageCategories: () -> Unit
 ) {
     val context = LocalContext.current
+    var selectedSection by rememberSaveable { mutableStateOf<SettingsSection?>(null) }
     val backupStatus by viewModel.backupStatus.collectAsState()
     val csvStatus by viewModel.csvStatus.collectAsState()
     val csvImportState by viewModel.csvImportState.collectAsState()
@@ -107,6 +137,7 @@ fun SettingsScreen(
         accounts.filter { it.accountType.isAsset && !it.isArchived }.sortedBy { it.name.lowercase(Locale.getDefault()) }
     }
     val selectedDefaultAccount = selectableAccounts.firstOrNull { it.id == financialSettings.defaultTransactionAccountId }
+    BackHandler(enabled = selectedSection != null) { selectedSection = null }
     val requestNotificationPermission = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -184,11 +215,27 @@ fun SettingsScreen(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(
-            text = "Settings",
-            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold)
-        )
+        if (selectedSection == null) {
+            Text("Settings", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
+            Text(
+                "Make RalLedger fit your workflow and keep your data in your control.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            SettingsSection.entries.forEach { section ->
+                SettingsSectionCard(section) { selectedSection = section }
+            }
+        } else {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { selectedSection = null }) {
+                    Icon(Icons.Default.ArrowUpward, contentDescription = "Back to Settings")
+                }
+                Spacer(Modifier.width(4.dp))
+                Text(selectedSection!!.title, style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold))
+            }
+        }
 
+        if (selectedSection == SettingsSection.APPEARANCE) {
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -222,7 +269,9 @@ fun SettingsScreen(
                 }
             }
         }
+        }
 
+        if (selectedSection == SettingsSection.PREFERENCES) {
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -291,7 +340,9 @@ fun SettingsScreen(
                 }
             }
         }
+        }
 
+        if (selectedSection == SettingsSection.SECURITY) {
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(16.dp),
@@ -318,7 +369,9 @@ fun SettingsScreen(
                 )
             }
         }
+        }
 
+        if (selectedSection == SettingsSection.PREFERENCES) {
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -412,7 +465,9 @@ fun SettingsScreen(
                 }
             }
         }
+        }
 
+        if (selectedSection == SettingsSection.DASHBOARD) {
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -443,7 +498,9 @@ fun SettingsScreen(
                 }
             }
         }
+        }
 
+        if (selectedSection == SettingsSection.ORGANIZATION) {
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text("Categories", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
@@ -451,7 +508,9 @@ fun SettingsScreen(
                 TextButton(onClick = onManageCategories) { Text("Manage categories") }
             }
         }
+        }
 
+        if (selectedSection == SettingsSection.DATA) {
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Transaction import and export", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
@@ -536,7 +595,9 @@ fun SettingsScreen(
                 backupStatus?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
             }
         }
+        }
 
+        if (selectedSection == SettingsSection.ABOUT) {
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("App Details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
@@ -544,6 +605,7 @@ fun SettingsScreen(
                 Text("Architecture: Native Android + Room + Double-Entry Accounting Engine", style = MaterialTheme.typography.bodySmall)
                 Text("Mode: Offline-first", style = MaterialTheme.typography.bodySmall)
             }
+        }
         }
     }
 
@@ -607,6 +669,41 @@ fun SettingsScreen(
             onCancel = viewModel::cancelCsvImport,
             onImport = viewModel::confirmCsvImport
         )
+    }
+}
+
+@Composable
+private fun SettingsSectionCard(section: SettingsSection, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Icon(
+                imageVector = section.icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .padding(10.dp)
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(section.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+                Text(
+                    section.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text("›", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 

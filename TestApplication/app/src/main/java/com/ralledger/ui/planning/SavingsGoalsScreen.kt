@@ -38,6 +38,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,7 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Money
-import com.ralledger.ui.components.MoneyCalculatorAction
+import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.domain.model.SavingsGoal
 import com.ralledger.domain.model.SavingsGoalEventType
 import com.ralledger.ui.settings.displayDate
@@ -60,7 +61,11 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-fun SavingsGoalsScreen(viewModel: SavingsGoalsViewModel) {
+fun SavingsGoalsScreen(
+    viewModel: SavingsGoalsViewModel,
+    quickActionRequest: PlanningQuickAction? = null,
+    onQuickActionHandled: () -> Unit = {}
+) {
     val goals by viewModel.goals.collectAsState()
     val message by viewModel.message.collectAsState()
     var showArchived by remember { mutableStateOf(false) }
@@ -70,6 +75,14 @@ fun SavingsGoalsScreen(viewModel: SavingsGoalsViewModel) {
     var eventTarget by remember { mutableStateOf<SavingsGoal?>(null) }
     var eventType by remember { mutableStateOf(SavingsGoalEventType.ALLOCATE) }
     var deleteTarget by remember { mutableStateOf<SavingsGoal?>(null) }
+
+    LaunchedEffect(quickActionRequest) {
+        if (quickActionRequest == PlanningQuickAction.ADD_SAVINGS_GOAL) {
+            editing = null
+            showEditor = true
+            onQuickActionHandled()
+        }
+    }
 
     val visibleGoals = goals.filter { (showArchived || !it.isArchived) &&
         (search.isBlank() || it.name.contains(search, ignoreCase = true) || it.notes.contains(search, ignoreCase = true))
@@ -245,7 +258,7 @@ private fun SavingsGoalEditorDialog(goal: SavingsGoal?, onDismiss: () -> Unit, o
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()).heightIn(max = 480.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(name, { name = it; error = null }, label = { Text("Goal name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(targetText, { targetText = it; error = null }, label = { Text("Target amount (PHP)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), trailingIcon = { MoneyCalculatorAction(targetText) { targetText = it; error = null } }, modifier = Modifier.fillMaxWidth())
+                MoneyAmountField(targetText, { targetText = it; error = null }, "Target amount (PHP)")
                 OutlinedTextField(dateText, { dateText = it; error = null }, label = { Text("Target date (YYYY-MM-DD, optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, minLines = 2, modifier = Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -281,7 +294,7 @@ private fun GoalAllocationDialog(goal: SavingsGoal, type: SavingsGoalEventType, 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(if (type == SavingsGoalEventType.ALLOCATE) "This earmarks existing available cash; it does not move or create money." else "Released money becomes available to spend again.")
                 if (type == SavingsGoalEventType.RELEASE) Text("Reserved balance: ${displayMoney(goal.allocatedAmount)}")
-                OutlinedTextField(amountText, { amountText = it; error = null }, label = { Text("Amount (PHP)") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; error = null } }, modifier = Modifier.fillMaxWidth())
+                MoneyAmountField(amountText, { amountText = it; error = null }, "Amount (PHP)")
                 OutlinedTextField(note, { note = it }, label = { Text("Note (optional)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }

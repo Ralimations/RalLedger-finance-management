@@ -60,7 +60,7 @@ import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.ExpectedIncome
 import com.ralledger.domain.model.ExpectedIncomeStatus
 import com.ralledger.domain.model.Money
-import com.ralledger.ui.components.MoneyCalculatorAction
+import com.ralledger.ui.components.MoneyAmountField
 import java.util.Calendar
 import java.util.Date
 import com.ralledger.ui.settings.displayDate
@@ -71,7 +71,9 @@ private data class PendingExpectedIncomeAction(val item: ExpectedIncome, val act
 @Composable
 fun ExpectedIncomeScreen(
     viewModel: ExpectedIncomeViewModel,
-    onViewReceivables: () -> Unit
+    onViewReceivables: () -> Unit,
+    quickActionRequest: PlanningQuickAction? = null,
+    onQuickActionHandled: () -> Unit = {}
 ) {
     val items by viewModel.expectedIncome.collectAsState()
     val categories by viewModel.categories.collectAsState()
@@ -83,6 +85,14 @@ fun ExpectedIncomeScreen(
     var editing by remember { mutableStateOf<ExpectedIncome?>(null) }
     var editorOpen by remember { mutableStateOf(false) }
     var pendingAction by remember { mutableStateOf<PendingExpectedIncomeAction?>(null) }
+
+    LaunchedEffect(quickActionRequest) {
+        if (quickActionRequest == PlanningQuickAction.ADD_EXPECTED_INCOME) {
+            editing = null
+            editorOpen = true
+            onQuickActionHandled()
+        }
+    }
 
     LaunchedEffect(message) {
         if (message != null) {
@@ -338,13 +348,7 @@ private fun ExpectedIncomeEditorDialog(
                         }
                     }
                 }
-                OutlinedTextField(
-                    amountText, { amountText = it; error = null },
-                    label = { Text("Expected amount (PHP)") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; error = null } },
-                    singleLine = true, modifier = Modifier.fillMaxWidth()
-                )
+                MoneyAmountField(amountText, { amountText = it; error = null }, "Expected amount (PHP)")
                 ExposedDropdownMenuBox(expanded = categoryExpanded, onExpandedChange = { categoryExpanded = !categoryExpanded }) {
                     val selectedName = incomeCategories.firstOrNull { it.id == categoryId }?.name ?: "Choose income source"
                     OutlinedTextField(

@@ -14,7 +14,7 @@ enum class ThemeMode(val label: String) {
 }
 
 enum class ThemePalette(val label: String) {
-    OCEAN("Ocean"), INDIGO("Indigo"), SAGE("Sage")
+    OCEAN("Ocean"), INDIGO("Indigo"), SAGE("Sage"), CORAL("Coral"), AMBER("Amber")
 }
 
 data class ThemeSettings(

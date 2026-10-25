@@ -52,7 +52,7 @@ import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.Money
-import com.ralledger.ui.components.MoneyCalculatorAction
+import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.domain.model.PlannedPayment
 import com.ralledger.domain.model.PlannedPaymentRecord
 import com.ralledger.domain.model.PlannedPaymentStatus
@@ -305,7 +305,7 @@ private fun PlannedPaymentEditorDialog(
                 OutlinedTextField(payee, { payee = it }, label = { Text("Payee") }, singleLine = true)
                 SelectionField("Expense category", category?.name ?: "Choose category", activeCategories.map { it.name to it.id }, { categoryId = it })
                 SelectionField("Saved counterparty (optional)", counterparty?.name ?: "None", listOf("None" to "") + counterparties.filter { !it.isArchived || it.id == item?.counterpartyId }.map { it.name to it.id }, { counterpartyId = it.ifBlank { null } })
-                OutlinedTextField(amountText, { amountText = it }, label = { Text("Planned amount") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it } }, singleLine = true)
+                MoneyAmountField(amountText, { amountText = it }, "Planned amount")
                 OutlinedButton(onClick = { datePickerOpen = true }) { Text("Due ${displayDate(date)}") }
                 OutlinedTextField(notes, { notes = it }, label = { Text("Notes (optional)") }, minLines = 2)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
@@ -360,7 +360,7 @@ private fun RecordPaymentDialog(
                     accounts.forEach { account -> DropdownMenuItem(text = { Text(account.name) }, onClick = { accountId = account.id; accountMenu = false }) }
                 }
                 if (accounts.isEmpty()) Text("Add or restore an asset account first.", color = MaterialTheme.colorScheme.error)
-                OutlinedTextField(amountText, { amountText = it }, label = { Text("Actual amount") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it } }, singleLine = true)
+                MoneyAmountField(amountText, { amountText = it }, "Actual amount")
                 OutlinedButton(onClick = { datePickerOpen = true }) { Text("Paid ${displayDate(date)}") }
                 OutlinedTextField(notes, { notes = it }, label = { Text("Payment notes (optional)") }, minLines = 2)
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }

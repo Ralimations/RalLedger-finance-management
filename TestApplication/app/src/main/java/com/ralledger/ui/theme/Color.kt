@@ -13,7 +13,7 @@ val ExpenseRed = Color(0xFFC62828)
 val TransferPurple = Color(0xFF6A1B9A)
 val ReceivableOrange = Color(0xFFEF6C00)
 
-val BackgroundLight = Color(0xFFF7F5FA)
+val BackgroundLight = Color(0xFFFAFBFF)
 val SurfaceLight = Color(0xFFFFFFFF)
 val TextPrimaryLight = Color(0xFF1C1B1F)
 val TextSecondaryLight = Color(0xFF49454F)

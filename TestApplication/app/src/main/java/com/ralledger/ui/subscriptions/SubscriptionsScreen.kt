@@ -41,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,7 +57,7 @@ import com.ralledger.domain.model.BillingFrequency
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
-import com.ralledger.ui.components.MoneyCalculatorAction
+import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.domain.model.Subscription
 import com.ralledger.domain.model.SubscriptionPayment
 import com.ralledger.domain.model.SubscriptionStatus
@@ -65,7 +66,11 @@ import java.util.Date
 import com.ralledger.ui.settings.displayDate
 
 @Composable
-fun SubscriptionsScreen(viewModel: SubscriptionsViewModel) {
+fun SubscriptionsScreen(
+    viewModel: SubscriptionsViewModel,
+    quickActionRequest: com.ralledger.ui.planning.PlanningQuickAction? = null,
+    onQuickActionHandled: () -> Unit = {}
+) {
     val subscriptions by viewModel.subscriptions.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
@@ -79,6 +84,14 @@ fun SubscriptionsScreen(viewModel: SubscriptionsViewModel) {
     var pendingPayment by remember { mutableStateOf<Subscription?>(null) }
     var pendingReversePayment by remember { mutableStateOf<SubscriptionPayment?>(null) }
     var expandedHistoryId by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(quickActionRequest) {
+        if (quickActionRequest == com.ralledger.ui.planning.PlanningQuickAction.ADD_SUBSCRIPTION) {
+            editingSubscription = null
+            showEditor = true
+            onQuickActionHandled()
+        }
+    }
     val visibleSubscriptions = subscriptions.filter { includeArchived || !it.isArchived }
 
     Scaffold(
@@ -391,15 +404,7 @@ private fun SubscriptionPaymentDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text("Payment account: ${subscription.assignedAccountName}", style = MaterialTheme.typography.bodySmall)
-                OutlinedTextField(
-                    value = amountText,
-                    onValueChange = { amountText = it; inputError = null },
-                    label = { Text("Amount (PHP)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; inputError = null } },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                MoneyAmountField(amountText, { amountText = it; inputError = null }, "Amount (PHP)")
                 ExposedDropdownMenuBox(expanded = categoryExpanded, onExpandedChange = { categoryExpanded = !categoryExpanded }) {
                     OutlinedTextField(
                         value = expenseCategories.firstOrNull { it.id == selectedCategoryId }?.name ?: "Choose expense category",
@@ -540,13 +545,7 @@ private fun SubscriptionEditorDialog(
                     }
                 }
 
-                OutlinedTextField(
-                    value = amountText, onValueChange = { amountText = it; inputError = null },
-                    label = { Text("Billing amount (PHP)") }, singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; inputError = null } },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                MoneyAmountField(amountText, { amountText = it; inputError = null }, "Billing amount (PHP)")
                 TextButton(onClick = { datePickerOpen = true }) { Text("Next billing date: ${formatDate(nextBillingDate)}") }
                 OutlinedTextField(notes, { notes = it }, label = { Text("Notes") }, modifier = Modifier.fillMaxWidth(), minLines = 2)
                 inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }

@@ -79,7 +79,7 @@ import com.ralledger.domain.model.TransactionFilter
 import com.ralledger.domain.model.TransactionTemplate
 import com.ralledger.ui.settings.TransactionListDensity
 import com.ralledger.ui.components.AccountBalancesSummary
-import com.ralledger.ui.components.MoneyCalculatorAction
+import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.ui.settings.displayDate
 import java.math.BigDecimal
 import java.util.Calendar
@@ -836,25 +836,17 @@ private fun RecordTransactionDialog(
 
                 AccountBalancesSummary(accounts)
 
-                OutlinedTextField(
+                MoneyAmountField(
                     value = amountText,
                     onValueChange = { amountText = it; inputError = null },
-                    label = { Text("Amount (e.g. 250.00)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it; inputError = null } },
-                    modifier = Modifier.fillMaxWidth()
+                    label = "Amount (e.g. 250.00)"
                 )
 
                 if (selectedTab == 2) {
-                    OutlinedTextField(
+                    MoneyAmountField(
                         value = feeText,
                         onValueChange = { feeText = it; inputError = null },
-                        label = { Text("Transfer Fee (optional, e.g. 15.00)") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        trailingIcon = { MoneyCalculatorAction(feeText) { feeText = it; inputError = null } },
-                        modifier = Modifier.fillMaxWidth()
+                        label = "Transfer Fee (optional, e.g. 15.00)"
                     )
                 }
 

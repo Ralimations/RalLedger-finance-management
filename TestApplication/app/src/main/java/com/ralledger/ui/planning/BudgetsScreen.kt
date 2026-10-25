@@ -40,6 +40,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,14 +57,18 @@ import com.ralledger.domain.model.Budget
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
-import com.ralledger.ui.components.MoneyCalculatorAction
+import com.ralledger.ui.components.MoneyAmountField
 import kotlinx.coroutines.launch
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 @Composable
-fun BudgetsScreen(viewModel: BudgetsViewModel) {
+fun BudgetsScreen(
+    viewModel: BudgetsViewModel,
+    quickActionRequest: PlanningQuickAction? = null,
+    onQuickActionHandled: () -> Unit = {}
+) {
     val budgets by viewModel.budgets.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val scope = rememberCoroutineScope()
@@ -75,6 +80,16 @@ fun BudgetsScreen(viewModel: BudgetsViewModel) {
     var pendingDelete by remember { mutableStateOf<Budget?>(null) }
     var formError by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(quickActionRequest) {
+        if (quickActionRequest == PlanningQuickAction.ADD_BUDGET) {
+            editingBudget = null
+            editorMonth = month
+            formError = null
+            showEditor = true
+            onQuickActionHandled()
+        }
+    }
 
     val monthBudgets = budgets.filter { it.year == month.year && it.month == month.monthValue }
     val shownBudgets = monthBudgets.filter { includeArchived || !it.isArchived }
@@ -361,14 +376,10 @@ private fun BudgetEditorDialog(
                         }
                     }
                 }
-                OutlinedTextField(
+                MoneyAmountField(
                     value = amountText,
                     onValueChange = { amountText = it },
-                    label = { Text("Monthly limit (PHP)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    trailingIcon = { MoneyCalculatorAction(amountText) { amountText = it } }
+                    label = "Monthly limit (PHP)"
                 )
                 (error ?: localError)?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }

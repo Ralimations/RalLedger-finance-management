@@ -1,0 +1,38 @@
+# RalLedger Phase II feature parity map
+
+Baseline audited: 2026-10-25  
+Source: local branch `feature/ralledger-v2-live-ready` at `223e8fc` (same commit as the then-current `origin/main`). The worktree was clean before Phase II changes.
+
+This map compares existing controls with the Phase II destination. Financial operations remain in the existing repository and accounting engine; the UI refactor must not duplicate postings or bypass reversal and lifecycle rules.
+
+| Existing screen/control | Phase II control | Underlying operation preserved | Baseline test/evidence |
+|---|---|---|---|
+| Home dashboard summary cards; top-bar add opens a transaction dialog | Primary financial overview with one Add action hub; recent activity and real attention items remain contextual | `DashboardSummary` and dashboard preferences; Quick Add uses repository income/expense/transfer posting | Dashboard/accounting calculator unit coverage and existing app build; attention panel and unified action hub not present at baseline |
+| Accounts list and per-account action menus/forms | Searchable account cards; focused account details with balance, history, transfer, reconciliation, and More actions | Account CRUD, journal history, transfer, reconciliation, guarded delete/archive | Existing lifecycle and migration instrumentation; responsive detail flow remains to be reviewed |
+| Activity list, filters, and transaction correction/reversal actions | Chronological journal, concise filter chips, transaction details, and consistent Edit/Duplicate/Reverse/History actions | Existing filters, saved views, duplicate, atomic correction/reversal | Existing unit and connected lifecycle coverage; unified detail presentation is incomplete |
+| Planning's 11 horizontally scrolling tabs and per-module add buttons | Grouped Planning landing screen with focused module views, contextual forms, and a clear return path | Existing receivables, expected income, subscriptions, budgets, goals, debt, interest, and report/project use cases | Existing domain/unit and connected lifecycle coverage varies by module; landing navigation is consolidated, while details and contextual CRUD hierarchy need further work |
+| Insights screen with period controls and multiple analytics | Primary income/expense/net overview; secondary analytics grouped into consistent chart cards with inspectable values | Existing journal-backed calculators, period selectors, histories, and summaries | Existing calculation unit tests; chart visual and small-screen inspection remains device-dependent |
+| One long Settings screen containing appearance, financial preferences, reminders, security, backup/import/export, and category actions | Purpose-based Settings home with nested Appearance, Preferences, Dashboard, Categories, Data & Backup, Security, and About sections | Existing DataStore, app-lock, dashboard, backup/restore, import/export, and category management operations | Existing preferences and backup/recovery tests; section navigation now implemented, while visual device review remains open |
+| Quick Add `AlertDialog` with type chips, amount calculator, account-balance panel, account/category menus | Shared primary action sheet with Income, Expense, Transfer, and grouped More actions; common form controls and smart defaults | Existing `QuickAddTransactionDialog`, `MoneyCalculatorAction`, `AccountBalancesSummary`, and repository calls | 84 unit tests before Phase II; hub-routing and smart-default UI have compile/regression coverage, but no dedicated UI automation |
+
+## Phase II implementation status
+
+- Milestone A audit/freeze: complete for the current primary navigation, Home, Accounts, Activity, Planning, Insights, Settings, and Quick Add entry points. Specialized CRUD details continue to be tracked in `FEATURE_CRUD_MATRIX.md`.
+- Milestone B interaction foundation: in progress. The app-bar Add action opens the shared Quick Action Hub from each of the five main destinations. Income, Expense, and Transfer open the existing transaction form in the selected mode. More routes to existing receivable, expected income, budget, bill/loan, subscription, savings-goal, and interest screens; add-capable items open their existing forms, while target-dependent actions open the relevant list. Quick Add prioritizes the saved account, then the latest eligible non-reversed transaction account, and uses the latest matching category when available. It keeps the balance panel in the form and ignores repeat Save taps while a posting is in progress. The design palette now defaults to accessible Ocean blue and adds Coral and Amber choices. Planning's former 11-tab strip is now a grouped landing screen with focused module views and Android Back returning to Planning. Calculator-enabled monetary inputs now share `MoneyAmountField`. Settings now uses purpose-based sections with in-app and Android Back. Common selectors/notes/date fields, progressive disclosure, unsaved-change confirmation, and screen-by-screen contextual CRUD consolidation remain open.
+- Milestones C–G: not yet complete. Implemented controls and verification must be recorded as each slice lands; no existing module is considered complete from a visual mockup alone.
+
+## Feature preservation rules
+
+- Posted financial events continue through repository use cases and keep atomic correction/reversal history.
+- Receivables never become spendable cash; savings allocations remain reserves, not additional assets.
+- A selected quick action must open the corresponding existing operation and must not post until the user saves.
+- Collect-payment and reconciliation actions require a target record/account, so the hub takes the user to the relevant list/detail context rather than guessing a target.
+- Mockup data, references to cloud sessions/PINs, and fields the application does not persist are not implemented as real product data.
+
+## 2026-10-25 implementation slice
+
+- Implemented the first end-to-end shared action path and app-shell integration. No quick action creates a financial record until the user submits the existing form.
+- Regression check: 84 unit tests passed; debug lint completed with 32 warnings and 0 errors; debug APK assembly and Android-test source compilation passed. Connected-device UI review is unavailable because ADB reports no attached device.
+- Planning navigation: the eleven sections are grouped under income/commitments, budgets/savings, and organization/reports. Selecting a row opens the existing feature screen; the visible back affordance and Android Back return to the Planning landing screen. Financial operations and per-module lifecycle behavior remain in their original screens.
+- Shared input: all existing calculator-enabled amount fields route through `MoneyAmountField` for a consistent decimal keyboard and calculator action. The component delegates value changes to the original screen state and does not post records.
+- Settings: the long page is grouped under Appearance, Preferences, Dashboard, Categories, Data & Backup, Security, and About. Existing actions are preserved; Android Back and an in-screen return control leave the selected section. The debug build passes, but the attached emulator is offline so visual review is pending.

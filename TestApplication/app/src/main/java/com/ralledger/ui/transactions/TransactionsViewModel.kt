@@ -72,13 +72,16 @@ class TransactionsViewModel(
     }.combine(_tagFilterId) { filter, tagId -> filter.copy(tagId = tagId) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TransactionFilter())
 
+    val allTransactions: StateFlow<List<Transaction>> = repository.transactionsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val canSaveActiveFilter: StateFlow<Boolean> = activeFilter.map { filter ->
         filter.query.isNotBlank() || filter.type != TransactionTypeFilter.ALL || filter.accountId != null ||
             filter.categoryId != null || filter.startInclusive != null || filter.endExclusive != null || filter.tagId != null
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
     val filteredTransactions: StateFlow<List<Transaction>> = combine(
-        repository.transactionsFlow,
+        allTransactions,
         activeFilter
     ) { txs, activeFilters ->
         txs.filter(activeFilters::matches)

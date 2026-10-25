@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -39,9 +40,11 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -96,6 +99,7 @@ fun TransactionsScreen(
     listDensity: TransactionListDensity = TransactionListDensity.COMFORTABLE
 ) {
     val transactions by viewModel.filteredTransactions.collectAsState()
+    val journal by viewModel.allTransactions.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val tags by viewModel.tags.collectAsState()
@@ -118,6 +122,7 @@ fun TransactionsScreen(
     var showFilters by remember { mutableStateOf(false) }
     var filterDateTarget by remember { mutableStateOf<FilterDateTarget?>(null) }
     var reverseCandidate by remember { mutableStateOf<Transaction?>(null) }
+    var detailCandidate by remember { mutableStateOf<Transaction?>(null) }
     var correctCandidate by remember { mutableStateOf<Transaction?>(null) }
     var duplicateCandidate by remember { mutableStateOf<Transaction?>(null) }
     var showTagManager by remember { mutableStateOf(false) }
@@ -131,6 +136,8 @@ fun TransactionsScreen(
     var renameFilterCandidate by remember { mutableStateOf<SavedTransactionFilter?>(null) }
     var renameFilterName by remember { mutableStateOf("") }
     var deleteFilterCandidate by remember { mutableStateOf<SavedTransactionFilter?>(null) }
+    val hasAdditionalFilters = accountFilterId != null || categoryFilterId != null || tagFilterId != null ||
+        dateRange.first != null || dateRange.second != null
 
     Scaffold(
         floatingActionButton = {
@@ -167,73 +174,30 @@ fun TransactionsScreen(
                     modifier = Modifier.weight(1f),
                     singleLine = true
                 )
-                IconButton(onClick = { showFilters = !showFilters }) {
-                    Icon(Icons.Default.FilterList, contentDescription = if (showFilters) "Hide filters" else "Show filters")
+                IconButton(onClick = { showFilters = true }) {
+                    Icon(
+                        Icons.Default.FilterList,
+                        contentDescription = "Open transaction filters",
+                        tint = if (hasAdditionalFilters) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                    )
                 }
             }
 
-            if (showFilters) {
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf(
-                            TransactionTypeFilter.ALL to "All",
-                            TransactionTypeFilter.INCOME to "Income",
-                            TransactionTypeFilter.EXPENSE to "Expenses",
-                            TransactionTypeFilter.TRANSFER to "Transfers",
-                            TransactionTypeFilter.OTHER to "Other"
-                        ).forEach { (filter, label) ->
-                            FilterChip(
-                                selected = typeFilter == filter,
-                                onClick = { viewModel.setTypeFilter(filter) },
-                                label = { Text(label) }
-                            )
-                        }
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        FilterDropdownChip(
-                            title = "Account",
-                            selectedId = accountFilterId,
-                            options = listOf<Pair<String?, String>>(null to "All accounts") + accounts.map { it.id to it.name },
-                            onSelect = viewModel::setAccountFilter
-                        )
-                        FilterDropdownChip(
-                            title = "Category",
-                            selectedId = categoryFilterId,
-                            options = listOf<Pair<String?, String>>(null to "All categories") + categories.map { it.id to it.name },
-                            onSelect = viewModel::setCategoryFilter
-                        )
-                        FilterDropdownChip(
-                            title = "Label",
-                            selectedId = tagFilterId,
-                            options = listOf<Pair<String?, String>>(null to "All labels") + tags.map { it.id to (it.name + if (it.isArchived) " · Archived" else "") },
-                            onSelect = viewModel::setTagFilter
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = { filterDateTarget = FilterDateTarget.FROM }) {
-                            Text("From: ${dateRange.first?.let { displayDate(it) } ?: "Any date"}")
-                        }
-                        TextButton(onClick = { filterDateTarget = FilterDateTarget.TO }) {
-                            Text("To: ${dateRange.second?.let { displayDate(it - 1L) } ?: "Any date"}")
-                        }
-                        Spacer(Modifier.weight(1f))
-                        TextButton(onClick = viewModel::clearFilters) { Text("Clear") }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        TextButton(onClick = { showSavedFilters = true }) {
-                            Text("Saved filters (${savedFilters.size})")
-                        }
-                        TextButton(onClick = { saveFilterName = ""; showSaveFilter = true }, enabled = canSaveActiveFilter) {
-                            Text("Save current")
-                        }
-                    }
-                    savedFilterMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            Row(
+                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                listOf(
+                    TransactionTypeFilter.ALL to "All",
+                    TransactionTypeFilter.INCOME to "Income",
+                    TransactionTypeFilter.EXPENSE to "Expense",
+                    TransactionTypeFilter.TRANSFER to "Transfer"
+                ).forEach { (filter, label) ->
+                    FilterChip(
+                        selected = typeFilter == filter,
+                        onClick = { viewModel.setTypeFilter(filter) },
+                        label = { Text(label) }
+                    )
                 }
             }
 
@@ -242,21 +206,114 @@ fun TransactionsScreen(
             if (transactions.isEmpty()) {
                 Text("No transactions found.")
             } else {
+                val dayGroups = remember(transactions) { groupTransactionsByLocalDay(transactions) }
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(if (listDensity == TransactionListDensity.COMPACT) 4.dp else 8.dp)) {
-                    items(transactions) { tx ->
-                        TransactionRow(
-                            transaction = tx,
-                            compact = listDensity == TransactionListDensity.COMPACT,
-                            onCorrect = { correctCandidate = tx },
-                            onDuplicate = { duplicateCandidate = tx },
-                            onReverse = { reverseCandidate = tx },
-                            onManageTags = { tagAssignmentCandidate = tx },
-                            onAssignProject = { projectAssignmentCandidate = tx }
-                        )
+                    dayGroups.forEach { group ->
+                        item(key = "day-${group.dayStart}") {
+                            Text(
+                                text = displayDate(group.dayStart),
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 2.dp),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        items(group.transactions, key = { it.journalEntryId }) { tx ->
+                            TransactionRow(
+                                transaction = tx,
+                                compact = listDensity == TransactionListDensity.COMPACT,
+                                onOpenDetails = { detailCandidate = tx },
+                                onCorrect = { correctCandidate = tx },
+                                onDuplicate = { duplicateCandidate = tx },
+                                onReverse = { reverseCandidate = tx },
+                                onManageTags = { tagAssignmentCandidate = tx },
+                                onAssignProject = { projectAssignmentCandidate = tx }
+                            )
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (showFilters) {
+        ModalBottomSheet(onDismissRequest = { showFilters = false }) {
+            Column(
+                modifier = Modifier.fillMaxWidth().heightIn(max = 680.dp)
+                    .verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("More filters", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("Narrow the journal by account, category, label, or date.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FilterDropdownChip(
+                        title = "Account",
+                        selectedId = accountFilterId,
+                        options = listOf<Pair<String?, String>>(null to "All accounts") + accounts.map { it.id to it.name },
+                        onSelect = viewModel::setAccountFilter
+                    )
+                    FilterDropdownChip(
+                        title = "Category",
+                        selectedId = categoryFilterId,
+                        options = listOf<Pair<String?, String>>(null to "All categories") + categories.map { it.id to it.name },
+                        onSelect = viewModel::setCategoryFilter
+                    )
+                    FilterDropdownChip(
+                        title = "Label",
+                        selectedId = tagFilterId,
+                        options = listOf<Pair<String?, String>>(null to "All labels") + tags.map { it.id to (it.name + if (it.isArchived) " · Archived" else "") },
+                        onSelect = viewModel::setTagFilter
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { filterDateTarget = FilterDateTarget.FROM }) {
+                        Text("From: ${dateRange.first?.let { displayDate(it) } ?: "Any date"}")
+                    }
+                    TextButton(onClick = { filterDateTarget = FilterDateTarget.TO }) {
+                        Text("To: ${dateRange.second?.let { displayDate(it - 1L) } ?: "Any date"}")
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FilterChip(
+                        selected = typeFilter == TransactionTypeFilter.OTHER,
+                        onClick = { viewModel.setTypeFilter(if (typeFilter == TransactionTypeFilter.OTHER) TransactionTypeFilter.ALL else TransactionTypeFilter.OTHER) },
+                        label = { Text("Other activity") }
+                    )
+                    TextButton(onClick = viewModel::clearFilters) { Text("Clear all") }
+                }
+                HorizontalDivider()
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(onClick = { showFilters = false; showSavedFilters = true }) {
+                        Text("Saved filters (${savedFilters.size})")
+                    }
+                    Spacer(Modifier.weight(1f))
+                    TextButton(
+                        onClick = { saveFilterName = ""; showFilters = false; showSaveFilter = true },
+                        enabled = canSaveActiveFilter
+                    ) { Text("Save current") }
+                }
+                savedFilterMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            }
+        }
+    }
+
+    detailCandidate?.let { transaction ->
+        TransactionDetailSheet(
+            transaction = transaction,
+            journal = journal,
+            onDismiss = { detailCandidate = null },
+            onCorrect = { detailCandidate = null; correctCandidate = transaction },
+            onDuplicate = { detailCandidate = null; duplicateCandidate = transaction },
+            onReverse = { detailCandidate = null; reverseCandidate = transaction },
+            onManageTags = { detailCandidate = null; tagAssignmentCandidate = transaction },
+            onAssignProject = { detailCandidate = null; projectAssignmentCandidate = transaction }
+        )
     }
 
     if (showAddDialog || correctCandidate != null || duplicateCandidate != null) {
@@ -587,6 +644,7 @@ private fun nextLocalDay(dayStart: Long): Long = Calendar.getInstance().apply {
 private fun TransactionRow(
     transaction: Transaction,
     compact: Boolean,
+    onOpenDetails: () -> Unit,
     onCorrect: () -> Unit,
     onDuplicate: () -> Unit,
     onReverse: () -> Unit,
@@ -610,7 +668,7 @@ private fun TransactionRow(
         TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.TRANSFER
     )
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenDetails),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {
@@ -653,6 +711,14 @@ private fun TransactionRow(
                 transaction.projectName?.let { projectName ->
                     Text("Project · $projectName", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
                 }
+                when {
+                    transaction.transactionType == TransactionType.OPENING_BALANCE ->
+                        Text("Setup activity", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    transaction.transactionType == TransactionType.REVERSAL ->
+                        Text("Reversal entry", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
+                    transaction.isReversed ->
+                        Text("Reversed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -672,6 +738,7 @@ private fun TransactionRow(
                             Icon(Icons.Default.MoreVert, contentDescription = "Transaction actions")
                         }
                         DropdownMenu(expanded = actionsExpanded, onDismissRequest = { actionsExpanded = false }) {
+                            DropdownMenuItem(text = { Text("View details and history") }, onClick = { actionsExpanded = false; onOpenDetails() })
                             DropdownMenuItem(text = { Text("Manage labels") }, onClick = { actionsExpanded = false; onManageTags() })
                             if (transaction.reversesEntryId == null) {
                                 DropdownMenuItem(
@@ -687,9 +754,6 @@ private fun TransactionRow(
                                 DropdownMenuItem(text = { Text("Void with reversal") }, onClick = { actionsExpanded = false; onReverse() })
                             }
                         }
-                    }
-                    if (transaction.isReversed) {
-                        Text("Reversed", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

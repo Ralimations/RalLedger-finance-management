@@ -181,18 +181,28 @@ fun RalLedgerMainScreen(
                 title = { Text("RalLedger") },
                 actions = {
                     if (currentRoute in navScreens.map { it.route }) {
-                        IconButton(onClick = {
-                            showQuickActionHub = true
-                        }) {
-                            Icon(Icons.Default.Add, contentDescription = "Add")
+                        IconButton(
+                            modifier = Modifier.semantics(mergeDescendants = true) {
+                                contentDescription = "Quick actions"
+                            },
+                            onClick = {
+                                showQuickActionHub = true
+                            }
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null)
                         }
                     }
-                    IconButton(onClick = {
-                        navController.navigate(Screen.Settings.route) {
-                            launchSingleTop = true
+                    IconButton(
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = "Settings"
+                        },
+                        onClick = {
+                            navController.navigate(Screen.Settings.route) {
+                                launchSingleTop = true
+                            }
                         }
-                    }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
+                    ) {
+                        Icon(Icons.Default.Settings, contentDescription = null)
                     }
                 }
             )

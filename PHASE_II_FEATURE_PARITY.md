@@ -56,3 +56,15 @@ This map compares existing controls with the Phase II destination. Financial ope
 - A synthetic-data emulator walkthrough covered the principal Home, account, transaction, receivable, subscription, budget, savings-goal, Insights, category, theme, backup/restore, and reopen-persistence paths. It confirmed both Income and Expenses category sections are present and that a posted expense can be reversed without erasing its original journal record.
 - This supplements connected-test evidence; it does not certify every Phase II CRUD branch or the complete 17-journey acceptance list. App-lock credential behavior, accessibility/TalkBack, text scaling, manual file-provider import/export, and full module visual review remain open.
 - The debug artifact and fingerprint are recorded in `DEVELOPMENT_PROGRESS.md`. The APK is debug-signed and is not a production-signed release.
+
+## API 37 dashboard and import-review update — 2026-10-26
+
+- Dashboard widget visibility persisted across force-stop/relaunch on the disposable API 37 emulator; the setting was restored to its initial all-visible state. Reorder persistence remains unverified manually.
+- Smart import supports CSV/TSV, XLSX, OFX/QFX, QIF, and best-effort PDF text extraction with on-device OCR for scanned pages. PDF results remain subject to text-layout quality and user review; additional bank-specific parsing coverage is still open.
+- CSV/text-table review now displays mapped transaction rows with status and pagination before confirmation. API 37 file-picker testing used a synthetic expense, confirmed the balance changed once, then reselected the same file and verified the saved row was skipped.
+
+## Dashboard accessibility control — 2026-10-26
+
+- Added explicit accessible descriptions to app-bar actions, Settings section cards, and the dashboard widget Switch. The API 37 instrumentation test navigates to Settings → Dashboard and confirms the Recent transactions Switch is labeled and checkable.
+- Verification on the current source: 107 unit tests and 41 connected Android tests passed; lint reported 32 warnings and 0 errors; APK assembly and APK Signature Scheme v2 verification passed.
+- This closes the targeted widget-label check only. Full TalkBack focus review across finance forms and the remaining screens is still outstanding.

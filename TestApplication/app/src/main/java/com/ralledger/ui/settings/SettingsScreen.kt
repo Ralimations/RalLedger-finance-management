@@ -68,6 +68,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.font.FontWeight
@@ -476,6 +478,7 @@ fun SettingsScreen(
                 Text("Dashboard widgets", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                 Text("Show, hide and reorder the summaries on Home.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 dashboardSettings.order.forEachIndexed { index, widget ->
+                    val isVisible = widget in dashboardSettings.visible
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
@@ -485,8 +488,11 @@ fun SettingsScreen(
                             Text(widget.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Switch(
-                            checked = widget in dashboardSettings.visible,
-                            onCheckedChange = { onDashboardWidgetVisibilityChange(widget, it) }
+                            checked = isVisible,
+                            onCheckedChange = { onDashboardWidgetVisibilityChange(widget, it) },
+                            modifier = Modifier.semantics {
+                                contentDescription = "${widget.title}. ${widget.detail}"
+                            }
                         )
                         IconButton(onClick = { onMoveDashboardWidget(widget, -1) }, enabled = index > 0) {
                             Icon(Icons.Default.ArrowUpward, contentDescription = "Move ${widget.title} up")
@@ -675,7 +681,11 @@ fun SettingsScreen(
 @Composable
 private fun SettingsSectionCard(section: SettingsSection, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onClick),
+        modifier = Modifier.fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${section.title}. ${section.description}"
+            },
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
     ) {

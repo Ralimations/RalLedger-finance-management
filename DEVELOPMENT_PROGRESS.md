@@ -770,4 +770,19 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Reopened the same CSV and confirmed its row appeared as “Already saved · skipped,” the summary showed 1 saved duplicate and 0 importable rows, and the action was “Import 0 rows.” Canceled the second import and confirmed the wallet remained ₱9,850.00. No real financial data was used.
 - Verification on the current source: 107 unit tests passed; all 40 connected API 37 instrumentation tests passed; debug lint reported 32 warnings and 0 errors; debug assembly succeeded. APK Signature Scheme v2 verification passed.
 - Refreshed releases/RalLedger-debug.apk: 76,768,713 bytes; SHA-256 7511855AFDD43DE3D8CB5CE173B2163EED47AE45CA52467E6F3C7557D7914CE9. It is debug-signed, not a production release.
-- Import review is validated for the implemented CSV/text-table path. Broader PDF and arbitrary statement-format recognition, full TalkBack review, dashboard-preference persistence, and remaining Phase II screen coverage are still outstanding. This branch remains local and unpublished.
+- Import review is validated for CSV/TSV, XLSX, OFX/QFX, and best-effort PDF text/OCR through the smart reader; preview mapping remains subject to statement-layout quality. Full TalkBack review and remaining Phase II screen coverage are still outstanding. Widget visibility persistence was verified on API 37 across force-stop/relaunch; reordered-layout persistence remains pending. This branch remains local and unpublished.
+
+## Phase II — Dashboard preference persistence check — 2026-10-26
+
+- On the disposable API 37 emulator, confirmed all seven Home widgets began enabled. Turned off Recent transactions in Settings → Dashboard, force-stopped and reopened RalLedger, and confirmed that visibility setting remained off.
+- Restored Recent transactions to visible, force-stopped and reopened again, and confirmed all seven widget controls were enabled. No financial records changed. Reorder persistence was not part of this check.
+- Screenshot and UI-hierarchy evidence are stored in ignored .ralledger-local/qa/dashboard-prefs-before.png, dashboard-prefs-before.xml, dashboard-prefs-relaunch.xml, and post-relaunch-current.xml.
+- This was a manual persistence check; source code did not change and the automated suite was not rerun in this slice. Latest source verification remains 107 unit tests, 40 API 37 instrumentation tests, and lint with 32 warnings and 0 errors.
+
+## Phase II — Dashboard accessibility labels — 2026-10-26
+
+- Added accessible names to the app-bar Quick actions and Settings buttons and to each Settings section card. The Dashboard widget Switch now carries its own title and detail description, while the text and reorder controls remain separate accessible elements.
+- Added an API 37 instrumentation check that navigates Settings → Dashboard and confirms “Recent transactions” is exposed on a checkable node. The test activates a labeled text node through its clickable card ancestor where Android exposes the label and action separately.
+- Verification: 107 unit tests passed; all 41 API 37 connected instrumentation tests passed; lint reported 32 warnings and 0 errors; debug APK assembly succeeded. `emulator-5562` remained offline and was skipped.
+- Refreshed `releases/RalLedger-debug.apk`: 76,768,527 bytes; SHA-256 `683A76CF256A4D60D69A7B9658C2E3E545EFE03F12E95068FFD1748B2FD92C76`. APK Signature Scheme v2 verification passed; the APK is debug-signed, not production-signed.
+- No real financial data was used. Full TalkBack focus review across the remaining screens, other-module text scaling, reordered-widget persistence, manual file-provider import/export, and broad screen-by-screen UI review remain open. This update is local and unpublished.

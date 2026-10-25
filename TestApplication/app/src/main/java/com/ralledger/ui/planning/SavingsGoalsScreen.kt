@@ -303,8 +303,11 @@ private fun GoalAllocationDialog(goal: SavingsGoal, type: SavingsGoalEventType, 
     var amountText by remember(goal.id, type) { mutableStateOf("") }
     var note by remember(goal.id, type) { mutableStateOf("") }
     var error by remember(goal.id, type) { mutableStateOf<String?>(null) }
+    var confirmDiscard by remember(goal.id, type) { mutableStateOf(false) }
+    val isDirty = amountText.isNotBlank() || note.isNotBlank()
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (type == SavingsGoalEventType.ALLOCATE) "Reserve for ${goal.name}" else "Release from ${goal.name}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -322,8 +325,11 @@ private fun GoalAllocationDialog(goal: SavingsGoal, type: SavingsGoalEventType, 
                 else onSave(amount, note.trim())
             }) { Text(if (type == SavingsGoalEventType.ALLOCATE) "Reserve" else "Release") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }
 
 @Composable

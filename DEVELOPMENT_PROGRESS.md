@@ -688,3 +688,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification passed `:app:testDebugUnitTest` (103 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing. UI interaction review remains unavailable because the emulator is offline and no AVD is configured.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `48B5424BCF69F2E07D99F8F369F693D6D8CE1B1CF7E76A51DB03F22B361C463D`. It is debug-signed, not a production release.
 - This iteration remains local and unpublished. Account, category, transaction-template, and payment dialogs still need discard review; shared non-amount controls, device accessibility walkthroughs, and full cross-flow regression remain open.
+
+## Phase II — Operational dialog discard protection — 2026-10-25
+
+- Added changed-draft confirmation to transaction entry, duplication and correction; account reconciliation; receivable collection and write-off; planned, subscription and debt payments; savings allocations; and category/project assignment and merge dialogs. Draft checks include amount, date, account/category selection, descriptions, counterparties, notes, transfer details and selected assignments as applicable. Automatically loaded transaction defaults do not count as user edits.
+- Existing Save/Post operations and accounting callbacks are unchanged. Untouched dialogs close directly; changed drafts require Keep editing or Discard.
+- Verification passed `:app:testDebugUnitTest` (103 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing. The connected emulator remains offline (`emulator-5562`); no interactive device review was possible.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `548B95D2970ECF8B932B8C0B7142F72F75DBF21CC0A1E40E8A23FA29FAB273F3`. It is debug-signed, not a production release.
+- This iteration remains local and unpublished. Device walkthroughs, accessibility review and full cross-flow regression remain open.

@@ -432,19 +432,26 @@ private fun DebtPaymentDialog(
 ) {
     val assetAccounts = accounts.filter { it.accountType.isAsset && !it.accountType.isReceivable && !it.isArchived }
     val expenseCategories = categories.filter { it.type == CategoryType.EXPENSE && !it.isArchived }
-    var accountId by remember(debt.id, assetAccounts) { mutableStateOf(assetAccounts.firstOrNull()?.id.orEmpty()) }
-    var principal by remember { mutableStateOf("") }
-    var interest by remember { mutableStateOf("") }
-    var categoryId by remember(debt.id, expenseCategories) { mutableStateOf(expenseCategories.firstOrNull()?.id.orEmpty()) }
-    var date by remember { mutableStateOf(System.currentTimeMillis()) }
-    var notes by remember { mutableStateOf("") }
+    val initialAccountId = remember(debt.id, assetAccounts) { assetAccounts.firstOrNull()?.id.orEmpty() }
+    val initialCategoryId = remember(debt.id, expenseCategories) { expenseCategories.firstOrNull()?.id.orEmpty() }
+    val initialDate = remember(debt.id) { System.currentTimeMillis() }
+    var accountId by remember(debt.id, assetAccounts) { mutableStateOf(initialAccountId) }
+    var principal by remember(debt.id) { mutableStateOf("") }
+    var interest by remember(debt.id) { mutableStateOf("") }
+    var categoryId by remember(debt.id, expenseCategories) { mutableStateOf(initialCategoryId) }
+    var date by remember(debt.id) { mutableStateOf(initialDate) }
+    var notes by remember(debt.id) { mutableStateOf("") }
     var accountExpanded by remember { mutableStateOf(false) }
     var categoryExpanded by remember { mutableStateOf(false) }
     var dateOpen by remember { mutableStateOf(false) }
+    var confirmDiscard by remember(debt.id) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val isDirty = accountId != initialAccountId || principal.isNotBlank() || interest.isNotBlank() ||
+        categoryId != initialCategoryId || date != initialDate || notes.isNotBlank()
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     val dateState = if (dateOpen) rememberDatePickerState(initialSelectedDateMillis = date) else null
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text("Payment · ${debt.title}") },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -477,8 +484,11 @@ private fun DebtPaymentDialog(
                 }
             }) { Text("Record payment") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
     if (dateOpen && dateState != null) {
         DatePickerDialog(
             onDismissRequest = { dateOpen = false },

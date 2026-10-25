@@ -318,11 +318,15 @@ private fun MergeCategoryDialog(
     onDismiss: () -> Unit,
     onMerge: (String) -> Unit
 ) {
-    var targetId by remember(source.id, targets) { mutableStateOf(targets.firstOrNull()?.id.orEmpty()) }
+    val initialTargetId = remember(source.id, targets) { targets.firstOrNull()?.id.orEmpty() }
+    var targetId by remember(source.id, targets) { mutableStateOf(initialTargetId) }
     var expanded by remember { mutableStateOf(false) }
+    var confirmDiscard by remember(source.id) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val isDirty = targetId != initialTargetId
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text("Merge ${source.name}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -354,8 +358,11 @@ private fun MergeCategoryDialog(
                 else onMerge(targetId)
             }, enabled = targets.isNotEmpty()) { Text("Merge") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

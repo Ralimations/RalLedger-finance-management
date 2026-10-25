@@ -355,8 +355,10 @@ private fun FinancialProjectMergeDialog(
 ) {
     var targetId by remember(source.id) { mutableStateOf<String?>(null) }
     var expanded by remember { mutableStateOf(false) }
+    var confirmDiscard by remember(source.id) { mutableStateOf(false) }
+    val requestDismiss = { if (targetId != null) confirmDiscard = true else onDismiss() }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text("Merge ${source.name}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -371,6 +373,9 @@ private fun FinancialProjectMergeDialog(
             }
         },
         confirmButton = { Button(onClick = { targetId?.let(onMerge) }, enabled = targetId != null) { Text("Merge") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }

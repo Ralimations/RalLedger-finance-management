@@ -330,12 +330,15 @@ private fun AccountReconciliationDialog(
 ) {
     var actualBalanceText by remember(account.id) { mutableStateOf("") }
     var reason by remember(account.id) { mutableStateOf("") }
+    var confirmDiscard by remember(account.id) { mutableStateOf(false) }
+    val isDirty = actualBalanceText.isNotBlank() || reason.isNotBlank()
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     var error by remember(account.id) { mutableStateOf<String?>(null) }
     val actualBalance = Money.parse(actualBalanceText)
     val difference = actualBalance?.minus(account.currentLedgerBalance)
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text("Reconcile ${account.name}") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -365,8 +368,11 @@ private fun AccountReconciliationDialog(
                 }
             }) { Text("Save adjustment") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

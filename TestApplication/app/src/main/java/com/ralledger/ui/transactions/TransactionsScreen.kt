@@ -777,42 +777,62 @@ private fun RecordTransactionDialog(
     onCorrect: (TransactionCorrection) -> Unit
 ) {
     val transactionKey = initialTransaction?.journalEntryId ?: template?.id
+    val initialTab = remember(transactionKey, isCorrection) {
+        when (initialTransaction?.transactionType ?: template?.transactionType) {
+            TransactionType.INCOME -> 1
+            TransactionType.TRANSFER -> 2
+            else -> 0
+        }
+    }
     var selectedTab by remember(transactionKey, isCorrection) {
-        mutableStateOf(
-            when (initialTransaction?.transactionType ?: template?.transactionType) {
-                TransactionType.INCOME -> 1
-                TransactionType.TRANSFER -> 2
-                else -> 0
-            }
-        )
+        mutableStateOf(initialTab)
     }
     val eligibleAccounts = accounts.filter { account ->
         account.accountType.isAsset && !account.accountType.isReceivable &&
             (!account.isArchived || (isCorrection && account.id in setOf(initialTransaction?.accountId, initialTransaction?.destinationAccountId)))
     }
-    var selectedAccountId by remember(transactionKey, isCorrection) {
+    var initialAccountId by remember(transactionKey, isCorrection) {
         mutableStateOf(initialTransaction?.accountId ?: template?.accountId ?: eligibleAccounts.firstOrNull()?.id.orEmpty())
     }
-    var selectedDestAccountId by remember(transactionKey, isCorrection) {
-        mutableStateOf(initialTransaction?.destinationAccountId ?: template?.destinationAccountId ?: eligibleAccounts.firstOrNull { it.id != selectedAccountId }?.id.orEmpty())
+    var initialDestinationAccountId by remember(transactionKey, isCorrection) {
+        mutableStateOf(initialTransaction?.destinationAccountId ?: template?.destinationAccountId ?: eligibleAccounts.firstOrNull { it.id != initialAccountId }?.id.orEmpty())
     }
-    var selectedCategoryId by remember(transactionKey, isCorrection) {
+    var initialCategoryId by remember(transactionKey, isCorrection) {
         mutableStateOf(initialTransaction?.categoryId ?: template?.categoryId ?: template?.feeCategoryId ?: categories.firstOrNull {
-            it.type.name == (if (selectedTab == 1) "INCOME" else "EXPENSE") && !it.isArchived
+            it.type.name == (if (initialTab == 1) "INCOME" else "EXPENSE") && !it.isArchived
         }?.id.orEmpty())
     }
-    var selectedFeeCategoryId by remember(transactionKey, isCorrection) {
+    var initialFeeCategoryId by remember(transactionKey, isCorrection) {
         mutableStateOf(initialTransaction?.categoryId ?: template?.feeCategoryId ?: categories.firstOrNull { it.type.name == "EXPENSE" && !it.isArchived }?.id.orEmpty())
     }
-    var amountText by remember(transactionKey, isCorrection) { mutableStateOf((initialTransaction?.amount ?: template?.amount)?.let(::moneyForInput).orEmpty()) }
-    var feeText by remember(transactionKey, isCorrection) { mutableStateOf((initialTransaction?.fee ?: template?.fee)?.takeIf { it.isPositive }?.let(::moneyForInput).orEmpty()) }
-    var description by remember(transactionKey, isCorrection) { mutableStateOf(initialTransaction?.description ?: template?.description.orEmpty()) }
-    var counterparty by remember(transactionKey, isCorrection) { mutableStateOf(initialTransaction?.counterparty ?: template?.counterparty.orEmpty()) }
-    var notes by remember(transactionKey, isCorrection) { mutableStateOf(initialTransaction?.notes ?: template?.notes.orEmpty()) }
-    var selectedTimestamp by remember(transactionKey, isCorrection) {
-        mutableStateOf(if (isCorrection) initialTransaction?.timestamp ?: System.currentTimeMillis() else System.currentTimeMillis())
+    val initialAmountText = remember(transactionKey, isCorrection) { (initialTransaction?.amount ?: template?.amount)?.let(::moneyForInput).orEmpty() }
+    val initialFeeText = remember(transactionKey, isCorrection) { (initialTransaction?.fee ?: template?.fee)?.takeIf { it.isPositive }?.let(::moneyForInput).orEmpty() }
+    val initialDescription = remember(transactionKey, isCorrection) { initialTransaction?.description ?: template?.description.orEmpty() }
+    val initialCounterparty = remember(transactionKey, isCorrection) { initialTransaction?.counterparty ?: template?.counterparty.orEmpty() }
+    val initialNotes = remember(transactionKey, isCorrection) { initialTransaction?.notes ?: template?.notes.orEmpty() }
+    val initialTimestamp = remember(transactionKey, isCorrection) {
+        if (isCorrection) initialTransaction?.timestamp ?: System.currentTimeMillis() else System.currentTimeMillis()
     }
+    var selectedAccountId by remember(transactionKey, isCorrection) {
+        mutableStateOf(initialAccountId)
+    }
+    var selectedDestAccountId by remember(transactionKey, isCorrection) {
+        mutableStateOf(initialDestinationAccountId)
+    }
+    var selectedCategoryId by remember(transactionKey, isCorrection) {
+        mutableStateOf(initialCategoryId)
+    }
+    var selectedFeeCategoryId by remember(transactionKey, isCorrection) {
+        mutableStateOf(initialFeeCategoryId)
+    }
+    var amountText by remember(transactionKey, isCorrection) { mutableStateOf(initialAmountText) }
+    var feeText by remember(transactionKey, isCorrection) { mutableStateOf(initialFeeText) }
+    var description by remember(transactionKey, isCorrection) { mutableStateOf(initialDescription) }
+    var counterparty by remember(transactionKey, isCorrection) { mutableStateOf(initialCounterparty) }
+    var notes by remember(transactionKey, isCorrection) { mutableStateOf(initialNotes) }
+    var selectedTimestamp by remember(transactionKey, isCorrection) { mutableStateOf(initialTimestamp) }
     var showDatePicker by remember { mutableStateOf(false) }
+    var confirmDiscard by remember(transactionKey, isCorrection) { mutableStateOf(false) }
     var inputError by remember { mutableStateOf<String?>(null) }
     val categoryType = if (selectedTab == 1) "INCOME" else "EXPENSE"
     val visibleCategories = categories.filter { category ->
@@ -823,24 +843,40 @@ private fun RecordTransactionDialog(
         category.type.name == "EXPENSE" &&
             (!category.isArchived || (isCorrection && category.id == initialTransaction?.categoryId))
     }
+    val isDirty = selectedTab != initialTab || selectedAccountId != initialAccountId ||
+        selectedDestAccountId != initialDestinationAccountId || selectedCategoryId != initialCategoryId ||
+        selectedFeeCategoryId != initialFeeCategoryId || amountText != initialAmountText || feeText != initialFeeText ||
+        description != initialDescription || counterparty != initialCounterparty || notes != initialNotes ||
+        selectedTimestamp != initialTimestamp
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
 
     LaunchedEffect(eligibleAccounts) {
-        if (eligibleAccounts.none { it.id == selectedAccountId }) selectedAccountId = eligibleAccounts.firstOrNull()?.id.orEmpty()
+        if (eligibleAccounts.none { it.id == selectedAccountId }) {
+            val replacementId = eligibleAccounts.firstOrNull()?.id.orEmpty()
+            if (selectedAccountId.isBlank() && initialAccountId.isBlank()) initialAccountId = replacementId
+            selectedAccountId = replacementId
+        }
         if (eligibleAccounts.none { it.id == selectedDestAccountId }) {
-            selectedDestAccountId = eligibleAccounts.firstOrNull { it.id != selectedAccountId }?.id.orEmpty()
+            val replacementId = eligibleAccounts.firstOrNull { it.id != selectedAccountId }?.id.orEmpty()
+            if (selectedDestAccountId.isBlank() && initialDestinationAccountId.isBlank()) initialDestinationAccountId = replacementId
+            selectedDestAccountId = replacementId
         }
     }
     LaunchedEffect(visibleCategories) {
         if (selectedTab != 2 && visibleCategories.none { it.id == selectedCategoryId }) {
-            selectedCategoryId = visibleCategories.firstOrNull()?.id.orEmpty()
+            val replacementId = visibleCategories.firstOrNull()?.id.orEmpty()
+            if (selectedCategoryId.isBlank() && initialCategoryId.isBlank()) initialCategoryId = replacementId
+            selectedCategoryId = replacementId
         }
         if (visibleFeeCategories.none { it.id == selectedFeeCategoryId }) {
-            selectedFeeCategoryId = visibleFeeCategories.firstOrNull()?.id.orEmpty()
+            val replacementId = visibleFeeCategories.firstOrNull()?.id.orEmpty()
+            if (selectedFeeCategoryId.isBlank() && initialFeeCategoryId.isBlank()) initialFeeCategoryId = replacementId
+            selectedFeeCategoryId = replacementId
         }
     }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = {
             Text(when {
                 isCorrection -> "Correct transaction"
@@ -992,11 +1028,15 @@ private fun RecordTransactionDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = requestDismiss) {
                 Text("Cancel")
             }
         }
     )
+
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 
     if (showDatePicker) {
         val datePickerState = rememberDatePickerState(initialSelectedDateMillis = localTimestampToPickerDateMillis(selectedTimestamp))
@@ -1105,9 +1145,12 @@ private fun TransactionProjectAssignmentDialog(
     onSave: (String?) -> Unit
 ) {
     var selectedId by remember(transaction.journalEntryId) { mutableStateOf(transaction.projectId) }
+    var confirmDiscard by remember(transaction.journalEntryId) { mutableStateOf(false) }
+    val isDirty = selectedId != transaction.projectId
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     val availableProjects = projects.filter { !it.isArchived || it.id == transaction.projectId }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text("Project for ${transaction.description.ifBlank { "transaction" }}") },
         text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
@@ -1135,8 +1178,11 @@ private fun TransactionProjectAssignmentDialog(
             }
         },
         confirmButton = { Button(onClick = { onSave(selectedId) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }
 
 @Composable
@@ -1147,9 +1193,12 @@ private fun TransactionTagAssignmentDialog(
     onSave: (Set<String>) -> Unit
 ) {
     var selectedIds by remember(transaction.journalEntryId) { mutableStateOf(transaction.tagIds) }
+    var confirmDiscard by remember(transaction.journalEntryId) { mutableStateOf(false) }
+    val isDirty = selectedIds != transaction.tagIds
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     val availableTags = tags.filter { !it.isArchived || it.id in transaction.tagIds }
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text("Labels for ${transaction.description.ifBlank { "transaction" }}") },
         text = {
             if (availableTags.isEmpty()) {
@@ -1182,8 +1231,11 @@ private fun TransactionTagAssignmentDialog(
                 Text("Save")
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }
 
 @Composable

@@ -501,15 +501,20 @@ private fun CollectPaymentDialog(
     onDismiss: () -> Unit,
     onConfirm: (destinationAccountId: String, amount: Money, notes: String) -> Unit
 ) {
-    var selectedAccountId by remember(receivable.id) { mutableStateOf(accounts.firstOrNull()?.id.orEmpty()) }
-    var amountText by remember(receivable.id) { mutableStateOf(moneyInput(receivable.outstandingAmount.centavos)) }
-    var notes by remember { mutableStateOf("") }
+    val initialAccountId = remember(receivable.id) { accounts.firstOrNull()?.id.orEmpty() }
+    val initialAmountText = remember(receivable.id) { moneyInput(receivable.outstandingAmount.centavos) }
+    var selectedAccountId by remember(receivable.id) { mutableStateOf(initialAccountId) }
+    var amountText by remember(receivable.id) { mutableStateOf(initialAmountText) }
+    var notes by remember(receivable.id) { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
+    var confirmDiscard by remember(receivable.id) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val isDirty = selectedAccountId != initialAccountId || amountText != initialAmountText || notes.isNotBlank()
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     val selectedName = accounts.firstOrNull { it.id == selectedAccountId }?.name ?: "Select destination account"
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text("Record collection") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -543,8 +548,11 @@ private fun CollectPaymentDialog(
                 }
             }) { Text("Record payment") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -555,15 +563,20 @@ private fun WriteOffDialog(
     onDismiss: () -> Unit,
     onConfirm: (amount: Money, categoryId: String, notes: String) -> Unit
 ) {
-    var amountText by remember(receivable.id) { mutableStateOf(moneyInput(receivable.outstandingAmount.centavos)) }
-    var notes by remember { mutableStateOf("") }
-    var selectedCategoryId by remember { mutableStateOf(categories.firstOrNull()?.id.orEmpty()) }
+    val initialAmountText = remember(receivable.id) { moneyInput(receivable.outstandingAmount.centavos) }
+    val initialCategoryId = remember(receivable.id) { categories.firstOrNull()?.id.orEmpty() }
+    var amountText by remember(receivable.id) { mutableStateOf(initialAmountText) }
+    var notes by remember(receivable.id) { mutableStateOf("") }
+    var selectedCategoryId by remember(receivable.id) { mutableStateOf(initialCategoryId) }
     var expanded by remember { mutableStateOf(false) }
+    var confirmDiscard by remember(receivable.id) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val isDirty = amountText != initialAmountText || notes.isNotBlank() || selectedCategoryId != initialCategoryId
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     val categoryName = categories.firstOrNull { it.id == selectedCategoryId }?.name ?: "Select expense category"
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text("Write off uncollectible balance?") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -599,8 +612,11 @@ private fun WriteOffDialog(
                 }
             }) { Text("Confirm write-off") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Keep balance") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Keep balance") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }
 
 private fun moneyInput(centavos: Long): String = "${centavos / 100}.${(centavos % 100).toString().padStart(2, '0')}"

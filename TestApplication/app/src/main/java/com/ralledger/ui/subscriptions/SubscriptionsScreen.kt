@@ -387,17 +387,23 @@ private fun SubscriptionPaymentDialog(
     onDismiss: () -> Unit,
     onConfirm: (amount: Money, categoryId: String, paymentDate: Long, notes: String) -> Unit
 ) {
-    var amountText by remember(subscription.id) { mutableStateOf(moneyInput(subscription.billingAmount.centavos)) }
-    var selectedCategoryId by remember(subscription.id) { mutableStateOf(expenseCategories.firstOrNull()?.id.orEmpty()) }
+    val initialAmountText = remember(subscription.id) { moneyInput(subscription.billingAmount.centavos) }
+    val initialCategoryId = remember(subscription.id) { expenseCategories.firstOrNull()?.id.orEmpty() }
+    val initialPaymentDate = remember(subscription.id) { System.currentTimeMillis() }
+    var amountText by remember(subscription.id) { mutableStateOf(initialAmountText) }
+    var selectedCategoryId by remember(subscription.id) { mutableStateOf(initialCategoryId) }
     var notes by remember(subscription.id) { mutableStateOf("") }
-    var paymentDate by remember(subscription.id) { mutableStateOf(System.currentTimeMillis()) }
+    var paymentDate by remember(subscription.id) { mutableStateOf(initialPaymentDate) }
     var categoryExpanded by remember { mutableStateOf(false) }
     var datePickerOpen by remember { mutableStateOf(false) }
+    var confirmDiscard by remember(subscription.id) { mutableStateOf(false) }
     var inputError by remember { mutableStateOf<String?>(null) }
+    val isDirty = amountText != initialAmountText || selectedCategoryId != initialCategoryId || notes.isNotBlank() || paymentDate != initialPaymentDate
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     val datePickerState = if (datePickerOpen) rememberDatePickerState(initialSelectedDateMillis = paymentDate) else null
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text("Record ${subscription.name} payment") },
         text = {
             Column(
@@ -441,8 +447,12 @@ private fun SubscriptionPaymentDialog(
                 }
             ) { Text("Save payment") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 
     if (datePickerOpen && datePickerState != null) {
         DatePickerDialog(

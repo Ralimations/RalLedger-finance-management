@@ -355,17 +355,23 @@ private fun RecordPaymentDialog(
     onDismiss: () -> Unit,
     onRecord: (String, Money, Long, String) -> Unit
 ) {
-    var accountId by remember(plan.id) { mutableStateOf(accounts.firstOrNull()?.id.orEmpty()) }
-    var amountText by remember(plan.id) { mutableStateOf("%.2f".format(plan.amount.centavos / 100.0)) }
+    val initialAccountId = remember(plan.id) { accounts.firstOrNull()?.id.orEmpty() }
+    val initialAmountText = remember(plan.id) { "%.2f".format(plan.amount.centavos / 100.0) }
+    val initialDate = remember(plan.id) { Calendar.getInstance().timeInMillis }
+    var accountId by remember(plan.id) { mutableStateOf(initialAccountId) }
+    var amountText by remember(plan.id) { mutableStateOf(initialAmountText) }
     var notes by remember(plan.id) { mutableStateOf("") }
-    var date by remember(plan.id) { mutableStateOf(Calendar.getInstance().timeInMillis) }
+    var date by remember(plan.id) { mutableStateOf(initialDate) }
     var accountMenu by remember { mutableStateOf(false) }
     var datePickerOpen by remember { mutableStateOf(false) }
+    var confirmDiscard by remember(plan.id) { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    val isDirty = accountId != initialAccountId || amountText != initialAmountText || notes.isNotBlank() || date != initialDate
+    val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
     val selectedAccount = accounts.firstOrNull { it.id == accountId }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text("Record payment") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -389,8 +395,11 @@ private fun RecordPaymentDialog(
                 else { error = null; onRecord(accountId, amount, date, notes) }
             }) { Text("Post payment") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
     if (datePickerOpen) {
         val picker = rememberDatePickerState(initialSelectedDateMillis = date)
         DatePickerDialog(onDismissRequest = { datePickerOpen = false }, confirmButton = {

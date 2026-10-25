@@ -704,3 +704,13 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification passed `:app:testDebugUnitTest` (103 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing. The connected emulator remains offline (`emulator-5562`), preventing interactive UI review.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `51ABDE6DF5999F41A6CD0253613E53AD8F5A2D11F2C67119C871A8D5702844BC`. It is debug-signed, not a production release.
 - This iteration remains local and unpublished. Shared control adoption in the remaining forms, device/accessibility walkthroughs, and full cross-flow regression remain open.
+
+## Phase II — Safer financial statement import — 2026-10-25
+
+- Updated duplicate handling to distinguish transactions already in the journal from identical-looking rows in the currently selected file. Existing journal matches remain skipped and are rechecked during posting. Repeated in-file rows remain importable and the preview identifies the earlier matching line, while warning that overlapping statement exports can contain repeated activity.
+- Kept repeated rows within one confirmed import batch from being mistaken for previously saved transactions by the repository's per-row duplicate recheck. Re-importing those rows later still matches the journal and skips them.
+- Added generation checks to file inspection and editable mapping previews. Results from older file/mapping requests cannot replace the current preview; mapping edits are ignored while an import is running.
+- Added unit coverage for a repeated statement row and extended instrumentation coverage to verify both repeated rows post as balanced entries and a later re-import skips all saved entries. The instrumentation source compiles; connected execution was unavailable because no device is online.
+- Verification passed `:app:testDebugUnitTest` (104 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `060248B2F8E9E11C8ECB4A8D795B185B4CA2B4D67C81AE0018467F1263DCCAC9`. This is debug-signed, not a production release.
+- This iteration remains local and unpublished. Import format limitations and the remaining Phase II device/accessibility walkthroughs are still tracked in `FEATURE_CRUD_MATRIX.md`.

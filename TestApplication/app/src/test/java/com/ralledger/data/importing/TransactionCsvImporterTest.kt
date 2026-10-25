@@ -62,6 +62,32 @@ class TransactionCsvImporterTest {
     }
 
     @Test
+    fun keepsIdenticalRowsFromTheSameStatementAndFlagsPossibleOverlap() {
+        val document = TransactionCsvImporter.parse(
+            "Date,Type,Amount,Account,Category,Description,Counterparty\n" +
+                "2026-02-03,Expense,12.50,Wallet,Food,Coffee,Cafe\n" +
+                "2026-02-03,Expense,12.50,Wallet,Food,Coffee,Cafe\n"
+        )
+        val wallet = Account("wallet", "Wallet", accountType = AccountType.E_WALLET, currency = "PHP")
+        val food = Category("food", "Food", CategoryType.EXPENSE)
+
+        val preview = TransactionCsvImporter.preview(
+            document,
+            TransactionCsvImporter.suggestMapping(document.headers),
+            listOf(wallet),
+            listOf(food),
+            emptyList(),
+            emptyList()
+        )
+
+        assertEquals(2, preview.importableCount)
+        assertEquals(0, preview.duplicateCount)
+        assertEquals(1, preview.sameFileDuplicateCount)
+        assertEquals(2, preview.transactions.size)
+        assertTrue(preview.rows[1].warning.orEmpty().contains("overlapping statement exports"))
+    }
+
+    @Test
     fun requiresExistingMatchingAccountsCategoriesAndExplicitTransferDestination() {
         val document = TransactionCsvImporter.parse(
             "Date,Type,Amount,Account,Category,To Account\n" +

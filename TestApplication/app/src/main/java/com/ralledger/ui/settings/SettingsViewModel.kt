@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicLong
 
 data class CsvImportUiState(
     val headers: List<String>,
@@ -61,6 +62,7 @@ class SettingsViewModel(
     val csvImportState: StateFlow<CsvImportUiState?> = _csvImportState.asStateFlow()
     private var pendingCsv: ParsedCsvDocument? = null
     private var pendingCsvReferences: CsvImportReferenceData? = null
+    private val csvPreviewGeneration = AtomicLong(0L)
 
     fun exportTransactionsCsv(writeDocument: suspend (ByteArray) -> Unit) {
         viewModelScope.launch {
@@ -81,6 +83,7 @@ class SettingsViewModel(
     }
 
     fun inspectFinancialFile(fileName: String?, mimeType: String?, readDocument: suspend () -> ByteArray) {
+        val requestId = csvPreviewGeneration.incrementAndGet()
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val bytes = readDocument()
@@ -102,6 +105,7 @@ class SettingsViewModel(
                         references.tags, references.transactions
                     )
                 }.let { it.copy(warnings = document.warnings + it.warnings) }
+                if (requestId != csvPreviewGeneration.get()) return@launch
                 pendingCsv = document.table
                 pendingCsvReferences = references
                 _csvImportState.value = CsvImportUiState(
@@ -115,25 +119,32 @@ class SettingsViewModel(
                 )
                 _csvStatus.value = null
             } catch (error: Exception) {
-                pendingCsv = null
-                pendingCsvReferences = null
-                _csvStatus.value = "File could not be opened: ${error.localizedMessage ?: "Check the file and try again."}"
+                if (requestId == csvPreviewGeneration.get()) {
+                    pendingCsv = null
+                    pendingCsvReferences = null
+                    _csvStatus.value = "File could not be opened: ${error.localizedMessage ?: "Check the file and try again."}"
+                }
             }
         }
     }
 
     fun updateCsvImportMapping(mapping: CsvColumnMapping) {
+        if (_csvImportState.value?.isImporting == true) return
         val document = pendingCsv ?: return
         val references = pendingCsvReferences ?: return
         val current = _csvImportState.value ?: return
+        val requestId = csvPreviewGeneration.incrementAndGet()
         _csvImportState.value = current.copy(mapping = mapping, preview = null)
         viewModelScope.launch(Dispatchers.Default) {
             val preview = TransactionCsvImporter.preview(
                 document, mapping, references.accounts, references.categories,
                 references.tags, references.transactions
             )
+            if (requestId != csvPreviewGeneration.get()) return@launch
             _csvImportState.value = _csvImportState.value?.let { state ->
-                state.copy(preview = preview.copy(warnings = state.warnings + preview.warnings))
+                if (state.mapping == mapping && !state.isImporting) {
+                    state.copy(preview = preview.copy(warnings = state.warnings + preview.warnings))
+                } else state
             }
         }
     }
@@ -142,6 +153,7 @@ class SettingsViewModel(
         val preview = _csvImportState.value?.preview ?: return
         val rows = preview.transactions
         if (rows.isEmpty()) return
+        csvPreviewGeneration.incrementAndGet()
         _csvImportState.value = _csvImportState.value?.copy(isImporting = true)
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -161,6 +173,7 @@ class SettingsViewModel(
     }
 
     fun cancelCsvImport() {
+        csvPreviewGeneration.incrementAndGet()
         pendingCsv = null
         pendingCsvReferences = null
         _csvImportState.value = null

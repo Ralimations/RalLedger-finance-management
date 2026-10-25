@@ -33,6 +33,7 @@ import com.ralledger.data.local.entity.JournalEntryProjectEntity
 import com.ralledger.data.local.entity.normalizeCustomReportName
 import com.ralledger.data.importing.CsvImportExecutionResult
 import com.ralledger.data.importing.CsvImportedTransaction
+import com.ralledger.data.importing.TransactionCsvImporter
 import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalDomainModel
 import com.ralledger.data.local.entity.toDomainModel as toSavingsGoalEventDomainModel
 import com.ralledger.data.local.entity.toDomainModel as toInterestProductDomainModel
@@ -1808,21 +1809,25 @@ class RalLedgerRepository(
         var imported = 0
         var duplicates = 0
         val failures = mutableListOf<Pair<Int, String>>()
+        val importedKeysInThisBatch = mutableSetOf<String>()
         rows.forEach { row ->
             try {
                 val wasImported = database.withTransaction {
-                    val duplicateCount = journalDao.countMatchingImportDuplicate(
-                        transactionType = row.transactionType.name,
-                        primaryAccountId = row.accountId,
-                        destinationAccountId = row.destinationAccountId,
-                        categoryId = row.categoryId,
-                        amountCentavos = row.amount.centavos,
-                        feeCentavos = row.fee.centavos,
-                        description = row.description,
-                        counterparty = row.counterparty,
-                        dayStartInclusive = row.dayStartInclusive,
-                        nextDayExclusive = row.nextDayExclusive
-                    )
+                    val importKey = TransactionCsvImporter.duplicateKey(row)
+                    val duplicateCount = if (importKey in importedKeysInThisBatch) 0L else {
+                        journalDao.countMatchingImportDuplicate(
+                            transactionType = row.transactionType.name,
+                            primaryAccountId = row.accountId,
+                            destinationAccountId = row.destinationAccountId,
+                            categoryId = row.categoryId,
+                            amountCentavos = row.amount.centavos,
+                            feeCentavos = row.fee.centavos,
+                            description = row.description,
+                            counterparty = row.counterparty,
+                            dayStartInclusive = row.dayStartInclusive,
+                            nextDayExclusive = row.nextDayExclusive
+                        )
+                    }
                     if (duplicateCount > 0L) {
                         false
                     } else {
@@ -1883,7 +1888,10 @@ class RalLedgerRepository(
                         true
                     }
                 }
-                if (wasImported) imported++ else duplicates++
+                if (wasImported) {
+                    imported++
+                    importedKeysInThisBatch += TransactionCsvImporter.duplicateKey(row)
+                } else duplicates++
             } catch (error: Exception) {
                 failures += row.lineNumber to (error.localizedMessage ?: "Row could not be imported")
             }

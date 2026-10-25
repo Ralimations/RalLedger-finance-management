@@ -70,6 +70,7 @@ data class CsvImportPreviewRow(
     val lineNumber: Int,
     val transaction: CsvImportedTransaction? = null,
     val duplicate: Boolean = false,
+    val sameFileDuplicate: Boolean = false,
     val error: String? = null,
     val warning: String? = null
 )
@@ -80,6 +81,7 @@ data class CsvImportPreview(
 ) {
     val importableCount: Int get() = rows.count { it.transaction != null && !it.duplicate && it.error == null }
     val duplicateCount: Int get() = rows.count { it.duplicate }
+    val sameFileDuplicateCount: Int get() = rows.count { it.sameFileDuplicate }
     val errorCount: Int get() = rows.count { it.error != null }
     val transactions: List<CsvImportedTransaction>
         get() = rows.mapNotNull { row -> row.transaction?.takeIf { !row.duplicate && row.error == null } }
@@ -219,6 +221,7 @@ object TransactionCsvImporter {
         val activeAccounts = accounts.filter { !it.isArchived && it.accountType.isAsset && !it.accountType.isReceivable }
         val activeCategories = categories.filterNot { it.isArchived }
         val existingKeys = existingTransactions.mapNotNull(::duplicateKey).toMutableSet()
+        val firstFileRowsByKey = mutableMapOf<String, Int>()
         val warnings = mutableSetOf<String>()
         val rows = document.rows.map { row ->
             try {
@@ -302,8 +305,17 @@ object TransactionCsvImporter {
                 )
                 val key = duplicateKey(item)
                 val duplicate = key in existingKeys
-                existingKeys += key
-                CsvImportPreviewRow(row.lineNumber, transaction = item, duplicate = duplicate)
+                val firstMatchingLine = firstFileRowsByKey[key]
+                if (firstMatchingLine == null) firstFileRowsByKey[key] = row.lineNumber
+                CsvImportPreviewRow(
+                    lineNumber = row.lineNumber,
+                    transaction = item,
+                    duplicate = duplicate,
+                    sameFileDuplicate = firstMatchingLine != null,
+                    warning = firstMatchingLine?.let {
+                        "Matches row $it in this file; both rows are kept. Check for overlapping statement exports."
+                    }
+                )
             } catch (error: Exception) {
                 CsvImportPreviewRow(
                     lineNumber = row.lineNumber,

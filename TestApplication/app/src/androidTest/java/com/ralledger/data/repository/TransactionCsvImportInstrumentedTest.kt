@@ -51,6 +51,7 @@ class TransactionCsvImportInstrumentedTest {
             val document = TransactionCsvImporter.parse(
                 "Date,Type,Amount,Account,Category,Description,Counterparty\n" +
                     "2026-05-10,Expense,12.50,Daily wallet,Food,Lunch,Cafe\n" +
+                    "2026-05-10,Expense,12.50,Daily wallet,Food,Lunch,Cafe\n" +
                     "2026-05-11,Income,250.00,Daily wallet,Salary,Pay,Employer\n"
             )
             val preview = TransactionCsvImporter.preview(
@@ -61,23 +62,24 @@ class TransactionCsvImportInstrumentedTest {
                 repository.transactionTagsFlow.first(),
                 repository.transactionsFlow.first()
             )
-            assertEquals(2, preview.importableCount)
+            assertEquals(3, preview.importableCount)
+            assertEquals(1, preview.sameFileDuplicateCount)
             assertEquals(0, preview.errorCount)
 
             val result = repository.importCsvTransactions(preview.transactions)
-            assertEquals(2, result.imported)
+            assertEquals(3, result.imported)
             assertEquals(0, result.duplicates)
             assertTrue(result.failedRows.isEmpty())
 
             val entries = database.journalDao().getAllJournalEntries()
-            assertEquals(2, entries.size)
+            assertEquals(3, entries.size)
             entries.forEach { entry ->
                 val lines = database.journalDao().getLinesForJournalEntry(entry.id).map { it.toDomainModel() }
                 assertTrue(
                     JournalEntry(entry.id, entry.timestamp, entry.description, lines).isBalanced()
                 )
             }
-            assertEquals(23_750L, database.journalDao().getBalanceAggregateForAccount("csv_wallet")
+            assertEquals(22_500L, database.journalDao().getBalanceAggregateForAccount("csv_wallet")
                 .sumOf { if (it.lineType == "DEBIT") it.totalCentavos else -it.totalCentavos })
 
             val caseVariantDuplicates = preview.transactions.map { transaction ->
@@ -88,10 +90,10 @@ class TransactionCsvImportInstrumentedTest {
             }
             val duplicateResult = repository.importCsvTransactions(caseVariantDuplicates)
             assertEquals(0, duplicateResult.imported)
-            assertEquals(2, duplicateResult.duplicates)
+            assertEquals(3, duplicateResult.duplicates)
             assertTrue(duplicateResult.failedRows.isEmpty())
-            assertEquals(2, database.journalDao().getAllJournalEntries().size)
-            assertEquals(2, repository.transactionsFlow.first().size)
+            assertEquals(3, database.journalDao().getAllJournalEntries().size)
+            assertEquals(3, repository.transactionsFlow.first().size)
         } finally {
             database.close()
         }

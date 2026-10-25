@@ -94,12 +94,21 @@ fun CsvImportMappingDialog(
 
                 state.preview?.let { preview ->
                     Text(
-                        "Ready ${preview.importableCount} · Duplicates ${preview.duplicateCount} · Needs attention ${preview.errorCount}",
+                        "Ready ${preview.importableCount} · Saved duplicates ${preview.duplicateCount} · Repeated rows ${preview.sameFileDuplicateCount} · Needs attention ${preview.errorCount}",
                         style = MaterialTheme.typography.titleSmall
                     )
-                    Text("Duplicates are skipped. Rows with missing or unmatched details need attention.", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "Rows matching saved transactions are skipped. Identical rows in this file are kept; check for overlapping statement exports.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
                     preview.warnings.take(4).forEach { warning ->
                         Text(warning, color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
+                    }
+                    preview.rows.filter { it.sameFileDuplicate }.take(6).forEach { row ->
+                        Text("Row ${row.lineNumber}: ${row.warning}", color = MaterialTheme.colorScheme.tertiary, style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (preview.sameFileDuplicateCount > 6) {
+                        Text("${preview.sameFileDuplicateCount - 6} more repeated rows are kept.", style = MaterialTheme.typography.bodySmall)
                     }
                     preview.rows.filter { it.error != null }.take(6).forEach { row ->
                         Text("Row ${row.lineNumber}: ${row.error}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)

@@ -742,3 +742,13 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - On the disposable API 37 emulator, separately set a synthetic Android screen credential, enabled app lock through the system prompt, sent the app to the background and reopened it, confirmed that the unlock prompt appeared before financial screens, authenticated, and disabled the lock. The credential was cleared after the walkthrough; no personal financial data was used.
 - Verification: 104 unit tests passed; all 39 connected API 37 instrumentation tests passed; `:app:lintDebug` completed with 32 warnings and 0 errors; `:app:assembleDebug` completed. The other attached emulator (`emulator-5562`) was offline and skipped.
 - This test-only iteration did not refresh or publish the APK. Remaining device review includes TalkBack/accessibility, text scaling, manual file-provider import/export, dashboard-preference persistence, and broader screen review. The available APK remains debug-signed.
+
+## 2026-10-26 — Large-text navigation fit and semantics
+
+- A live API 37 hierarchy/screenshot audit found the “Accounts” bottom-tab label clipped to “Accou…” at 360dp width and 1.3x system text scale.
+- Added an adaptive visual label (“Account”) only at widths of 360dp or less with text scale at least 1.2x. Other widths keep “Accounts”. The tab's merged accessibility semantics retain the full “Accounts” destination name.
+- Added unit coverage for the narrow-screen threshold, width and font-scale boundaries, and unchanged labels. Added an instrumentation assertion that TalkBack-visible semantics expose the full “Accounts” name.
+- Rechecked the updated Home at 360dp / 1.3x: the full visible “Account” label fits, the accessibility hierarchy contains the “Accounts” name, and emulator display/font settings were restored to 1080×2400 / 1.0x afterward.
+- Verification: 107 unit tests passed; all 40 connected API 37 instrumentation tests passed; lint completed with 32 warnings and 0 errors; `:app:assembleDebug` completed. `emulator-5562` remained offline and was skipped.
+- Refreshed `releases/RalLedger-debug.apk` locally: 76,372,807 bytes; SHA-256 `2D4B657BC6D2B0DE68C6B75228B813F2E755A30474224A01AA40DB6B592FBFAD`. APK signature scheme v2 verified with the Android debug key. This APK has not been pushed or published and is not production-signed.
+- Screenshots and the accessibility dump are in ignored `.ralledger-local/qa/`. Broader TalkBack review across financial forms and screens, text scaling on remaining modules, manual import/export, and dashboard-preference persistence remain open.

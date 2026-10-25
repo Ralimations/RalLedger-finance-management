@@ -56,6 +56,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
@@ -107,9 +110,14 @@ import com.ralledger.ui.transactions.TransactionsViewModel
 import com.ralledger.ui.widgets.normalizeWidgetTransactionType
 import kotlinx.coroutines.launch
 
-sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
+sealed class Screen(
+    val route: String,
+    val title: String,
+    val icon: ImageVector,
+    val compactTitle: String = title
+) {
     object Dashboard : Screen("dashboard", "Home", Icons.Default.Dashboard)
-    object Accounts : Screen("accounts", "Accounts", Icons.Default.AccountBalance)
+    object Accounts : Screen("accounts", "Accounts", Icons.Default.AccountBalance, "Account")
     object Transactions : Screen("transactions", "Activity", Icons.Default.ReceiptLong)
     object Planning : Screen("planning", "Planning", Icons.Default.EventNote)
     object Categories : Screen("categories", "Categories", Icons.Default.Label)
@@ -140,7 +148,9 @@ fun RalLedgerMainScreen(
     val applicationContext = LocalContext.current.applicationContext
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
-    val showBottomNavLabels = LocalConfiguration.current.screenWidthDp >= 320
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val fontScale = LocalDensity.current.fontScale
+    val showBottomNavLabels = screenWidthDp >= 320
 
     var showAddDialog by remember { mutableStateOf(false) }
     var showQuickActionHub by remember { mutableStateOf(false) }
@@ -191,11 +201,19 @@ fun RalLedgerMainScreen(
             NavigationBar {
                 navScreens.forEach { screen ->
                     NavigationBarItem(
-                        icon = { Icon(screen.icon, contentDescription = screen.title) },
+                        modifier = Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = screen.title
+                        },
+                        icon = { Icon(screen.icon, contentDescription = null) },
                         label = if (showBottomNavLabels) {
                             {
                                 Text(
-                                    text = screen.title,
+                                    text = displayNavigationLabel(
+                                        title = screen.title,
+                                        compactTitle = screen.compactTitle,
+                                        screenWidthDp = screenWidthDp,
+                                        fontScale = fontScale
+                                    ),
                                     maxLines = 1,
                                     softWrap = false,
                                     overflow = TextOverflow.Ellipsis,

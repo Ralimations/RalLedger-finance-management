@@ -18,6 +18,30 @@ import org.junit.runner.RunWith
 @Suppress("DEPRECATION")
 class AppLockGateInstrumentedTest {
     @Test
+    fun navigationUsesFullAccessibleDestinationName() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val preferences = AppLockPreferences(instrumentation.targetContext)
+        runBlocking { preferences.setEnabled(false) }
+
+        var scenario: ActivityScenario<MainActivity>? = null
+        try {
+            scenario = ActivityScenario.launch(MainActivity::class.java)
+            var descriptions = emptySet<String>()
+            val accountsTabNamed = waitForUi(instrumentation) {
+                descriptions = visibleContentDescriptions(instrumentation)
+                "Accounts" in descriptions
+            }
+            assertTrue(
+                "The account tab must keep its full accessible name when its visual label adapts",
+                accountsTabNamed
+            )
+        } finally {
+            scenario?.close()
+            runBlocking { preferences.setEnabled(false) }
+        }
+    }
+
+    @Test
     fun enabledLockShowsGateAndSecuresWindow() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
@@ -84,6 +108,31 @@ class AppLockGateInstrumentedTest {
             root.recycle()
         }
         return text
+    }
+
+    private fun visibleContentDescriptions(
+        instrumentation: android.app.Instrumentation
+    ): Set<String> {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return emptySet()
+        val descriptions = mutableSetOf<String>()
+        try {
+            collectDescriptions(root, descriptions)
+        } finally {
+            root.recycle()
+        }
+        return descriptions
+    }
+
+    private fun collectDescriptions(node: AccessibilityNodeInfo, descriptions: MutableSet<String>) {
+        node.contentDescription?.toString()?.takeIf(String::isNotBlank)?.let(descriptions::add)
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            try {
+                collectDescriptions(child, descriptions)
+            } finally {
+                child.recycle()
+            }
+        }
     }
 
     private fun collectText(node: AccessibilityNodeInfo, text: MutableSet<String>) {

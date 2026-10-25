@@ -89,3 +89,9 @@ This map compares existing controls with the Phase II destination. Financial ope
 - Empty-data Accounts, Activity, Planning, and Insights were inspected on API 37 at 411dp in light mode. No visible clipping or overlap was found; Planning and Insights scroll below the fixed navigation.
 - Screenshots are retained in ignored `.ralledger-local/qa/` under the corresponding `*-typical-light.png` names.
 - Populated states, compact/large widths, dark mode for these screens, larger text, and full TalkBack review remain open.
+
+## API 37 exported receiver validation - 2026-10-26
+
+- The subscription-reminder reschedule receiver now ignores null and unrelated broadcast actions before starting database/scheduler work; only its four manifest-declared system actions are accepted.
+- Added two unit tests for the action allowlist. Current verification: 109 unit tests and 42 connected API 37 instrumentation tests passed; lint reports 29 warnings and 0 errors; debug assembly and Android-test Kotlin compilation passed. The receiver security lint finding is cleared.
+- Current local debug APK: 76,543,542 bytes, SHA-256 `F7D6B49F1DF5EAF2C5456DCB4858AF4B96C7CA1ADDAEBDF6957072B4D4D73FE3`; v2 signature verified. It remains debug-signed. Release and manual QA gates listed above are still open.

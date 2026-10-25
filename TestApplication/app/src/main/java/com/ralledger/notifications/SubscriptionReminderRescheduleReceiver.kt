@@ -12,6 +12,8 @@ import kotlinx.coroutines.launch
 
 class SubscriptionReminderRescheduleReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (!isAllowedSubscriptionReminderRescheduleAction(intent.action)) return
+
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
@@ -24,4 +26,12 @@ class SubscriptionReminderRescheduleReceiver : BroadcastReceiver() {
             }
         }
     }
+}
+
+internal fun isAllowedSubscriptionReminderRescheduleAction(action: String?): Boolean = when (action) {
+    Intent.ACTION_BOOT_COMPLETED,
+    Intent.ACTION_TIME_CHANGED,
+    Intent.ACTION_TIMEZONE_CHANGED,
+    Intent.ACTION_DATE_CHANGED -> true
+    else -> false
 }

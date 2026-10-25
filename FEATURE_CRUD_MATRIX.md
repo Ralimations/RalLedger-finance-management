@@ -134,3 +134,15 @@ Still requiring explicit manual review: secure-device app-lock setup/unlock/relo
 - Home and Settings were inspected at 320dp, 411dp, and 480dp. Light mode was checked at each size; dark mode was checked at 480dp. Visible content remained within the width and bottom-navigation bounds; vertical content remained scrollable.
 - Display size, 420dpi density, and light mode were restored after capture. Screenshots are in ignored `.ralledger-local/qa/`.
 - This is targeted visual coverage only; other modules, larger text scales, and TalkBack focus remain open.
+
+## API 37 primary-screen visual sweep — 2026-10-26
+
+- Empty-data Accounts, Activity, Planning, and Insights screens were visually inspected at 411dp in light mode. The visible controls stayed within the viewport, the bottom navigation did not cover the captured content, and longer Planning/Insights content remained vertically scrollable.
+- Evidence: ignored `.ralledger-local/qa/accounts-typical-light.png`, `activity-typical-light.png`, `planning-typical-light.png`, and `insights-typical-light.png`.
+- This does not cover populated states, other widths/themes, larger text, or TalkBack. It is not a full visual sign-off for these modules or Phase II.
+
+## Android 17 build and release gate — 2026-10-26
+
+- The debug build now compiles and targets API 37 (minimum API 26). On the available API 37 emulator, 107 unit tests and 42 connected instrumentation tests pass; lint reports 30 warnings and 0 errors. The connected cases include migration from schema 1/2 through schema 22, financial integrity, and encrypted backup/restore.
+- The refreshed APK is `releases/RalLedger-debug.apk` (version 2.0, code 2), 76,552,681 bytes, SHA-256 `4AE356F048560084455498B051700C02B15F25F154F96487895C1387199C014C`. APK v2 signature verifies; it is debug-signed and is not production-release ready.
+- API 37 Home was visually checked at 610dp width with no visible clipping. Full TalkBack, all-screens compact/typical/large and dark-mode checks, larger text across modules, completion of the 17 manual journeys, and release signing remain outstanding.

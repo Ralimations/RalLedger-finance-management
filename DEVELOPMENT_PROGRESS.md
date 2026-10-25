@@ -802,3 +802,18 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Screenshots are in ignored `.ralledger-local/qa/`: `home-compact-light.png`, `home-typical-light.png`, `home-large-light.png`, `home-large-dark.png`, `settings-compact-light.png`, `settings-large-light.png`, and `settings-large-dark.png`. The emulator was restored to 1080×2400, 420dpi, light mode.
 - No financial records were present; app source and APK were unchanged. Latest regression is 107 unit tests and 42 connected API 37 tests passed; lint reported 32 warnings and 0 errors; the debug APK remains v2-verified.
 - This checkpoint covers Home and Settings only. Other modules, larger text scales, full TalkBack focus, and manual file-provider flows still need review.
+
+## Phase II — Typical-width primary-screen visual sweep — 2026-10-26
+
+- Inspected empty-data API 37 screenshots for Accounts, Activity, Planning, and Insights at 411dp (1080×2400, 420dpi) in light mode.
+- The Accounts search and archived filter fit above the empty-state message; Activity search, filter, and type chips fit without colliding; Planning and Insights continue vertically while the bottom navigation remains visible. No visible clipping or overlap was found in the captured viewports.
+- Screenshots are retained under ignored `.ralledger-local/qa/`: `accounts-typical-light.png`, `activity-typical-light.png`, `planning-typical-light.png`, and `insights-typical-light.png`. The emulator was restored to 1080×2400, 420dpi, light mode.
+- This is empty-data visual inspection at one width only. Populated states, compact and large widths, dark mode on these modules, larger text, and TalkBack remain unverified. No source code changed and the APK was not rebuilt; latest source verification remains 107 unit tests and 42 connected API 37 tests passed, with lint reporting 32 warnings and 0 errors.
+
+## Phase II — Android 17 target and release verification — 2026-10-26
+
+- Raised `compileSdk` and `targetSdk` to 37 while retaining `minSdk` 26. This exceeds Google Play's current API 36 submission minimum and lets this build exercise Android 17 behavior directly; see [Google Play target API requirements](https://developer.android.com/google/play/requirements/target-sdk).
+- Fresh verification passed: 107 unit tests; all 42 connected API 37 tests; debug lint with 30 warnings and 0 errors; debug assembly; and Android-test Kotlin compilation. The connected suite includes schema-1/schema-2-to-22 migrations, financial-integrity operations, encrypted restore, app-lock gating, and dashboard accessibility/persistence. The offline `emulator-5562` was skipped.
+- Installed the API 37 debug APK and confirmed RalLedger launched. At 610dp width, the Home cards and money summaries remained within the viewport without visible clipping. Screenshot: ignored `.ralledger-local/qa/api37-large-home.png`. Emulator size and density were restored to 1080×2400 and 420dpi.
+- Refreshed `releases/RalLedger-debug.apk`: 76,552,681 bytes; SHA-256 `4AE356F048560084455498B051700C02B15F25F154F96487895C1387199C014C`. Manifest inspection confirms package `com.ralledger`, version 2.0 / code 2, min SDK 26, compile SDK 37, target SDK 37. APK Signature Scheme v2 verifies; this remains a debug-signed build.
+- The build has no production signing configuration/key, and the release variant has minification disabled. Full TalkBack review, remaining screen-width/theme combinations and text scaling, all 17 manual journeys, notification delivery, and broader file-provider import/export review remain release gates. No push, merge, or publication was performed.

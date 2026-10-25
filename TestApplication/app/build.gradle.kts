@@ -7,12 +7,12 @@ plugins {
 
 android {
     namespace = "com.ralledger"
-    compileSdk = 35
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.ralledger"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 37
         versionCode = 2
         versionName = "2.0"
 

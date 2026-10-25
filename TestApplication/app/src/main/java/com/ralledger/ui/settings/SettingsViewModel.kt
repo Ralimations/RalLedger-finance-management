@@ -162,13 +162,13 @@ class SettingsViewModel(
                 val result = repository.importCsvTransactions(rows)
                 val errorSummary = result.failedRows.take(5).joinToString("; ") { (line, message) -> "row $line: $message" }
                 _csvStatus.value = buildString {
-                    append("CSV import complete: ${result.imported} added, ${result.duplicates} duplicates skipped")
+                    append("Import complete: ${result.imported} added, ${result.duplicates} duplicates skipped")
                     if (result.failedRows.isNotEmpty()) append(", ${result.failedRows.size} rows failed ($errorSummary)")
                     append('.')
                 }
                 cancelCsvImport()
             } catch (error: Exception) {
-                _csvStatus.value = "CSV import stopped: ${error.localizedMessage ?: "The rows could not be imported."}"
+                _csvStatus.value = "Import stopped: ${error.localizedMessage ?: "The rows could not be imported."}"
                 _csvImportState.value = _csvImportState.value?.copy(isImporting = false)
             }
         }

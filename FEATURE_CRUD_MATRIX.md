@@ -151,3 +151,5 @@ Still requiring explicit manual review: secure-device app-lock setup/unlock/relo
 
 - Receiver action validation is covered by two new unit tests. Current regression is 109 unit tests and 42 connected API 37 tests passing; lint reports 29 warnings and 0 errors. The exported receiver's UnsafeProtectedBroadcastReceiver warning is cleared.
 - The local debug APK was refreshed and v2-verified. It is not production-signed; see `DEVELOPMENT_PROGRESS.md` for the artifact hash and the remaining release gates.
+
+- Commit `66171b1` and the debug APK were pushed to the public repository's `main` branch. The APK is available at `releases/RalLedger-debug.apk`; GitHub accepted the 73 MB file with a recommendation to use Git LFS for files over 50 MB.

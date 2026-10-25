@@ -1,7 +1,7 @@
 # RalLedger CRUD and lifecycle matrix
 
-Updated: 2026-10-25
-Branch: `feature/ralledger-v2-live-ready`; Phase II interaction and theme work is local and unpublished
+Updated: 2026-10-26
+Branch: `feature/ralledger-v2-live-ready`; see the API 37 walkthrough supplement below for the latest manual evidence
 
 This matrix distinguishes a working lifecycle from a create-only screen or repository primitive. “Partial” means one or more requested operations remain unavailable in the app UI or lack verified persistence. A button or repository method alone is not counted as complete.
 
@@ -90,3 +90,9 @@ The project owner reports receiving permission from the MyMoney owner to use MyM
 - Seven dashboard cards can be shown or hidden independently and reordered with adjacent up/down controls. Available Money remains the first default metric, with Net Worth separate; Recent Transactions links to the full journal and excludes reversals and setup-only entries.
 - Widget order and visibility use local DataStore preferences. Unknown or duplicate saved order entries are normalized; missing widgets are appended so app updates retain the full widget set. Existing six-card DataStore settings and encrypted backups migrate with Recent Transactions visible by default while preserving the user's saved order and visibility choices.
 - These preferences only change dashboard presentation. Financial totals continue to come from the existing persisted records and accounting calculations.
+
+## API 37 walkthrough supplement — 2026-10-26
+
+Using synthetic records on a disposable emulator, the following app journeys were manually exercised: account create/opening balance/edit/archive/restore; income, expense with calculator, transfer, and expense reversal; receivable creation and partial collection; subscription create/edit; budget creation; savings-goal allocate/release; Insights custom date selection; category manager visibility for both Income and Expenses; theme selection; encrypted-backup preview/restore; and persistence after force-stop/reopen. Dashboard widget toggles and reorder affordances were visually inspected, but their persistence was not part of this walkthrough. See `DEVELOPMENT_PROGRESS.md` for amounts, backup contents, and test evidence.
+
+Still requiring explicit manual review: secure-device app-lock setup/unlock/relock, TalkBack and accessibility focus, larger text settings, manual statement import/export through Android file providers, and full screen-by-screen review at compact and large sizes. This supplement does not mark the entire CRUD matrix or Phase II journey set complete.

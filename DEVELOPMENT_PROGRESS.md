@@ -752,3 +752,12 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification: 107 unit tests passed; all 40 connected API 37 instrumentation tests passed; lint completed with 32 warnings and 0 errors; `:app:assembleDebug` completed. `emulator-5562` remained offline and was skipped.
 - Refreshed `releases/RalLedger-debug.apk` locally: 76,372,807 bytes; SHA-256 `2D4B657BC6D2B0DE68C6B75228B813F2E755A30474224A01AA40DB6B592FBFAD`. APK signature scheme v2 verified with the Android debug key. This APK has not been pushed or published and is not production-signed.
 - Screenshots and the accessibility dump are in ignored `.ralledger-local/qa/`. Broader TalkBack review across financial forms and screens, text scaling on remaining modules, manual import/export, and dashboard-preference persistence remain open.
+
+## Phase II — Accessible account and category toggles — 2026-10-26
+
+- Made the full “Show archived accounts”, “Show archived”, and transaction-tag assignment rows toggleable, so the entire labeled row is an interaction target and the nested Checkbox is not announced as a second control.
+- Moved “Include in dashboard totals” directly after the account’s balance fields, before icon and color customization. Constrained the editor before applying vertical scrolling so the settings and customization controls remain reachable in the dialog.
+- Verified on API 37 with a synthetic/empty account list: the account editor exposes the named include-in-totals control, its scroll area reaches the icon and color selectors, and the Categories screen exposes the named Show archived control. Transaction-tag row changes compiled; no tag-assignment dialog was opened during this walkthrough.
+- Verification: 107 unit tests passed; all 40 connected API 37 instrumentation tests passed; debug lint reported 32 warnings and 0 errors; debug assembly passed. The offline `emulator-5562` was skipped.
+- Refreshed local `releases/RalLedger-debug.apk`: 76,768,713 bytes; SHA-256 `B51A01E5095B7A5E71B4DFF36D5DAE72A440C97F9CF321414BB73619A50575BA`. APK Signature Scheme v2 verification passed; the artifact is debug-signed, not a production release.
+- This iteration remains on the feature branch and unpublished. Full TalkBack focus review, accessibility checks across remaining screens, text scaling in other modules, manual file-provider import/export, and dashboard-preference persistence remain open.

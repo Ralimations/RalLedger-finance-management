@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -63,6 +64,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -132,10 +135,17 @@ fun AccountsScreen(
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
             )
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp),
+                modifier = Modifier.fillMaxWidth()
+                    .semantics(mergeDescendants = true) { }
+                    .toggleable(
+                        value = showArchived,
+                        role = Role.Checkbox,
+                        onValueChange = { showArchived = it }
+                    )
+                    .padding(top = 4.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Checkbox(checked = showArchived, onCheckedChange = { showArchived = it })
+                Checkbox(checked = showArchived, onCheckedChange = null)
                 Text("Show archived accounts", style = MaterialTheme.typography.bodyMedium)
             }
 
@@ -416,7 +426,7 @@ private fun AccountFormDialog(
         title = { Text(if (account == null) "Add account" else "Edit account") },
         text = {
             Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()).heightIn(max = 480.dp),
+                modifier = Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 OutlinedTextField(
@@ -469,6 +479,20 @@ private fun AccountFormDialog(
                     )
                 }
 
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                        .semantics(mergeDescendants = true) { }
+                        .toggleable(
+                            value = includeInDashboard,
+                            role = Role.Checkbox,
+                            onValueChange = { includeInDashboard = it }
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(checked = includeInDashboard, onCheckedChange = null)
+                    Text("Include in dashboard totals", style = MaterialTheme.typography.bodyMedium)
+                }
+
                 Text("Icon", style = MaterialTheme.typography.labelLarge)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     accountIcons.forEach { icon ->
@@ -512,10 +536,6 @@ private fun AccountFormDialog(
                             }
                         }
                     }
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = includeInDashboard, onCheckedChange = { includeInDashboard = it })
-                    Text("Include in dashboard totals", style = MaterialTheme.typography.bodyMedium)
                 }
                 inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }

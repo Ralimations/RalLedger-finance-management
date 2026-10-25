@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -61,6 +62,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -1123,16 +1126,25 @@ private fun TransactionTagAssignmentDialog(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     availableTags.forEach { tag ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth()
+                                .semantics(mergeDescendants = true) { }
+                                .toggleable(
+                                    value = tag.id in selectedIds,
+                                    role = Role.Checkbox,
+                                    onValueChange = { checked ->
+                                        selectedIds = if (checked) selectedIds + tag.id else selectedIds - tag.id
+                                    }
+                                ),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Box(
                                 modifier = Modifier.size(16.dp)
                                     .background(parseTagColor(tag.colorHex), CircleShape)
                             )
                             Checkbox(
                                 checked = tag.id in selectedIds,
-                                onCheckedChange = { checked ->
-                                    selectedIds = if (checked) selectedIds + tag.id else selectedIds - tag.id
-                                }
+                                onCheckedChange = null
                             )
                             Text(tag.name + if (tag.isArchived) " · Archived" else "")
                         }

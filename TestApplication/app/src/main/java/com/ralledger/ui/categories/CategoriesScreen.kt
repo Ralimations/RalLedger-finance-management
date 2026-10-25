@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -66,6 +67,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -121,8 +124,18 @@ fun CategoriesScreen(viewModel: CategoriesViewModel, onBack: () -> Unit) {
                 singleLine = true, label = { Text("Search categories") },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) }
             )
-            Row(modifier = Modifier.padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = showArchived, onCheckedChange = { showArchived = it })
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .semantics(mergeDescendants = true) { }
+                    .toggleable(
+                        value = showArchived,
+                        role = Role.Checkbox,
+                        onValueChange = { showArchived = it }
+                    )
+                    .padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Checkbox(checked = showArchived, onCheckedChange = null)
                 Text("Show archived", style = MaterialTheme.typography.bodyMedium)
             }
             if (visibleCategories.isEmpty()) {

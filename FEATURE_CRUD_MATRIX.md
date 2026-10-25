@@ -96,3 +96,10 @@ The project owner reports receiving permission from the MyMoney owner to use MyM
 Using synthetic records on a disposable emulator, the following app journeys were manually exercised: account create/opening balance/edit/archive/restore; income, expense with calculator, transfer, and expense reversal; receivable creation and partial collection; subscription create/edit; budget creation; savings-goal allocate/release; Insights custom date selection; category manager visibility for both Income and Expenses; theme selection; encrypted-backup preview/restore; and persistence after force-stop/reopen. Dashboard widget toggles and reorder affordances were visually inspected, but their persistence was not part of this walkthrough. See `DEVELOPMENT_PROGRESS.md` for amounts, backup contents, and test evidence.
 
 Still requiring explicit manual review: secure-device app-lock setup/unlock/relock, TalkBack and accessibility focus, larger text settings, manual statement import/export through Android file providers, and full screen-by-screen review at compact and large sizes. This supplement does not mark the entire CRUD matrix or Phase II journey set complete.
+
+## API 37 accessibility control supplement — 2026-10-26
+
+- Account and category archived filters now expose full-row checkbox interactions with their labels; the account editor keeps “Include in dashboard totals” visible before optional icon/color controls, and the editor scrolls through the remaining fields.
+- Transaction-tag assignment rows use the same full-row checkbox interaction pattern. The source compiled and the repository tag-management instrumentation tests passed; the dialog itself was not manually opened in this run.
+- Manually inspected the account form and archived-category filter with an empty/synthetic API 37 emulator state. See the latest `DEVELOPMENT_PROGRESS.md` entry for screenshots, hierarchy evidence, test counts and APK fingerprint.
+- These checks cover targeted semantics and layout only; TalkBack focus and the remaining screens still need full device review.

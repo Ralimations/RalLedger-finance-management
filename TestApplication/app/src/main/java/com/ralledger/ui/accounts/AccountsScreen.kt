@@ -5,6 +5,7 @@ import com.ralledger.ui.components.MoneyAmountField
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -84,12 +85,16 @@ private val accountIcons = listOf(
 )
 
 @Composable
-fun AccountsScreen(viewModel: AccountsViewModel) {
+fun AccountsScreen(
+    viewModel: AccountsViewModel,
+    onQuickAddForAccount: (transactionType: String, accountId: String) -> Unit = { _, _ -> }
+) {
     val accounts by viewModel.accounts.collectAsState()
     val transactions by viewModel.transactions.collectAsState()
     val operationMessage by viewModel.operationMessage.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
     var editingAccount by remember { mutableStateOf<Account?>(null) }
+    var detailAccount by remember { mutableStateOf<Account?>(null) }
     var historyAccount by remember { mutableStateOf<Account?>(null) }
     var reconcilingAccount by remember { mutableStateOf<Account?>(null) }
     var deletingAccount by remember { mutableStateOf<Account?>(null) }
@@ -145,6 +150,7 @@ fun AccountsScreen(viewModel: AccountsViewModel) {
                     items(visibleAccounts, key = { it.id }) { account ->
                         AccountItemCard(
                             account = account,
+                            onOpenDetails = { detailAccount = account },
                             onEdit = { editingAccount = account },
                             onHistory = { historyAccount = account },
                             onReconcile = { reconcilingAccount = account },
@@ -157,6 +163,20 @@ fun AccountsScreen(viewModel: AccountsViewModel) {
         }
     }
 
+    detailAccount?.let { account ->
+        AccountDetailSheet(
+            account = account,
+            transactions = transactionsForAccount(account.id, transactions),
+            onDismiss = { detailAccount = null },
+            onReceive = { detailAccount = null; onQuickAddForAccount("INCOME", account.id) },
+            onTransfer = { detailAccount = null; onQuickAddForAccount("TRANSFER", account.id) },
+            onViewHistory = { detailAccount = null; historyAccount = account },
+            onReconcile = { detailAccount = null; reconcilingAccount = account },
+            onEdit = { detailAccount = null; editingAccount = account },
+            onArchiveToggle = { detailAccount = null; viewModel.setArchived(account.id, !account.isArchived) },
+            onDelete = { detailAccount = null; deletingAccount = account }
+        )
+    }
     if (showAddDialog) {
         AccountFormDialog(
             account = null,
@@ -225,6 +245,7 @@ fun AccountsScreen(viewModel: AccountsViewModel) {
 @Composable
 private fun AccountItemCard(
     account: Account,
+    onOpenDetails: () -> Unit,
     onEdit: () -> Unit,
     onHistory: () -> Unit,
     onReconcile: () -> Unit,
@@ -234,7 +255,7 @@ private fun AccountItemCard(
     var menuExpanded by remember { mutableStateOf(false) }
     val accent = accountColor(account.colorHex)
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenDetails),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (account.isArchived) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
@@ -283,6 +304,7 @@ private fun AccountItemCard(
                     Icon(Icons.Default.MoreVert, contentDescription = "${account.name} actions")
                 }
                 DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                    DropdownMenuItem(text = { Text("Account details") }, onClick = { menuExpanded = false; onOpenDetails() })
                     DropdownMenuItem(text = { Text("View history") }, onClick = { menuExpanded = false; onHistory() })
                     if (!account.isArchived && (account.accountType.isAsset || account.accountType.isLiability)) {
                         DropdownMenuItem(text = { Text("Reconcile balance") }, onClick = { menuExpanded = false; onReconcile() })
@@ -545,11 +567,11 @@ private fun TransactionHistoryRow(transaction: Transaction) {
     }
 }
 
-private fun accountColor(hex: String): Color = runCatching {
+internal fun accountColor(hex: String): Color = runCatching {
     Color(android.graphics.Color.parseColor(hex))
 }.getOrDefault(Color(0xFF1565C0))
 
-private fun accountIcon(iconName: String): ImageVector = when (iconName) {
+internal fun accountIcon(iconName: String): ImageVector = when (iconName) {
     "account_balance_wallet" -> Icons.Default.AccountBalanceWallet
     "savings" -> Icons.Default.Savings
     "credit_card" -> Icons.Default.CreditCard

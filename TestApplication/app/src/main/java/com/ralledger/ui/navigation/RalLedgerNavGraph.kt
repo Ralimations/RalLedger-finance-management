@@ -144,6 +144,7 @@ fun RalLedgerMainScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var showQuickActionHub by remember { mutableStateOf(false) }
     var dialogInitialTransactionType by remember { mutableStateOf("EXPENSE") }
+    var dialogInitialAccountId by remember { mutableStateOf<String?>(null) }
     var pendingPlanningAction by remember { mutableStateOf<PlanningQuickAction?>(null) }
     val themeSettings by appContainer.themePreferences.settings.collectAsState(initial = ThemeSettings())
     val dashboardSettings by appContainer.dashboardPreferences.settings.collectAsState(initial = DashboardSettings())
@@ -155,6 +156,7 @@ fun RalLedgerMainScreen(
     LaunchedEffect(widgetQuickAddType) {
         normalizeWidgetTransactionType(widgetQuickAddType)?.let { type ->
             dialogInitialTransactionType = type
+            dialogInitialAccountId = null
             showAddDialog = true
             onWidgetQuickAddHandled()
         }
@@ -245,7 +247,14 @@ fun RalLedgerMainScreen(
                 )
             }
             composable(Screen.Accounts.route) {
-                AccountsScreen(viewModel = accountsVm)
+                AccountsScreen(
+                    viewModel = accountsVm,
+                    onQuickAddForAccount = { type, accountId ->
+                        dialogInitialTransactionType = type
+                        dialogInitialAccountId = accountId
+                        showAddDialog = true
+                    }
+                )
             }
             composable(Screen.Transactions.route) {
                 val vm: TransactionsViewModel = viewModel(factory = TransactionsViewModel.Factory(appContainer.repository))
@@ -345,6 +354,7 @@ fun RalLedgerMainScreen(
                     onDismiss = { showQuickActionHub = false },
                     onTransactionSelected = { type ->
                         dialogInitialTransactionType = type
+                        dialogInitialAccountId = null
                         showQuickActionHub = false
                         showAddDialog = true
                     },
@@ -363,7 +373,8 @@ fun RalLedgerMainScreen(
                     appContainer = appContainer,
                     defaultTransactionAccountId = financialSettings.defaultTransactionAccountId,
                     initialTransactionType = dialogInitialTransactionType,
-                    onDismiss = { showAddDialog = false }
+                    initialAccountId = dialogInitialAccountId,
+                    onDismiss = { showAddDialog = false; dialogInitialAccountId = null }
                 )
             }
         }
@@ -376,6 +387,7 @@ fun QuickAddTransactionDialog(
     appContainer: AppContainer,
     defaultTransactionAccountId: String?,
     initialTransactionType: String = "EXPENSE",
+    initialAccountId: String? = null,
     onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -384,7 +396,7 @@ fun QuickAddTransactionDialog(
     } // EXPENSE, INCOME, TRANSFER
     var amountStr by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var accountId by remember { mutableStateOf("") }
+    var accountId by remember(initialAccountId) { mutableStateOf(initialAccountId.orEmpty()) }
     var destAccountId by remember { mutableStateOf("") }
     var categoryId by remember { mutableStateOf("") }
     var inputError by remember { mutableStateOf<String?>(null) }
@@ -414,8 +426,9 @@ fun QuickAddTransactionDialog(
     val eligibleCategories = categories.filter {
         !it.isArchived && it.type.name == if (txType == "INCOME") "INCOME" else "EXPENSE"
     }
-    LaunchedEffect(eligibleAccounts, defaultTransactionAccountId, transactions, txType) {
-        val eligibleIds = eligibleAccounts.map { it.id }.toSet()
+    LaunchedEffect(eligibleAccounts, defaultTransactionAccountId, initialAccountId, transactions, txType) {
+        val eligibleAccountIds = eligibleAccounts.map { it.id }
+        val eligibleIds = eligibleAccountIds.toSet()
         val expectedType = if (txType == "INCOME") "INCOME" else if (txType == "EXPENSE") "EXPENSE" else null
         val lastUsedAccountId = expectedType?.let { type ->
             transactions.asSequence()
@@ -423,9 +436,12 @@ fun QuickAddTransactionDialog(
                 .maxByOrNull { it.timestamp }
                 ?.accountId
         }
-        val defaultAccount = defaultTransactionAccountId?.takeIf { it in eligibleIds }
-            ?: lastUsedAccountId?.takeIf { it in eligibleIds }
-            ?: eligibleAccounts.firstOrNull()?.id.orEmpty()
+        val defaultAccount = resolveQuickAddAccountId(
+            contextualAccountId = initialAccountId,
+            preferredAccountId = defaultTransactionAccountId,
+            lastUsedAccountId = lastUsedAccountId,
+            eligibleAccountIds = eligibleAccountIds
+        )
         if (accountId.isBlank() || accountId !in eligibleIds) accountId = defaultAccount
         val fallbackDestination = eligibleAccounts.firstOrNull { it.id != accountId }?.id.orEmpty()
         if (destAccountId.isBlank() || destAccountId !in eligibleIds || destAccountId == accountId) {

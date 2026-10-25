@@ -637,3 +637,12 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification passed `:app:testDebugUnitTest` (101 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified v2 signing. ADB reports emulator-5562 offline and no AVD is configured, so account detail, contextual selection, and small-screen layout await an online device.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `4FE1BC2BC9114712309911233CCFF51D4EF539A891E373DA0ECF523791BFB2C5`. It is debug-signed, not a production release.
 - Account-level available balance attribution, full detail layout QA, Insights hierarchy, attention items, remaining specialized-form discard guards, and end-to-end device regression remain open. Phase II changes remain local and unpublished.
+
+## Phase II — Insights hierarchy and period control — 2026-10-25
+
+- Kept Day, Week, Month, and Year as the primary period chips. Custom Range and All Time now appear under More; the existing previous/next and inclusive date-range behavior is retained.
+- Put the period Income/Expenses/Net summary and selectable income-versus-expenses chart first. Grouped the existing secondary reports under Personal and Business, Balances and Savings, Interest Earnings, Spending by Category, Income Sources, Account Distribution, and Commitments and Receivables headings.
+- Kept all existing journal-backed reporting calculations and chart data unchanged, including period summaries, categories, sources, account balances, net worth and liquid-asset history, savings growth, interest, subscription costs, and receivable aging.
+- Verification passed `:app:testDebugUnitTest` (101 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified v2 signing. ADB reports emulator-5562 offline and no AVD is configured, so period-menu, chart-selection, text-scaling, and small-screen review remain pending.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `6666907E43AFD27B676F18811A726FA455294133EF0B6F3618DA59D6941579CA`. It is debug-signed, not a production release.
+- Phase II changes remain local and unpublished. Attention items, full on-device report walkthrough, and broader cross-flow regression remain open.

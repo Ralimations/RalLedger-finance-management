@@ -31,6 +31,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
@@ -109,6 +111,7 @@ fun InsightsScreen(
     var customEnd by remember { mutableStateOf(today) }
     var selectedCategoryId by remember { mutableStateOf<String?>(null) }
     var pickerTarget by remember { mutableStateOf<DatePickerTarget?>(null) }
+    var showMorePeriods by remember { mutableStateOf(false) }
     val selectedPeriod = remember(selectedType, anchorDate, customStart, customEnd) {
         InsightsPeriod(
             type = selectedType,
@@ -179,15 +182,41 @@ fun InsightsScreen(
 
         item {
             Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                InsightsPeriodType.values().forEach { type ->
+                listOf(
+                    InsightsPeriodType.DAY,
+                    InsightsPeriodType.WEEK,
+                    InsightsPeriodType.MONTH,
+                    InsightsPeriodType.YEAR
+                ).forEach { type ->
                     FilterChip(
                         selected = selectedType == type,
-                        onClick = {
-                            selectedType = type
-                            if (type == InsightsPeriodType.CUSTOM && customEnd.isBefore(customStart)) customEnd = customStart
-                        },
+                        onClick = { selectedType = type },
                         label = { Text(type.label) }
                     )
+                }
+                Box {
+                    FilterChip(
+                        selected = selectedType == InsightsPeriodType.CUSTOM || selectedType == InsightsPeriodType.ALL_TIME,
+                        onClick = { showMorePeriods = true },
+                        label = { Text("More") }
+                    )
+                    DropdownMenu(expanded = showMorePeriods, onDismissRequest = { showMorePeriods = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Custom range") },
+                            onClick = {
+                                selectedType = InsightsPeriodType.CUSTOM
+                                if (customEnd.isBefore(customStart)) customEnd = customStart
+                                showMorePeriods = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("All time") },
+                            onClick = {
+                                selectedType = InsightsPeriodType.ALL_TIME
+                                showMorePeriods = false
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -216,6 +245,10 @@ fun InsightsScreen(
 
         item { PeriodSummaryCard(calculation.income, calculation.expenses, calculation.net) }
 
+        item { CashFlowChart(calculation.buckets) }
+
+        item { InsightsSectionHeading("Personal and business", "Compare journal totals by project assignment.") }
+
         item {
             PersonalBusinessSummaryCard(
                 personal = projectPortfolio.personal,
@@ -224,13 +257,13 @@ fun InsightsScreen(
             )
         }
 
-        item {
-            CashFlowChart(calculation.buckets)
-        }
+        item { InsightsSectionHeading("Balances and savings", "Follow account value and savings growth over time.") }
 
         item { BalanceHistoryChart(balanceHistory) }
 
         item { SavingsGrowthChart(savingsGrowth) }
+
+        item { InsightsSectionHeading("Interest earnings", "Gross interest, tax withheld, and net credited amount.") }
 
         item {
             Card(
@@ -252,6 +285,8 @@ fun InsightsScreen(
                 }
             }
         }
+
+        item { InsightsSectionHeading("Spending by category", periodLabel) }
 
         item {
             Card(
@@ -294,6 +329,8 @@ fun InsightsScreen(
             }
         }
 
+        item { InsightsSectionHeading("Income sources", periodLabel) }
+
         item {
             OverviewCard(
                 title = "Income sources",
@@ -303,6 +340,8 @@ fun InsightsScreen(
             )
         }
 
+        item { InsightsSectionHeading("Account distribution", "Current balance by asset account.") }
+
         item {
             OverviewCard(
                 title = "Asset accounts",
@@ -311,6 +350,8 @@ fun InsightsScreen(
                 emptyMessage = "No asset accounts yet."
             )
         }
+
+        item { InsightsSectionHeading("Commitments and receivables", "Recurring costs, collections, and outstanding balances.") }
 
         item {
             Card(
@@ -377,6 +418,17 @@ fun InsightsScreen(
 }
 
 private enum class DatePickerTarget { START, END }
+
+@Composable
+private fun InsightsSectionHeading(title: String, supportingText: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold))
+        Text(supportingText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
 
 private fun String?.toComposeColor(): Color? = runCatching {
     this?.let { Color(AndroidColor.parseColor(it)) }

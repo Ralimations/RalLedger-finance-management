@@ -32,7 +32,8 @@ data class CsvImportUiState(
     val sourceFormat: FinancialImportFormat = FinancialImportFormat.CSV,
     val warnings: List<String> = emptyList(),
     val accounts: List<com.ralledger.domain.model.Account> = emptyList(),
-    val categories: List<com.ralledger.domain.model.Category> = emptyList()
+    val categories: List<com.ralledger.domain.model.Category> = emptyList(),
+    val tags: List<com.ralledger.domain.model.TransactionTag> = emptyList()
 )
 
 private data class CsvImportReferenceData(
@@ -115,7 +116,8 @@ class SettingsViewModel(
                     sourceFormat = document.format,
                     warnings = document.warnings,
                     accounts = references.accounts,
-                    categories = references.categories
+                    categories = references.categories,
+                    tags = references.tags
                 )
                 _csvStatus.value = null
             } catch (error: Exception) {

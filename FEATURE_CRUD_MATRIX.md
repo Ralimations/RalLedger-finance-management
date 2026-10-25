@@ -103,3 +103,10 @@ Still requiring explicit manual review: secure-device app-lock setup/unlock/relo
 - Transaction-tag assignment rows use the same full-row checkbox interaction pattern. The source compiled and the repository tag-management instrumentation tests passed; the dialog itself was not manually opened in this run.
 - Manually inspected the account form and archived-category filter with an empty/synthetic API 37 emulator state. See the latest `DEVELOPMENT_PROGRESS.md` entry for screenshots, hierarchy evidence, test counts and APK fingerprint.
 - These checks cover targeted semantics and layout only; TalkBack focus and the remaining screens still need full device review.
+
+## API 37 CSV transaction preview supplement — 2026-10-26
+
+- CSV/text-table import now presents a paged, row-level transaction review before posting, including mapped financial values and duplicate/error status. The user can inspect five rows per page; the action label reflects the importable row count and stays disabled at zero.
+- Manual API 37 file-picker walkthrough: imported one synthetic expense and verified the account balance changed by the expense amount; reselected the same file, verified the row was recognized as already saved and skipped, canceled, and confirmed the balance did not change again.
+- Automated regression remained green: 107 unit tests and 40 connected API 37 instrumentation tests passed; lint had 32 warnings and 0 errors. Screenshot and UI-hierarchy evidence are in ignored .ralledger-local/qa/ files.
+- This covers the CSV review/import path only. PDF and arbitrary statement-format recognition, complete screen-reader review, and broad screen-by-screen UI verification remain pending.

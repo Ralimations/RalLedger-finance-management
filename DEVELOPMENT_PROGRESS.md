@@ -761,3 +761,13 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification: 107 unit tests passed; all 40 connected API 37 instrumentation tests passed; debug lint reported 32 warnings and 0 errors; debug assembly passed. The offline `emulator-5562` was skipped.
 - Refreshed local `releases/RalLedger-debug.apk`: 76,768,713 bytes; SHA-256 `B51A01E5095B7A5E71B4DFF36D5DAE72A440C97F9CF321414BB73619A50575BA`. APK Signature Scheme v2 verification passed; the artifact is debug-signed, not a production release.
 - This iteration remains on the feature branch and unpublished. Full TalkBack focus review, accessibility checks across remaining screens, text scaling in other modules, manual file-provider import/export, and dashboard-preference persistence remain open.
+
+## Phase II — CSV import row review — 2026-10-26
+
+- Completed the import-review gap found during release auditing: the mapping dialog now previews parsed transactions, five rows at a time, before the user confirms import. Each row shows its date, type and amount, description, account or transfer destination, category, fee, counterparty, notes, and labels when present.
+- Rows are labeled ready, already saved and skipped, repeated within the selected file, or needing attention. The preview includes paging and the action accurately says “Import 1 row” or “Import N rows”; import stays disabled when no valid rows remain.
+- On a disposable API 37 emulator, selected a synthetic CSV through Android’s file picker, reviewed the row, imported it, and confirmed the app reported 1 added and 0 duplicates. The synthetic QA wallet changed from ₱10,000.00 to ₱9,850.00.
+- Reopened the same CSV and confirmed its row appeared as “Already saved · skipped,” the summary showed 1 saved duplicate and 0 importable rows, and the action was “Import 0 rows.” Canceled the second import and confirmed the wallet remained ₱9,850.00. No real financial data was used.
+- Verification on the current source: 107 unit tests passed; all 40 connected API 37 instrumentation tests passed; debug lint reported 32 warnings and 0 errors; debug assembly succeeded. APK Signature Scheme v2 verification passed.
+- Refreshed releases/RalLedger-debug.apk: 76,768,713 bytes; SHA-256 7511855AFDD43DE3D8CB5CE173B2163EED47AE45CA52467E6F3C7557D7914CE9. It is debug-signed, not a production release.
+- Import review is validated for the implemented CSV/text-table path. Broader PDF and arbitrary statement-format recognition, full TalkBack review, dashboard-preference persistence, and remaining Phase II screen coverage are still outstanding. This branch remains local and unpublished.

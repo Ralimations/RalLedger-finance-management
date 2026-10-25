@@ -3,6 +3,7 @@ package com.ralledger.ui.settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -10,6 +11,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -25,7 +29,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ralledger.data.importing.CsvColumnMapping
 import com.ralledger.data.importing.CsvDateOrder
+import com.ralledger.data.importing.CsvImportPreviewRow
 import com.ralledger.domain.model.CategoryType
+import java.util.Locale
+
+private const val IMPORT_PREVIEW_PAGE_SIZE = 5
 
 @Composable
 fun CsvImportMappingDialog(
@@ -34,6 +42,7 @@ fun CsvImportMappingDialog(
     onCancel: () -> Unit,
     onImport: () -> Unit
 ) {
+    var previewPage by remember(state.preview?.rows?.size) { mutableIntStateOf(0) }
     AlertDialog(
         onDismissRequest = { if (!state.isImporting) onCancel() },
         title = { Text("Review import · ${state.sourceFormat.displayName}") },
@@ -116,6 +125,36 @@ fun CsvImportMappingDialog(
                     if (preview.errorCount > 6) {
                         Text("${preview.errorCount - 6} more rows need attention.", style = MaterialTheme.typography.bodySmall)
                     }
+                    Text("Transaction preview", style = MaterialTheme.typography.titleMedium)
+                    if (preview.rows.isEmpty()) {
+                        Text("No transaction rows were found in this file.", style = MaterialTheme.typography.bodySmall)
+                    } else {
+                        val pageCount = (preview.rows.size + IMPORT_PREVIEW_PAGE_SIZE - 1) / IMPORT_PREVIEW_PAGE_SIZE
+                        val currentPage = previewPage.coerceIn(0, pageCount - 1)
+                        val firstRow = currentPage * IMPORT_PREVIEW_PAGE_SIZE
+                        val visibleRows = preview.rows.drop(firstRow).take(IMPORT_PREVIEW_PAGE_SIZE)
+                        Text(
+                            "Rows ${firstRow + 1}–${firstRow + visibleRows.size} of ${preview.rows.size}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        visibleRows.forEach { row -> CsvImportPreviewCard(row, state) }
+                        if (pageCount > 1) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                OutlinedButton(
+                                    onClick = { previewPage = currentPage - 1 },
+                                    enabled = currentPage > 0
+                                ) { Text("Previous") }
+                                OutlinedButton(
+                                    onClick = { previewPage = currentPage + 1 },
+                                    enabled = currentPage < pageCount - 1
+                                ) { Text("Next") }
+                            }
+                        }
+                    }
                 } ?: Text("Checking the selected columns…", style = MaterialTheme.typography.bodySmall)
             }
         },
@@ -124,13 +163,90 @@ fun CsvImportMappingDialog(
                 onClick = onImport,
                 enabled = !state.isImporting && (state.preview?.importableCount ?: 0) > 0
             ) {
-                Text(if (state.isImporting) "Importing…" else "Import ${state.preview?.importableCount ?: 0} rows")
+                val count = state.preview?.importableCount ?: 0
+                Text(
+                    when {
+                        state.isImporting -> "Importing…"
+                        count == 1 -> "Import 1 row"
+                        else -> "Import $count rows"
+                    }
+                )
             }
         },
         dismissButton = {
             TextButton(onClick = onCancel, enabled = !state.isImporting) { Text("Cancel") }
         }
     )
+}
+
+@Composable
+private fun CsvImportPreviewCard(row: CsvImportPreviewRow, state: CsvImportUiState) {
+    val transaction = row.transaction
+    val status = when {
+        row.error != null -> "Needs attention"
+        row.duplicate -> "Already saved · skipped"
+        row.sameFileDuplicate -> "Repeated in file · kept"
+        else -> "Ready to import"
+    }
+    val statusColor = when {
+        row.error != null -> MaterialTheme.colorScheme.error
+        row.duplicate -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.primary
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text("Row ${row.lineNumber} · $status", style = MaterialTheme.typography.labelLarge, color = statusColor)
+            if (transaction == null) {
+                Text(row.error ?: "This row could not be previewed.", style = MaterialTheme.typography.bodySmall)
+            } else {
+                val account = state.accounts.firstOrNull { it.id == transaction.accountId }
+                val destination = transaction.destinationAccountId?.let { id ->
+                    state.accounts.firstOrNull { it.id == id }?.name
+                }
+                val category = transaction.categoryId?.let { id ->
+                    state.categories.firstOrNull { it.id == id }?.name
+                }
+                val typeLabel = when (transaction.transactionType.name) {
+                    "INCOME" -> "Income"
+                    "EXPENSE" -> "Expense"
+                    "TRANSFER" -> "Transfer"
+                    else -> transaction.transactionType.name.lowercase(Locale.getDefault())
+                        .replaceFirstChar { it.uppercase(Locale.getDefault()) }
+                }
+                Text(
+                    "$typeLabel · ${displayMoney(transaction.amount, account?.currency ?: "PHP")}",
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Text(displayDate(transaction.timestamp), style = MaterialTheme.typography.bodySmall)
+                Text(transaction.description.ifBlank { "Imported transaction" }, style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    if (destination == null) "Account: ${account?.name ?: "Unavailable"}"
+                    else "Transfer: ${account?.name ?: "Unavailable"} → $destination",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                category?.let { Text("Category: $it", style = MaterialTheme.typography.bodySmall) }
+                if (transaction.fee.isPositive) {
+                    Text("Fee: ${displayMoney(transaction.fee, account?.currency ?: "PHP")}", style = MaterialTheme.typography.bodySmall)
+                }
+                if (transaction.counterparty.isNotBlank()) {
+                    Text("Counterparty: ${transaction.counterparty}", style = MaterialTheme.typography.bodySmall)
+                }
+                if (transaction.notes.isNotBlank()) {
+                    Text("Notes: ${transaction.notes}", style = MaterialTheme.typography.bodySmall)
+                }
+                val labels = state.tags.filter { it.id in transaction.tagIds }.joinToString { it.name }
+                if (labels.isNotBlank()) Text("Labels: $labels", style = MaterialTheme.typography.bodySmall)
+            }
+            row.warning?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.tertiary) }
+        }
+    }
 }
 
 @Composable

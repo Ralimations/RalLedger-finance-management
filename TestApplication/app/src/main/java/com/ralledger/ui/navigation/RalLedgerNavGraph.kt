@@ -83,6 +83,7 @@ import com.ralledger.ui.insights.InsightsScreen
 import com.ralledger.ui.insights.InsightsViewModel
 import com.ralledger.ui.planning.PlanningScreen
 import com.ralledger.ui.planning.PlanningQuickAction
+import com.ralledger.domain.usecase.DashboardAttentionDestination
 import com.ralledger.ui.planning.CustomReportsViewModel
 import com.ralledger.ui.planning.FinancialProjectsViewModel
 import com.ralledger.ui.planning.BudgetsViewModel
@@ -243,6 +244,17 @@ fun RalLedgerMainScreen(
                     settings = dashboardSettings,
                     onSeeAllTransactions = {
                         navController.navigate(Screen.Transactions.route) { launchSingleTop = true }
+                    },
+                    onSeePlanning = { destination ->
+                        pendingPlanningAction = when (destination) {
+                            DashboardAttentionDestination.BUDGETS -> PlanningQuickAction.OPEN_BUDGETS
+                            DashboardAttentionDestination.RECEIVABLES -> PlanningQuickAction.OPEN_RECEIVABLES
+                            DashboardAttentionDestination.PLANNED_PAYMENTS -> PlanningQuickAction.OPEN_PLANNED_PAYMENTS
+                            DashboardAttentionDestination.BILLS_AND_LOANS -> PlanningQuickAction.OPEN_BILLS_AND_LOANS
+                            DashboardAttentionDestination.SUBSCRIPTIONS -> PlanningQuickAction.OPEN_SUBSCRIPTIONS
+                            null -> null
+                        }
+                        navController.navigate(Screen.Planning.route) { launchSingleTop = true }
                     }
                 )
             }

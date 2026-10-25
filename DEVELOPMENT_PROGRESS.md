@@ -646,3 +646,12 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification passed `:app:testDebugUnitTest` (101 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified v2 signing. ADB reports emulator-5562 offline and no AVD is configured, so period-menu, chart-selection, text-scaling, and small-screen review remain pending.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `6666907E43AFD27B676F18811A726FA455294133EF0B6F3618DA59D6941579CA`. It is debug-signed, not a production release.
 - Phase II changes remain local and unpublished. Attention items, full on-device report walkthrough, and broader cross-flow regression remain open.
+
+## Phase II — Contextual dashboard attention — 2026-10-25
+
+- Added a Home attention panel from existing planning flows: overdue bills and receivables, planned payments due within seven days, active subscription renewals due within three days, and current-month budget overruns.
+- Sorted overdue items first, then budget overruns, near-term commitments, and renewals. Settled, cancelled, inactive, archived, out-of-window, and non-current budget entries are excluded. Selecting an item opens its Planning module; the header opens the Planning hub. Currency and date formatting use the user's current display preferences.
+- Added deterministic unit coverage for item status filtering, date windows, priority order, and over-budget amounts.
+- Verification passed `:app:testDebugUnitTest` (103 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing. ADB reports emulator-5562 offline and no AVD is configured, so visual and interaction review remains pending.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `E1A1BAD5F0EA052BAB4B1B527FE86D69BBB79B464F06922A0C6FFEA35EEED287`. It is debug-signed, not a production release.
+- This iteration remains local and unpublished. Specialized-form discard guards, shared non-amount controls, accessible device walkthroughs, and full cross-flow regression remain open.

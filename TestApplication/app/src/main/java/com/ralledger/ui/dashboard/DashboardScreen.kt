@@ -2,6 +2,7 @@ package com.ralledger.ui.dashboard
 import com.ralledger.ui.settings.displayMoney
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,21 +40,29 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.DashboardSummary
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Transaction
 import com.ralledger.domain.model.TransactionType
+import com.ralledger.domain.usecase.DashboardAttentionItem
+import com.ralledger.domain.usecase.DashboardAttentionKind
+import com.ralledger.domain.usecase.DashboardAttentionDestination
 import com.ralledger.ui.settings.displayDate
+import java.time.ZoneId
 
 @Composable
 fun DashboardScreen(
     viewModel: DashboardViewModel,
     settings: DashboardSettings,
-    onSeeAllTransactions: () -> Unit
+    onSeeAllTransactions: () -> Unit,
+    onSeePlanning: (DashboardAttentionDestination?) -> Unit
 ) {
     val summary by viewModel.dashboardSummary.collectAsState()
     val transactions by viewModel.transactions.collectAsState()
+    val attentionItems by viewModel.attentionItems.collectAsState()
     val recentTransactions = remember(transactions) { recentDashboardTransactions(transactions) }
 
     LazyColumn(
@@ -62,6 +73,12 @@ fun DashboardScreen(
         item {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text("Overview", style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold))
+            }
+        }
+
+        if (attentionItems.isNotEmpty()) {
+            item {
+                DashboardAttentionCard(attentionItems, onSeePlanning)
             }
         }
 
@@ -83,6 +100,77 @@ fun DashboardScreen(
         }
     }
 }
+
+@Composable
+private fun DashboardAttentionCard(items: List<DashboardAttentionItem>, onSeePlanning: (DashboardAttentionDestination?) -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Default.NotificationsActive,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+                Text(
+                    "${items.size} attention ${if (items.size == 1) "item" else "items"}",
+                    modifier = Modifier.weight(1f).padding(start = 8.dp),
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                )
+                TextButton(onClick = { onSeePlanning(null) }) { Text("View planning") }
+            }
+            items.take(4).forEachIndexed { index, item ->
+                if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                AttentionRow(item = item, onClick = { onSeePlanning(item.destination) })
+            }
+            if (items.size > 4) {
+                TextButton(onClick = { onSeePlanning(null) }) { Text("${items.size - 4} more") }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AttentionRow(item: DashboardAttentionItem, onClick: () -> Unit) {
+    val tone = when (item.kind) {
+        DashboardAttentionKind.OVERDUE -> MaterialTheme.colorScheme.error
+        DashboardAttentionKind.OVER_BUDGET -> MaterialTheme.colorScheme.tertiary
+        DashboardAttentionKind.DUE_SOON, DashboardAttentionKind.UPCOMING -> MaterialTheme.colorScheme.primary
+    }
+    val state = when (item.kind) {
+        DashboardAttentionKind.OVERDUE -> "Overdue"
+        DashboardAttentionKind.OVER_BUDGET -> "Over budget"
+        DashboardAttentionKind.DUE_SOON -> item.dueDate?.let { "Due ${it.asDisplayDate()}" } ?: "Due soon"
+        DashboardAttentionKind.UPCOMING -> item.dueDate?.let { "Next ${it.asDisplayDate()}" } ?: "Upcoming"
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(
+            modifier = Modifier.size(34.dp).clip(CircleShape).background(tone.copy(alpha = 0.12f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(if (item.kind == DashboardAttentionKind.OVERDUE) "!" else "•", color = tone, fontWeight = FontWeight.Bold)
+        }
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(item.title, style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text("${item.description} · $state", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+        Text(displayMoney(item.amount), style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold), color = tone, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun java.time.LocalDate.asDisplayDate(): String =
+    displayDate(atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli())
 
 @Composable
 private fun MoneyOwedCard(summary: DashboardSummary) {

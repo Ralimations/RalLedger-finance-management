@@ -54,6 +54,7 @@ import com.ralledger.domain.model.InterestCompounding
 import com.ralledger.domain.model.InterestProduct
 import com.ralledger.domain.model.InterestProductType
 import com.ralledger.domain.model.Money
+import com.ralledger.ui.components.DiscardChangesDialog
 import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.domain.usecase.InterestCalculator
 import com.ralledger.ui.settings.displayDate
@@ -314,9 +315,25 @@ private fun InterestProductEditor(
     var compoundingMenu by remember { mutableStateOf(false) }
     var error by remember(product?.id) { mutableStateOf<String?>(null) }
     val hasPostedCredits = product?.credits?.isNotEmpty() == true
+    val originalType = remember(product?.id) { type }
+    val originalAccountId = remember(product?.id) { accountId }
+    val originalRate = remember(product?.id) { rate }
+    val originalTax = remember(product?.id) { tax }
+    val originalCompounding = remember(product?.id) { compounding }
+    val originalOpened = remember(product?.id) { opened }
+    val originalMaturity = remember(product?.id) { maturity }
+    val originalPrincipal = remember(product?.id) { principal }
+    val originalNotes = remember(product?.id) { notes }
+    var confirmDiscard by remember(product?.id) { mutableStateOf(false) }
+    val requestDismiss = {
+        if (type != originalType || accountId != originalAccountId || rate != originalRate || tax != originalTax ||
+            compounding != originalCompounding || opened != originalOpened || maturity != originalMaturity ||
+            principal != originalPrincipal || notes != originalNotes
+        ) confirmDiscard = true else onDismiss()
+    }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (product == null) "Add interest profile" else "Edit interest terms") },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(max = 500.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -368,8 +385,11 @@ private fun InterestProductEditor(
                 }
             }) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }
 
 @Composable
@@ -400,9 +420,21 @@ private fun InterestCreditEditor(
     var incomeMenu by remember { mutableStateOf(false) }
     var expenseMenu by remember { mutableStateOf(false) }
     var error by remember(product.id) { mutableStateOf<String?>(null) }
+    val originalGross = remember(product.id) { gross }
+    val originalTax = remember(product.id) { tax }
+    val originalIncomeCategoryId = remember(product.id) { incomeCategoryId }
+    val originalTaxCategoryId = remember(product.id) { taxCategoryId }
+    val originalDate = remember(product.id) { date }
+    val originalNotes = remember(product.id) { notes }
+    var confirmDiscard by remember(product.id) { mutableStateOf(false) }
+    val requestDismiss = {
+        if (gross != originalGross || tax != originalTax || incomeCategoryId != originalIncomeCategoryId ||
+            taxCategoryId != originalTaxCategoryId || date != originalDate || notes != originalNotes
+        ) confirmDiscard = true else onDismiss()
+    }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text("Record interest · ${product.accountName}") },
         text = {
             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(max = 450.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -436,8 +468,11 @@ private fun InterestCreditEditor(
                 }
             }) { Text("Post credit") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }
 
 @Composable

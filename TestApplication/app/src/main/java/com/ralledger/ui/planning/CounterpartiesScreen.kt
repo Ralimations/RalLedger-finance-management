@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ralledger.domain.model.Counterparty
 import com.ralledger.domain.model.CounterpartyKind
+import com.ralledger.ui.components.DiscardChangesDialog
 
 @Composable
 fun CounterpartiesScreen(viewModel: CounterpartiesViewModel) {
@@ -245,9 +246,17 @@ private fun CounterpartyEditorDialog(
     var notes by remember(item?.id) { mutableStateOf(item?.notes.orEmpty()) }
     var kind by remember(item?.id) { mutableStateOf(item?.kind ?: CounterpartyKind.CLIENT) }
     var error by remember { mutableStateOf<String?>(null) }
+    val originalName = remember(item?.id) { name }
+    val originalNotes = remember(item?.id) { notes }
+    val originalKind = remember(item?.id) { kind }
+    var confirmDiscard by remember(item?.id) { mutableStateOf(false) }
+    val requestDismiss = {
+        if (name != originalName || notes != originalNotes || kind != originalKind) confirmDiscard = true
+        else onDismiss()
+    }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (item == null) "Add counterparty" else "Edit counterparty") },
         text = {
             Column(
@@ -285,6 +294,9 @@ private fun CounterpartyEditorDialog(
                 else onSave(name.trim(), kind, notes.trim())
             }) { Text(if (item == null) "Save" else "Save changes") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }

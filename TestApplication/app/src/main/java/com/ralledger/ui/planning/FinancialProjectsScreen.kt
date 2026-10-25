@@ -55,6 +55,7 @@ import com.ralledger.domain.model.FinancialProject
 import com.ralledger.domain.model.FinancialProjectKind
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.usecase.InsightsResult
+import com.ralledger.ui.components.DiscardChangesDialog
 import com.ralledger.ui.settings.displayMoney
 
 @Composable
@@ -306,9 +307,18 @@ private fun FinancialProjectEditorDialog(
     var description by remember(project?.id) { mutableStateOf(project?.description.orEmpty()) }
     var color by remember(project?.id) { mutableStateOf(project?.colorHex ?: "#008577") }
     var kindExpanded by remember { mutableStateOf(false) }
+    val originalName = remember(project?.id) { name }
+    val originalKind = remember(project?.id) { kind }
+    val originalDescription = remember(project?.id) { description }
+    val originalColor = remember(project?.id) { color }
+    var confirmDiscard by remember(project?.id) { mutableStateOf(false) }
+    val requestDismiss = {
+        if (name != originalName || kind != originalKind || description != originalDescription || color != originalColor) confirmDiscard = true
+        else onDismiss()
+    }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (project == null) "Add project" else "Edit project") },
         text = {
             Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -329,8 +339,11 @@ private fun FinancialProjectEditorDialog(
             }
         },
         confirmButton = { Button(onClick = { onSave(name, kind, description, color) }, enabled = name.isNotBlank()) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 }
 
 @Composable

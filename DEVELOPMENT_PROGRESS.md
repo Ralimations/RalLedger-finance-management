@@ -672,3 +672,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification passed `:app:testDebugUnitTest` (103 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing. No Android emulator is online and no AVD is configured, so dialogs need a device walkthrough.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `FB00BD37FB6E31F26F3F1F3E4AA20C658FEF9FEC350CA13994ABDF1E05440A55`. It is debug-signed, not a production release.
 - This iteration remains local and unpublished. Discard guards for the remaining secondary editors, shared non-amount controls, accessible device walkthroughs, and full cross-flow regression are still open.
+
+## Phase II — Secondary Planning editor discard protection — 2026-10-25
+
+- Added changed-draft confirmation to Counterparty, Financial Project, Custom Report, Interest Profile, and Interest Credit editors.
+- Tracked the editable fields for each form, including report date/filter selections and interest terms, principal, categories, date, and notes. Dismissal preserves the draft until the user selects Discard; interest posts continue to require the existing explicit save action.
+- Verification passed `:app:testDebugUnitTest` (103 tests, 0 failures), `:app:lintDebug` (32 warnings, 0 errors), `:app:assembleDebug`, and `:app:compileDebugAndroidTestKotlin`. `apksigner` verified APK v2 signing. UI interaction review remains unavailable because the emulator is offline and no AVD is configured.
+- Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes; SHA-256 `48B5424BCF69F2E07D99F8F369F693D6D8CE1B1CF7E76A51DB03F22B361C463D`. It is debug-signed, not a production release.
+- This iteration remains local and unpublished. Account, category, transaction-template, and payment dialogs still need discard review; shared non-amount controls, device accessibility walkthroughs, and full cross-flow regression remain open.

@@ -54,6 +54,7 @@ import com.ralledger.domain.model.CustomReport
 import com.ralledger.domain.model.FinancialProject
 import com.ralledger.domain.model.TransactionTag
 import com.ralledger.domain.usecase.InsightsResult
+import com.ralledger.ui.components.DiscardChangesDialog
 import com.ralledger.ui.settings.displayDate
 import com.ralledger.ui.settings.displayMoney
 import java.time.Instant
@@ -286,9 +287,22 @@ private fun CustomReportEditorDialog(
     var tagId by remember(report?.id) { mutableStateOf(report?.tagId) }
     var projectId by remember(report?.id) { mutableStateOf(report?.projectId) }
     var dateField by remember { mutableStateOf<ReportDateField?>(null) }
+    val originalName = remember(report?.id) { name }
+    val originalStartDate = remember(report?.id) { startDate }
+    val originalEndDate = remember(report?.id) { endDate }
+    val originalAccountId = remember(report?.id) { accountId }
+    val originalCategoryId = remember(report?.id) { categoryId }
+    val originalTagId = remember(report?.id) { tagId }
+    val originalProjectId = remember(report?.id) { projectId }
+    var confirmDiscard by remember(report?.id) { mutableStateOf(false) }
+    val requestDismiss = {
+        if (name != originalName || startDate != originalStartDate || endDate != originalEndDate ||
+            accountId != originalAccountId || categoryId != originalCategoryId || tagId != originalTagId || projectId != originalProjectId
+        ) confirmDiscard = true else onDismiss()
+    }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = requestDismiss,
         title = { Text(if (report == null) "Save custom report" else "Edit custom report") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()).heightIn(max = 500.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -306,8 +320,12 @@ private fun CustomReportEditorDialog(
         confirmButton = {
             Button(onClick = { onSave(name, startDate, endDate, accountId, categoryId, tagId, projectId) }, enabled = name.isNotBlank()) { Text("Save") }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        dismissButton = { TextButton(onClick = requestDismiss) { Text("Cancel") } }
     )
+
+    if (confirmDiscard) {
+        DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
+    }
 
     dateField?.let { field ->
         val initial = if (field == ReportDateField.START) startDate else endDate

@@ -1186,7 +1186,7 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
 ## API 37 RalLedger-to-PesoMind installed-upgrade recheck — 2026-10-27
 
-- Ran the opt-in installed-upgrade instrumentation fixture directly in two phases, outside the standard connected suite. Installed the historical pre-rebrand RalLedger APK from commit ff8f4d0 and confirmed its label, package, version code, and debug signer match the current PesoMind build. Seeded a synthetic physical-wallet account with a PHP 246.80 opening balance and journal entry, then installed the current PesoMind Debug APK over it in place.
+- Ran the opt-in installed-upgrade instrumentation fixture directly in two phases, outside the standard connected suite. Installed the historical pre-rebrand APK from commit ff8f4d0 and confirmed its app label was RalLedger; its package, version code, and debug signer match the current PesoMind build. Seeded a synthetic physical-wallet account with a PHP 246.80 opening balance and journal entry, then installed the current PesoMind Debug APK over it in place.
 - Both phases passed 1/1. The verify phase confirmed the account, opening journal, completed-welcome state, and Dashboard route persisted; Welcome was not shown. Both builds use version code 2 and Room schema 23, so this verifies the actual rebrand update and data retention, not a schema migration or version-code increment.
 - The QA profile was empty before seeding. After verification, I cleared only the synthetic app profile, removed the instrumentation package, and deleted the temporary historical APK copy.
 - No application source changed. No real financial data, push, merge, or publication was involved. Production signing, full TalkBack, wider device acceptance, and remaining Phase II journeys remain open.

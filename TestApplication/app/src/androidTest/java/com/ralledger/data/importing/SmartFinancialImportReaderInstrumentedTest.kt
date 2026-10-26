@@ -65,7 +65,7 @@ class SmartFinancialImportReaderInstrumentedTest {
                 content.newLineAtOffset(48f, 720f)
                 content.showText("Statement transactions")
                 content.newLineAtOffset(0f, -24f)
-                content.showText("2026-06-01 Market purchase 12.50")
+                content.showText("2026-06-01 Market purchase +12.50")
                 content.endText()
             }
             ByteArrayOutputStream().also(document::save).toByteArray()
@@ -75,7 +75,8 @@ class SmartFinancialImportReaderInstrumentedTest {
         assertEquals(FinancialImportFormat.PDF, parsed.format)
         assertEquals(1, parsed.table.rows.size)
         assertEquals("2026-06-01", parsed.table.rows.single().values.first())
-        assertEquals("12.50", parsed.table.rows.single().values[1])
+        assertEquals("+12.50", parsed.table.rows.single().values[1])
+        assertTrue(parsed.table.rows.single().values[5].contains("purchase", ignoreCase = true))
         assertTrue(parsed.warnings.isNotEmpty())
     }
 
@@ -106,6 +107,9 @@ class SmartFinancialImportReaderInstrumentedTest {
 
         assertEquals(FinancialImportFormat.PDF, parsed.format)
         assertEquals(1, parsed.table.rows.size)
+        assertEquals("2026-06-01", parsed.table.rows.single().values.first())
+        assertEquals("-12.50", parsed.table.rows.single().values[1])
+        assertTrue(parsed.table.rows.single().values[5].contains("purchase", ignoreCase = true))
         assertTrue(parsed.warnings.any { it.contains("OCR") })
     }
 

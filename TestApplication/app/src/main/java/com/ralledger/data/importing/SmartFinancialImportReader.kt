@@ -133,7 +133,13 @@ private class PdfFinancialStatementReader(private val context: Context) {
             }.replace(Regex("[|•·,:;\\s]+$"), "")
                 .replace(Regex("^[|•·,:;\\s]+"), "")
                 .trim()
-            val values = amounts.map { it.value.trim() }
+            val hasExpenseCue = expenseDescriptionPattern.containsMatchIn(description)
+            val hasIncomeCue = incomeDescriptionPattern.containsMatchIn(description)
+            val inferExpense = amounts.size == 1 && hasExpenseCue && !hasIncomeCue
+            val values = amounts.map { match ->
+                val amount = match.value.trim()
+                if (inferExpense && !hasExplicitSign(amount)) "-$amount" else amount
+            }
             maxAmounts = maxOf(maxAmounts, values.size)
             pending += RawPdfRow(index + 1, dateMatch.value, values, description)
             require(pending.size <= MAX_ROWS) { "The PDF contains more than $MAX_ROWS dated rows" }
@@ -161,6 +167,8 @@ private class PdfFinancialStatementReader(private val context: Context) {
 
     private data class RawPdfRow(val lineNumber: Int, val date: String, val amounts: List<String>, val description: String)
 
+    private fun hasExplicitSign(amount: String): Boolean = explicitAmountSignPattern.containsMatchIn(amount)
+
     private companion object {
         const val MAX_PAGES = 100
         const val MAX_ROWS = 50_000
@@ -171,7 +179,16 @@ private class PdfFinancialStatementReader(private val context: Context) {
             "(?i)\\b(?:\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}|\\d{1,2}[-/.]\\d{1,2}[-/.]\\d{2,4}|\\d{1,2}\\s+[A-Za-z]{3,9}\\s+\\d{2,4}|[A-Za-z]{3,9}\\s+\\d{1,2},?\\s+\\d{2,4})\\b"
         )
         val amountPattern = Regex(
-            "(?<![\\w/])(?:\\(?[-−]?\\s*(?:[$€£¥₹₱]\\s*)?\\d{1,3}(?:[ ,]\\d{3})*(?:[.,]\\d{2})\\)?|\\(?[-−]?\\s*(?:[$€£¥₹₱]\\s*)?\\d+[.,]\\d{2}\\)?)(?![\\w/])"
+            "(?<![\\w/])(?:\\(?[-−+]?\\s*(?:[$€£¥₹₱]\\s*)?\\d{1,3}(?:[ ,]\\d{3})*(?:[.,]\\d{2})\\)?|\\(?[-−+]?\\s*(?:[$€£¥₹₱]\\s*)?\\d+[.,]\\d{2}\\)?)(?![\\w/])"
+        )
+        val explicitAmountSignPattern = Regex("^\\s*(?:[$€£¥₹₱]\\s*)?(?:[-−+]|\\()")
+        val expenseDescriptionPattern = Regex(
+            "\\b(?:purchase|purchased|debit(?:ed)?|withdraw(?:al|n)?|cash\\s+withdrawal|card\\s+payment|bill\\s+payment|paid\\s+to|pos)\\b",
+            RegexOption.IGNORE_CASE
+        )
+        val incomeDescriptionPattern = Regex(
+            "\\b(?:salary|payroll|deposit|credited|credit|income|interest|cashback|received)\\b",
+            RegexOption.IGNORE_CASE
         )
     }
 }

@@ -1190,3 +1190,10 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Both phases passed 1/1. The verify phase confirmed the account, opening journal, completed-welcome state, and Dashboard route persisted; Welcome was not shown. Both builds use version code 2 and Room schema 23, so this verifies the actual rebrand update and data retention, not a schema migration or version-code increment.
 - The QA profile was empty before seeding. After verification, I cleared only the synthetic app profile, removed the instrumentation package, and deleted the temporary historical APK copy.
 - No application source changed. No real financial data, push, merge, or publication was involved. Production signing, full TalkBack, wider device acceptance, and remaining Phase II journeys remain open.
+
+## API 37 device-credential app-lock walkthrough — 2026-10-27
+
+- On the 1080×2400 API 37 QA emulator, enabled app lock from Settings → Security using a temporary emulator-only PIN and the Android system credential prompt. Backgrounded PesoMind and relaunched it; the app presented `Unlock PesoMind` instead of the Dashboard. An incorrect PIN was rejected, and the correct credential unlocked the Dashboard.
+- Disabled app lock, cleared the temporary device credential, and cleared the empty QA app profile. The emulator was restored to its initial no-credential state; no financial records were entered.
+- Focused `:app:connectedDebugAndroidTest` for `AppLockGateInstrumentedTest` passed 2/2 with 0 failures, errors, or skips on API 37. The test verifies the visible lock gate, `FLAG_SECURE`, and the accessible Accounts destination. The second configured emulator was offline and skipped.
+- This provides emulator device-credential evidence; fingerprint hardware, physical-device behavior, full TalkBack, and wider device acceptance remain unverified. The latest full API 37 suite remains the separately recorded 62/62 run. No Android application source changed.

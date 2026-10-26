@@ -52,6 +52,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -112,6 +114,7 @@ import com.ralledger.ui.transactions.TransactionsScreen
 import com.ralledger.ui.transactions.TransactionsViewModel
 import com.ralledger.ui.widgets.normalizeWidgetTransactionType
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 sealed class Screen(
     val route: String,
@@ -155,10 +158,10 @@ fun RalLedgerMainScreen(
     val fontScale = LocalDensity.current.fontScale
     val showBottomNavLabels = screenWidthDp >= 320
 
-    var showAddDialog by remember { mutableStateOf(false) }
+    var showAddDialog by rememberSaveable { mutableStateOf(false) }
     var showQuickActionHub by remember { mutableStateOf(false) }
-    var dialogInitialTransactionType by remember { mutableStateOf("EXPENSE") }
-    var dialogInitialAccountId by remember { mutableStateOf<String?>(null) }
+    var dialogInitialTransactionType by rememberSaveable { mutableStateOf("EXPENSE") }
+    var dialogInitialAccountId by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingPlanningAction by remember { mutableStateOf<PlanningQuickAction?>(null) }
     val themeSettings by appContainer.themePreferences.settings.collectAsState(initial = ThemeSettings())
     val dashboardSettings by appContainer.dashboardPreferences.settings.collectAsState(initial = DashboardSettings())
@@ -434,24 +437,30 @@ fun QuickAddTransactionDialog(
     onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    var txType by remember(initialTransactionType) {
+    var txType by rememberSaveable(initialTransactionType) {
         mutableStateOf(normalizeWidgetTransactionType(initialTransactionType) ?: "EXPENSE")
     } // EXPENSE, INCOME, TRANSFER
-    var amountStr by remember { mutableStateOf("") }
-    var description by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
-    var counterparty by remember { mutableStateOf("") }
-    var selectedTagIds by remember { mutableStateOf(emptySet<String>()) }
-    var selectedTimestamp by remember { mutableStateOf(System.currentTimeMillis()) }
-    var feeAmountStr by remember { mutableStateOf("") }
-    var feeCategoryId by remember { mutableStateOf("") }
-    var accountId by remember(initialAccountId) { mutableStateOf(initialAccountId.orEmpty()) }
-    var hasManuallySelectedAccount by remember(initialAccountId) { mutableStateOf(false) }
+    var draftSubmissionId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
+    var amountStr by rememberSaveable { mutableStateOf("") }
+    var description by rememberSaveable { mutableStateOf("") }
+    var notes by rememberSaveable { mutableStateOf("") }
+    var counterparty by rememberSaveable { mutableStateOf("") }
+    var selectedTagIds by rememberSaveable(
+        stateSaver = listSaver(
+            save = { selectedIds: Set<String> -> selectedIds.toList() },
+            restore = { restoredIds: List<String> -> restoredIds.toSet() }
+        )
+    ) { mutableStateOf(emptySet()) }
+    var selectedTimestamp by rememberSaveable { mutableStateOf(System.currentTimeMillis()) }
+    var feeAmountStr by rememberSaveable { mutableStateOf("") }
+    var feeCategoryId by rememberSaveable { mutableStateOf("") }
+    var accountId by rememberSaveable(initialAccountId) { mutableStateOf(initialAccountId.orEmpty()) }
+    var hasManuallySelectedAccount by rememberSaveable(initialAccountId) { mutableStateOf(false) }
     var accountDefaultSource by remember { mutableStateOf(QuickAddAccountDefaultSource.NONE) }
-    var destAccountId by remember { mutableStateOf("") }
-    var categoryId by remember { mutableStateOf("") }
-    var hasManuallySelectedCategory by remember { mutableStateOf(false) }
-    var categoryWasSuggested by remember { mutableStateOf(false) }
+    var destAccountId by rememberSaveable { mutableStateOf("") }
+    var categoryId by rememberSaveable { mutableStateOf("") }
+    var hasManuallySelectedCategory by rememberSaveable { mutableStateOf(false) }
+    var categoryWasSuggested by rememberSaveable { mutableStateOf(false) }
     var inputError by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     var accountMenuExpanded by remember { mutableStateOf(false) }
@@ -459,9 +468,9 @@ fun QuickAddTransactionDialog(
     var categoryMenuExpanded by remember { mutableStateOf(false) }
     var feeCategoryMenuExpanded by remember { mutableStateOf(false) }
     var counterpartyMenuExpanded by remember { mutableStateOf(false) }
-    var hasUserEdited by remember { mutableStateOf(false) }
+    var hasUserEdited by rememberSaveable { mutableStateOf(false) }
     var showDiscardConfirmation by remember { mutableStateOf(false) }
-    var showAdvancedDetails by remember { mutableStateOf(false) }
+    var showAdvancedDetails by rememberSaveable { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
         confirmValueChange = { target -> target != SheetValue.Hidden || !isSaving }
@@ -858,7 +867,8 @@ fun QuickAddTransactionDialog(
                                         counterparty = counterparty.trim(),
                                         notes = notes,
                                         timestamp = selectedTimestamp,
-                                        tagIds = selectedTagIds
+                                        tagIds = selectedTagIds,
+                                        submissionId = draftSubmissionId
                                     )
                                     "INCOME" -> appContainer.repository.recordIncome(
                                         accountId,
@@ -868,7 +878,8 @@ fun QuickAddTransactionDialog(
                                         counterparty = counterparty.trim(),
                                         notes = notes,
                                         timestamp = selectedTimestamp,
-                                        tagIds = selectedTagIds
+                                        tagIds = selectedTagIds,
+                                        submissionId = draftSubmissionId
                                     )
                                     else -> appContainer.repository.recordTransfer(
                                         accountId,
@@ -878,7 +889,8 @@ fun QuickAddTransactionDialog(
                                         feeCategoryId = feeCategoryId.takeIf { feeToSave.isPositive },
                                         description = description,
                                         notes = notes,
-                                        timestamp = selectedTimestamp
+                                        timestamp = selectedTimestamp,
+                                        submissionId = draftSubmissionId
                                     )
                                 }
                                 onDismiss()

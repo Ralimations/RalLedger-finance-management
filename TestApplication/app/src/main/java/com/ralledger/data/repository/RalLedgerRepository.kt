@@ -1763,6 +1763,53 @@ class RalLedgerRepository(
         }
     }
 
+    /**
+     * Quick Add keeps this identifier with the saveable draft so a retry after Activity recreation
+     * cannot create a second posting if the first Room transaction committed before recreation.
+     */
+    private suspend fun quickAddSubmissionAlreadyPosted(
+        submissionId: String?,
+        transactionType: TransactionType,
+        amount: Money,
+        fee: Money,
+        primaryAccountId: String,
+        destinationAccountId: String?,
+        categoryId: String?,
+        description: String,
+        counterparty: String,
+        notes: String,
+        timestamp: Long,
+        tagIds: Set<String> = emptySet()
+    ): Boolean {
+        if (submissionId == null) return false
+        require(submissionId.isNotBlank()) { "Transaction submission ID cannot be blank" }
+        val existing = journalDao.getJournalEntryById(submissionId) ?: return false
+        val fallbackDescription = when (transactionType) {
+            TransactionType.INCOME -> "Income transaction"
+            TransactionType.EXPENSE -> "Expense transaction"
+            TransactionType.TRANSFER -> "Transfer between accounts"
+            else -> description
+        }
+        val matches = existing.transactionType == transactionType.name &&
+            existing.amountCentavos == amount.centavos &&
+            existing.feeCentavos == fee.centavos &&
+            existing.primaryAccountId == primaryAccountId &&
+            existing.destinationAccountId == destinationAccountId &&
+            existing.categoryId == categoryId &&
+            existing.description == description.ifBlank { fallbackDescription } &&
+            existing.counterparty == counterparty &&
+            existing.notes == notes &&
+            existing.timestamp == timestamp &&
+            existing.reversesEntryId == null
+        require(matches) {
+            "This saved transaction draft was already used for a different entry. Check Activity before retrying."
+        }
+        require(transactionTagDao.getTagIdsForEntry(submissionId).toSet() == tagIds) {
+            "This saved transaction draft was already used with different labels. Check Activity before retrying."
+        }
+        return true
+    }
+
     suspend fun recordIncome(
         accountId: String,
         categoryId: String,
@@ -1771,12 +1818,35 @@ class RalLedgerRepository(
         counterparty: String = "",
         notes: String = "",
         timestamp: Long = System.currentTimeMillis(),
-        tagIds: Set<String> = emptySet()
+        tagIds: Set<String> = emptySet(),
+        submissionId: String? = null
     ) {
         database.withTransaction {
+            if (quickAddSubmissionAlreadyPosted(
+                    submissionId,
+                    TransactionType.INCOME,
+                    amount,
+                    Money.ZERO,
+                    accountId,
+                    null,
+                    categoryId,
+                    description,
+                    counterparty,
+                    notes,
+                    timestamp,
+                    tagIds
+                )
+            ) return@withTransaction
             validateFinancialAccount(accountId)
             validateCategory(categoryId, CategoryType.INCOME)
-            val entry = AccountingEngine.createIncomeEntry(accountId, categoryId, amount, description, timestamp)
+            val entry = AccountingEngine.createIncomeEntry(
+                accountId,
+                categoryId,
+                amount,
+                description,
+                timestamp,
+                submissionId
+            )
             postJournalEntry(
                 entry,
                 TransactionType.INCOME,
@@ -1800,12 +1870,35 @@ class RalLedgerRepository(
         counterparty: String = "",
         notes: String = "",
         timestamp: Long = System.currentTimeMillis(),
-        tagIds: Set<String> = emptySet()
+        tagIds: Set<String> = emptySet(),
+        submissionId: String? = null
     ) {
         database.withTransaction {
+            if (quickAddSubmissionAlreadyPosted(
+                    submissionId,
+                    TransactionType.EXPENSE,
+                    amount,
+                    Money.ZERO,
+                    accountId,
+                    null,
+                    categoryId,
+                    description,
+                    counterparty,
+                    notes,
+                    timestamp,
+                    tagIds
+                )
+            ) return@withTransaction
             validateFinancialAccount(accountId)
             validateCategory(categoryId, CategoryType.EXPENSE)
-            val entry = AccountingEngine.createExpenseEntry(accountId, categoryId, amount, description, timestamp)
+            val entry = AccountingEngine.createExpenseEntry(
+                accountId,
+                categoryId,
+                amount,
+                description,
+                timestamp,
+                submissionId
+            )
             postJournalEntry(
                 entry,
                 TransactionType.EXPENSE,
@@ -1829,13 +1922,37 @@ class RalLedgerRepository(
         feeCategoryId: String? = null,
         description: String,
         notes: String = "",
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        submissionId: String? = null
     ) {
         database.withTransaction {
+            if (quickAddSubmissionAlreadyPosted(
+                    submissionId,
+                    TransactionType.TRANSFER,
+                    amount,
+                    fee,
+                    sourceAccountId,
+                    destinationAccountId,
+                    feeCategoryId,
+                    description,
+                    "",
+                    notes,
+                    timestamp
+                )
+            ) return@withTransaction
             validateFinancialAccount(sourceAccountId)
             validateFinancialAccount(destinationAccountId)
             if (fee.isPositive) validateCategory(feeCategoryId ?: "", CategoryType.EXPENSE)
-            val entry = AccountingEngine.createTransferEntry(sourceAccountId, destinationAccountId, amount, fee, feeCategoryId, description, timestamp)
+            val entry = AccountingEngine.createTransferEntry(
+                sourceAccountId,
+                destinationAccountId,
+                amount,
+                fee,
+                feeCategoryId,
+                description,
+                timestamp,
+                submissionId
+            )
             postJournalEntry(entry, TransactionType.TRANSFER, amount, fee, sourceAccountId, destinationAccountId, feeCategoryId, "", notes)
         }
     }

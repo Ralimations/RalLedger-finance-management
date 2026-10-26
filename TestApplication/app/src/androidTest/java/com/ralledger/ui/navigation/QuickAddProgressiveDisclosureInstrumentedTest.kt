@@ -30,6 +30,57 @@ import java.util.UUID
 @Suppress("DEPRECATION")
 class QuickAddProgressiveDisclosureInstrumentedTest {
     @Test
+    fun unsavedQuickAddDraftRestoresAcrossActivityRecreation() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val application = instrumentation.targetContext.applicationContext as RalLedgerApplication
+        val repository = application.container.repository
+        val appLockPreferences = application.container.appLockPreferences
+        val initialEntryIds = runBlocking { repository.transactionsFlow.first().map { it.journalEntryId }.toSet() }
+        runBlocking { appLockPreferences.setEnabled(false) }
+        var scenario: ActivityScenario<MainActivity>? = null
+
+        try {
+            scenario = ActivityScenario.launch(MainActivity::class.java)
+            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Quick actions") })
+            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Expense") })
+            assertTrue(waitForUi(instrumentation) { setEditableFieldText(instrumentation, 0, "12.34") })
+            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Add details (optional)") })
+            assertTrue(waitForUi(instrumentation) { setEditableFieldText(instrumentation, 1, "Draft Merchant") })
+            assertTrue(waitForUi(instrumentation) { setEditableFieldText(instrumentation, 2, "Remember this purchase") })
+            assertTrue(waitForUi(instrumentation) { setEditableFieldText(instrumentation, 3, "Restored note") })
+            assertTrue(waitForUi(instrumentation) {
+                editableFieldTexts(instrumentation) == listOf(
+                    "12.34",
+                    "Draft Merchant",
+                    "Remember this purchase",
+                    "Restored note"
+                )
+            })
+
+            scenario.recreate()
+
+            assertTrue(waitForUi(instrumentation) {
+                "Add expense" in visibleText(instrumentation) &&
+                    "Hide details" in visibleText(instrumentation) &&
+                    editableFieldTexts(instrumentation) == listOf(
+                        "12.34",
+                        "Draft Merchant",
+                        "Remember this purchase",
+                        "Restored note"
+                    )
+            })
+            assertTrue(waitForUi(instrumentation) { performClickWithScroll(instrumentation, "Cancel") })
+            assertTrue(waitForUi(instrumentation) { "Discard this transaction?" in visibleText(instrumentation) })
+            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Discard") })
+            val finalEntryIds = runBlocking { repository.transactionsFlow.first().map { it.journalEntryId }.toSet() }
+            assertEquals("Restoring and discarding the draft must not post a transaction", initialEntryIds, finalEntryIds)
+        } finally {
+            scenario?.close()
+            runBlocking { appLockPreferences.setEnabled(false) }
+        }
+    }
+
+    @Test
     fun optionalDetailsRevealEditableDateAndTimeWithoutPosting() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val appLockPreferences = AppLockPreferences(instrumentation.targetContext)
@@ -149,6 +200,42 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
             assertEquals(listOf(tagName), savedExpense.tagNames)
             assertEquals(counterpartyName, savedExpense.counterparty)
 
+            val entriesBeforeExpenseRetry = runBlocking { repository.transactionsFlow.first().size }
+            runBlocking {
+                repository.recordExpense(
+                    sourceId,
+                    expenseCategory.id,
+                    Money.parse("5.00")!!,
+                    description = "",
+                    counterparty = counterpartyName,
+                    timestamp = savedExpense.timestamp,
+                    tagIds = setOf(tagId),
+                    submissionId = savedExpense.journalEntryId
+                )
+            }
+            assertEquals(entriesBeforeExpenseRetry, runBlocking { repository.transactionsFlow.first().size })
+            assertEquals(
+                Money.parse("495.00"),
+                runBlocking { repository.accountsFlow.first().first { it.id == sourceId }.currentLedgerBalance }
+            )
+            assertTrue(
+                "Reusing a saved submission ID for different data must be rejected",
+                runCatching {
+                    runBlocking {
+                    repository.recordExpense(
+                        sourceId,
+                        expenseCategory.id,
+                        Money.parse("6.00")!!,
+                        description = "",
+                        counterparty = counterpartyName,
+                        timestamp = savedExpense.timestamp,
+                        tagIds = setOf(tagId),
+                        submissionId = savedExpense.journalEntryId
+                    )
+                    }
+                }.isFailure
+            )
+
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Quick actions") })
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Transfer") })
             assertTrue(waitForUi(instrumentation) {
@@ -208,6 +295,22 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
             assertEquals(expenseCategory.id, savedTransfer.categoryId)
             assertEquals(notes, savedTransfer.notes)
             assertTrue("The edited transaction timestamp should be preserved", savedTransfer.timestamp >= startedAt)
+
+            val entriesBeforeTransferRetry = runBlocking { repository.transactionsFlow.first().size }
+            runBlocking {
+                repository.recordTransfer(
+                    sourceId,
+                    destinationId,
+                    Money.parse("100.00")!!,
+                    fee = Money.parse("10.00")!!,
+                    feeCategoryId = expenseCategory.id,
+                    description = description,
+                    notes = notes,
+                    timestamp = savedTransfer.timestamp,
+                    submissionId = savedTransfer.journalEntryId
+                )
+            }
+            assertEquals(entriesBeforeTransferRetry, runBlocking { repository.transactionsFlow.first().size })
 
             val balances = runBlocking {
                 try {
@@ -325,6 +428,30 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
             descriptions.joinToString(" | ")
         } finally {
             root.recycle()
+        }
+    }
+
+    private fun editableFieldTexts(instrumentation: android.app.Instrumentation): List<String> {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return emptyList()
+        return try {
+            val values = mutableListOf<String>()
+            collectEditableFieldTexts(root, values)
+            values
+        } finally {
+            root.recycle()
+        }
+    }
+
+    private fun collectEditableFieldTexts(node: AccessibilityNodeInfo, result: MutableList<String>) {
+        val supportsSetText = node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT }
+        if (node.isEditable || supportsSetText) result += node.text?.toString().orEmpty()
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            try {
+                collectEditableFieldTexts(child, result)
+            } finally {
+                child.recycle()
+            }
         }
     }
 

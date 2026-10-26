@@ -47,10 +47,11 @@ object AccountingEngine {
         incomeCategoryId: String,
         amount: Money,
         description: String,
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        journalEntryId: String? = null
     ): JournalEntry {
         require(amount.isPositive) { "Income amount must be positive" }
-        val entryId = UUID.randomUUID().toString()
+        val entryId = journalEntryId ?: UUID.randomUUID().toString()
 
         val lines = listOf(
             JournalLine(UUID.randomUUID().toString(), entryId, accountId, LineType.DEBIT, amount),
@@ -101,10 +102,11 @@ object AccountingEngine {
         expenseCategoryId: String,
         amount: Money,
         description: String,
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        journalEntryId: String? = null
     ): JournalEntry {
         require(amount.isPositive) { "Expense amount must be positive" }
-        val entryId = UUID.randomUUID().toString()
+        val entryId = journalEntryId ?: UUID.randomUUID().toString()
 
         val lines = listOf(
             JournalLine(UUID.randomUUID().toString(), entryId, expenseCategoryId, LineType.DEBIT, amount),
@@ -128,13 +130,14 @@ object AccountingEngine {
         fee: Money = Money.ZERO,
         feeCategoryId: String? = null,
         description: String,
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        journalEntryId: String? = null
     ): JournalEntry {
         require(amount.isPositive) { "Transfer amount must be positive" }
         require(sourceAccountId != destinationAccountId) { "Source and destination accounts must differ" }
         require(!fee.isNegative) { "Transfer fee cannot be negative" }
         require(fee.isZero || !feeCategoryId.isNullOrBlank()) { "A fee category is required for a positive transfer fee" }
-        val entryId = UUID.randomUUID().toString()
+        val entryId = journalEntryId ?: UUID.randomUUID().toString()
 
         val totalCreditFromSource = amount + fee
         val lines = mutableListOf<JournalLine>()

@@ -189,3 +189,4 @@ Still requiring explicit manual review: secure-device app-lock setup/unlock/relo
 - Activity recreation restored the unsaved Quick Add amount and optional text while leaving the journal unchanged. Expense and transfer retry instrumentation confirmed exact retries do not duplicate ledger entries or balance changes; a changed amount using the same ID is rejected.
 - Full API 37 connected suite passed 45/45; unit suite passed 115/115; lint reported 29 warnings and 0 errors; debug assembly succeeded. APK v2 signature verifies.
 - See `DEVELOPMENT_PROGRESS.md` for APK size/hash, debug-signing status, and remaining Phase II gates.
+- Source, documentation, and APK were published to `main` in commit `2cfa3c0fa6e597b02da82d12179ca966567aa0f0`; GitHub accepted the APK with a 50 MB size recommendation warning.

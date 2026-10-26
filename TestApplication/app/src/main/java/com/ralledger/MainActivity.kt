@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -72,8 +73,19 @@ class MainActivity : FragmentActivity() {
         val app = application as RalLedgerApplication
         setContent {
             val startupState by app.startupState.collectAsState()
-            if (startupState == StartupState.Ready) {
             val themeSettings by app.container.themePreferences.settings.collectAsState(initial = ThemeSettings())
+            val darkTheme = when (themeSettings.mode) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            SideEffect {
+                WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !darkTheme
+                    isAppearanceLightNavigationBars = !darkTheme
+                }
+            }
+            if (startupState == StartupState.Ready) {
             val lockEnabled by app.container.appLockPreferences.enabled.collectAsState(initial = null as Boolean?)
             val welcomeComplete by app.container.welcomePreferences.isComplete.collectAsState(initial = null as Boolean?)
             val lifecycleOwner = LocalLifecycleOwner.current
@@ -122,22 +134,9 @@ class MainActivity : FragmentActivity() {
             }
 
             RalLedgerTheme(settings = themeSettings) {
-                val darkTheme = when (themeSettings.mode) {
-                    ThemeMode.SYSTEM -> isSystemInDarkTheme()
-                    ThemeMode.LIGHT -> false
-                    ThemeMode.DARK -> true
-                }
-                SideEffect {
-                    WindowCompat.getInsetsController(window, window.decorView).apply {
-                        isAppearanceLightStatusBars = !darkTheme
-                        isAppearanceLightNavigationBars = !darkTheme
-                    }
-                }
                 when {
-                    lockEnabled == null || welcomeComplete == null -> Surface(modifier = Modifier.fillMaxSize()) {
-                        RalLedgerTheme(settings = ThemeSettings(mode = ThemeMode.LIGHT)) {
-                            PesoMindOpeningScreen(isLoading = true, onRetry = {})
-                        }
+                    lockEnabled == null || welcomeComplete == null -> {
+                        PesoMindOpeningScreen(isLoading = true, onRetry = {})
                     }
                     welcomeComplete != true -> PesoMindWelcomeScreen(
                         saveInProgress = welcomeSaveInProgress,
@@ -196,7 +195,7 @@ class MainActivity : FragmentActivity() {
                 }
             }
             } else {
-                RalLedgerTheme(settings = ThemeSettings(mode = ThemeMode.LIGHT)) {
+                RalLedgerTheme(settings = themeSettings) {
                     PesoMindOpeningScreen(
                         isLoading = startupState == StartupState.Recovering,
                         onRetry = app::retryStartupRecovery
@@ -270,6 +269,7 @@ private fun PesoMindWelcomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .safeDrawingPadding()
                 .padding(horizontal = 28.dp, vertical = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
@@ -327,7 +327,7 @@ private fun PesoMindWelcomeScreen(
 private fun PesoMindOpeningScreen(isLoading: Boolean, onRetry: () -> Unit) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
+            modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -367,7 +367,7 @@ private fun AppLockScreen(
 ) {
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(24.dp),
+            modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {

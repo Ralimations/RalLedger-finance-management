@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +19,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Button
@@ -266,58 +269,61 @@ private fun PesoMindWelcomeScreen(
     onGetStarted: () -> Unit
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .safeDrawingPadding()
-                .padding(horizontal = 28.dp, vertical = 32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Image(
-                painter = painterResource(R.drawable.pesomind_mark),
-                contentDescription = stringResource(R.string.pesomind_mark_description),
-                contentScale = ContentScale.Fit,
-                modifier = Modifier.size(132.dp)
-            )
-            Text(
-                text = stringResource(R.string.welcome_title),
-                modifier = Modifier.fillMaxWidth().padding(top = 28.dp),
-                textAlign = TextAlign.Center,
-                style = MaterialTheme.typography.headlineMedium
-            )
-            Text(
-                text = stringResource(R.string.app_tagline),
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.titleMedium
-            )
-            Text(
-                text = stringResource(R.string.welcome_description),
-                modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyLarge
-            )
-            if (showSaveError) {
-                Text(
-                    text = stringResource(R.string.welcome_save_error),
-                    modifier = Modifier.padding(top = 12.dp),
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-            Button(
-                onClick = onGetStarted,
-                enabled = !saveInProgress,
-                modifier = Modifier.fillMaxWidth().padding(top = 32.dp)
+        Box(modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.Center)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 28.dp, vertical = 32.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Text(
-                    text = stringResource(
-                        if (saveInProgress) R.string.welcome_saving else R.string.welcome_get_started
-                    )
+                Image(
+                    painter = painterResource(R.drawable.pesomind_mark),
+                    contentDescription = stringResource(R.string.pesomind_mark_description),
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.size(132.dp)
                 )
+                Text(
+                    text = stringResource(R.string.welcome_title),
+                    modifier = Modifier.fillMaxWidth().padding(top = 28.dp),
+                    textAlign = TextAlign.Center,
+                    style = MaterialTheme.typography.headlineMedium
+                )
+                Text(
+                    text = stringResource(R.string.app_tagline),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    text = stringResource(R.string.welcome_description),
+                    modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                if (showSaveError) {
+                    Text(
+                        text = stringResource(R.string.welcome_save_error),
+                        modifier = Modifier.padding(top = 12.dp),
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                Button(
+                    onClick = onGetStarted,
+                    enabled = !saveInProgress,
+                    modifier = Modifier.fillMaxWidth().padding(top = 32.dp)
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (saveInProgress) R.string.welcome_saving else R.string.welcome_get_started
+                        )
+                    )
+                }
             }
         }
     }

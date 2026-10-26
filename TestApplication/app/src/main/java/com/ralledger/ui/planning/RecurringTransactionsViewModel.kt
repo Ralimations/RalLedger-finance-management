@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.ralledger.data.repository.RalLedgerRepository
+import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.RecurringTransactionStatus
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
@@ -21,6 +22,24 @@ class RecurringTransactionsViewModel(
 
     suspend fun setStatus(id: String, status: RecurringTransactionStatus) =
         repository.setRecurringTransactionStatus(id, status)
+
+    suspend fun updateSchedule(
+        id: String,
+        expectedUpdatedAt: Long,
+        amount: Money,
+        categoryId: String,
+        counterparty: String,
+        description: String,
+        notes: String
+    ) = repository.updateRecurringTransactionDetails(
+        id = id,
+        expectedUpdatedAt = expectedUpdatedAt,
+        amount = amount,
+        categoryId = categoryId,
+        counterparty = counterparty,
+        description = description,
+        notes = notes
+    )
 
     class Factory(private val repository: RalLedgerRepository) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")

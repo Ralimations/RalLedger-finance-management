@@ -805,6 +805,50 @@ class RalLedgerRepository(
         }
     }
 
+    /** Updates the saved template for future occurrences without changing posted history or cadence. */
+    suspend fun updateRecurringTransactionDetails(
+        id: String,
+        expectedUpdatedAt: Long,
+        amount: Money,
+        categoryId: String,
+        counterparty: String,
+        description: String,
+        notes: String
+    ) {
+        require(amount.isPositive) { "Enter an amount greater than zero" }
+        database.withTransaction {
+            val current = recurringTransactionDao.getById(id)
+                ?: throw IllegalArgumentException("This recurring transaction no longer exists")
+            require(current.updatedAt == expectedUpdatedAt) {
+                "This schedule changed while you were editing it. Reopen it and try again."
+            }
+            val status = RecurringTransactionStatus.valueOf(current.status)
+            require(status == RecurringTransactionStatus.ACTIVE || status == RecurringTransactionStatus.PAUSED) {
+                "Only active or paused schedules can be edited"
+            }
+            val transactionType = TransactionType.valueOf(current.transactionType)
+            val categoryType = when (transactionType) {
+                TransactionType.INCOME -> CategoryType.INCOME
+                TransactionType.EXPENSE -> CategoryType.EXPENSE
+                else -> throw IllegalStateException("Only income and expense schedules can be edited")
+            }
+            validateCategory(categoryId, categoryType)
+
+            val fallbackDescription = if (transactionType == TransactionType.INCOME) "Income transaction" else "Expense transaction"
+            val now = maxOf(System.currentTimeMillis(), current.updatedAt + 1L)
+            recurringTransactionDao.update(
+                current.copy(
+                    amountCentavos = amount.centavos,
+                    categoryId = categoryId,
+                    counterparty = counterparty.trim(),
+                    description = description.trim().ifBlank { fallbackDescription },
+                    notes = notes.trim(),
+                    updatedAt = now
+                )
+            )
+        }
+    }
+
     suspend fun createTransactionTemplate(template: TransactionTemplate): String {
         val now = System.currentTimeMillis()
         val newTemplate = template.copy(

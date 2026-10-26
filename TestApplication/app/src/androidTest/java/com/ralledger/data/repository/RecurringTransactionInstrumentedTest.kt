@@ -21,6 +21,74 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class RecurringTransactionInstrumentedTest {
     @Test
+    fun editingScheduleChangesFutureTemplateAndPreservesPostedHistoryAndCadence() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val database = Room.inMemoryDatabaseBuilder(context, RalLedgerDatabase::class.java).build()
+        try {
+            seed(database)
+            val repository = RalLedgerRepository(database)
+            val anchor = Instant.parse("2026-10-01T01:30:00Z").toEpochMilli()
+            repository.recordExpense(
+                accountId = "wallet",
+                categoryId = "food",
+                amount = Money(15_000L),
+                description = "Coffee",
+                timestamp = anchor,
+                submissionId = "recurring-edit-original",
+                repeatFrequency = TransactionRepeatFrequency.MONTHLY
+            )
+
+            val original = database.recurringTransactionDao().getAll().single()
+            val originalOccurrence = database.recurringTransactionDao().getOccurrences(original.id).single()
+            repository.updateRecurringTransactionDetails(
+                id = original.id,
+                expectedUpdatedAt = original.updatedAt,
+                amount = Money(18_500L),
+                categoryId = "groceries",
+                counterparty = "Market",
+                description = "Weekly groceries",
+                notes = "Use the household card"
+            )
+
+            val updated = database.recurringTransactionDao().getById(original.id)!!
+            assertEquals(original.id, updated.id)
+            assertEquals(original.frequency, updated.frequency)
+            assertEquals(original.timeZoneId, updated.timeZoneId)
+            assertEquals(original.anchorTimestamp, updated.anchorTimestamp)
+            assertEquals(original.nextOccurrenceIndex, updated.nextOccurrenceIndex)
+            assertEquals(original.nextOccurrenceTimestamp, updated.nextOccurrenceTimestamp)
+            assertEquals(original.endTimestamp, updated.endTimestamp)
+            assertEquals(18_500L, updated.amountCentavos)
+            assertEquals("groceries", updated.categoryId)
+            assertEquals("Market", updated.counterparty)
+            assertEquals("Weekly groceries", updated.description)
+            assertEquals("Use the household card", updated.notes)
+            assertEquals(originalOccurrence, database.recurringTransactionDao().getOccurrences(original.id).single())
+
+            val historicalEntry = database.journalDao().getJournalEntryById("recurring-edit-original")!!
+            assertEquals(15_000L, historicalEntry.amountCentavos)
+            assertEquals("food", historicalEntry.categoryId)
+            assertEquals("Coffee", historicalEntry.description)
+
+            val staleUpdate = runCatching {
+                repository.updateRecurringTransactionDetails(
+                    id = original.id,
+                    expectedUpdatedAt = original.updatedAt,
+                    amount = Money(20_000L),
+                    categoryId = "food",
+                    counterparty = "",
+                    description = "Stale edit",
+                    notes = ""
+                )
+            }
+            assertTrue("A stale edit must be rejected", staleUpdate.isFailure)
+            assertEquals(18_500L, database.recurringTransactionDao().getById(original.id)?.amountCentavos)
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun confirmedOccurrenceAdvancesOnceAndEncryptedBackupRestoresHistory() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val source = Room.inMemoryDatabaseBuilder(context, RalLedgerDatabase::class.java).build()
@@ -113,6 +181,9 @@ class RecurringTransactionInstrumentedTest {
         )
         database.categoryDao().insertCategory(
             CategoryEntity("food", "Food", CategoryType.EXPENSE.name, "restaurant", "#FF5722", false)
+        )
+        database.categoryDao().insertCategory(
+            CategoryEntity("groceries", "Groceries", CategoryType.EXPENSE.name, "shopping_cart", "#4CAF50", false)
         )
     }
 }

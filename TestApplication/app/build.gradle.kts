@@ -5,6 +5,31 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val releaseStoreFilePath = providers.gradleProperty("ralledgerReleaseStoreFile")
+    .orElse(providers.environmentVariable("RALLEDGER_RELEASE_STORE_FILE")).orNull
+val releaseStorePasswordValue = providers.gradleProperty("ralledgerReleaseStorePassword")
+    .orElse(providers.environmentVariable("RALLEDGER_RELEASE_STORE_PASSWORD")).orNull
+val releaseKeyAliasValue = providers.gradleProperty("ralledgerReleaseKeyAlias")
+    .orElse(providers.environmentVariable("RALLEDGER_RELEASE_KEY_ALIAS")).orNull
+val releaseKeyPasswordValue = providers.gradleProperty("ralledgerReleaseKeyPassword")
+    .orElse(providers.environmentVariable("RALLEDGER_RELEASE_KEY_PASSWORD")).orNull
+val releaseSigningValues = listOf(
+    releaseStoreFilePath,
+    releaseStorePasswordValue,
+    releaseKeyAliasValue,
+    releaseKeyPasswordValue
+)
+val hasPartialReleaseSigning = releaseSigningValues.any { it != null } && releaseSigningValues.any { it == null }
+if (hasPartialReleaseSigning) {
+    throw org.gradle.api.GradleException(
+        "Release signing needs all four RalLedger keystore settings. See RELEASE_SIGNING.md."
+    )
+}
+val releaseStoreFile = releaseStoreFilePath?.let(::file)
+if (releaseStoreFile != null && !releaseStoreFile.isFile) {
+    throw org.gradle.api.GradleException("RalLedger release keystore does not exist: $releaseStoreFile")
+}
+
 android {
     namespace = "com.ralledger"
     compileSdk = 37
@@ -19,9 +44,23 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (releaseStoreFile != null) {
+            create("release") {
+                storeFile = releaseStoreFile
+                storePassword = releaseStorePasswordValue!!
+                keyAlias = releaseKeyAliasValue!!
+                keyPassword = releaseKeyPasswordValue!!
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (releaseStoreFile != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

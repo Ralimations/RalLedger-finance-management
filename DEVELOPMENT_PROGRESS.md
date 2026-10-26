@@ -890,3 +890,12 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Cleanup cleared the synthetic-only app profile and removed only the synthetic PDF and XML files created for this recheck. Home returned to ₱0.00 available money and ₱0.00 net worth. Pre-existing Downloads CSV files were left untouched.
 - Screenshot evidence is in ignored `.ralledger-local/qa/`: `pdf-preview-row-final.png`, `pdf-import-result.png`, `account-balance-pdf.png`, `activity-pdf.png`, `relaunched-after-import.png`, and `empty-after-cleanup.png`.
 - This was a manual verification of the previously built APK/source state; no source code or APK changed and automated tests were not rerun. Latest automated verification remains 110 unit tests, 42 connected API 37 tests, lint with 29 warnings and 0 errors, and successful debug assembly. PDF OCR, varied bank layouts, multi-amount PDF mapping, full TalkBack review, and production signing remain open.
+
+## Release signing configuration — 2026-10-26
+
+- Added opt-in release signing to the Android Gradle configuration using either local Gradle properties or CI environment variables. The keystore and passwords remain outside the repository. Partial configuration and missing keystore paths fail early with an actionable message.
+- Added `RELEASE_SIGNING.md` documenting the four settings and the unsigned-build behavior. The release build remains unminified until it receives separate runtime verification.
+- Verification: unsigned `:app:assembleRelease` passed and produced a 67,721,801-byte APK. A partial signing configuration failed with the intended “needs all four” error; a complete configuration pointing to a missing keystore failed with the intended missing-file error.
+- Generated an ignored 30-day local test key, built the signed release variant successfully, and verified APK Signature Scheme v2. Its certificate was `CN=RalLedger Local Test Key` (SHA-256 `b381cc3fb65c71798fa77f6b40ba00e1e2c341ca889d78d84888bd768cf808b9`); the 67,734,089-byte test-signed APK and test keystore were deleted afterward. This test key is not a production signing key.
+- Installed that test-signed release on API 37 and confirmed it reached Home with zero balances. Reinstalled the tracked debug APK and again confirmed Home displayed ₱0.00; the emulator was left with the debug build and an empty profile.
+- No owner-managed production keystore or credentials are present. A production-signed APK is still blocked on the owner supplying signing credentials. R8/minification remains disabled pending separate release-variant runtime validation.

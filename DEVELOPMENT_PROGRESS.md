@@ -1220,3 +1220,9 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Manual API 37 preview now shows `Expense · ₱12.50`, `Jun 1, 2026`, `Market purchase`, the selected synthetic account and Food & Dining category, with `Ready 1`. Cancelled the preview without importing; then cleared the QA app profile and removed the synthetic PDF.
 - Verification: latest Debug unit suite passed 134/134; complete API 37 connected suite passed 62/62 with 0 failures, errors or skips; after the explicit-positive-sign preservation update, the focused smart-import instrumentation suite passed 4/4. The second configured emulator was offline and skipped. No real financial data was used.
 - This improves obvious single-amount lines only; bank-specific layouts, ambiguous descriptions, OCR accuracy across device languages, multi-amount statements and refund inference remain unverified. No website, WebView or separate frontend was introduced. No push, merge or publication occurred.
+
+## PesoMind GitHub main publication and APK — 2026-10-27
+
+- Published the authorized fast-forward to `Ralimations/RalLedger-finance-management` `main`, from `1cdd557` through `faadc38`. The remote tree confirms `releases/RalLedger-debug.apk` is present.
+- Refreshed the tracked APK from the current Debug build: 78,028,709 bytes, SHA-256 `4580B89FE1926D6A5B8D62617480AD8E5CAF574597F6E8924434F3000D7911BB`. `apksigner` verified APK Signature Scheme v2; package `com.ralledger`, version 2.0, API 37 target. It uses the Android Debug certificate. GitHub accepted the push and warned that the APK exceeds its recommended 50 MB file size.
+- The separate Release APK remains unsigned and unminified; owner-managed production signing remains open. No real financial data was used. The four untracked root logo assets were left untouched.

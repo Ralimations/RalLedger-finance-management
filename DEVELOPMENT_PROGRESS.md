@@ -960,3 +960,9 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Regression verification: 115 unit tests passed; `:app:lintDebug` reported 29 warnings and 0 errors; `:app:assembleDebug` succeeded. No real financial records were used.
 - Refreshed `releases/RalLedger-debug.apk`: 76,481,620 bytes; SHA-256 `95593B7FFB2D322EE15074A1A8F1EF0BC27BAF5D56EC7E42BA0DAD5C815A3E12`. APK Signature Scheme v2 verifies with the Android Debug certificate; this is not a production-signed APK.
 - Source commit: `f399583efb8dc45e88ccb4ce1008b2b14840ad77`. Phase II remains in progress: automatic repeat scheduling, complete screen/TalkBack journeys, remaining accessibility/device coverage, and owner-managed production signing are open.
+
+## Phase II — Full regression checkpoint — 2026-10-26
+
+- Ran `:app:testDebugUnitTest :app:connectedDebugAndroidTest :app:lintDebug :app:assembleDebug` from `TestApplication`. Build completed successfully: 115 unit tests and all 45 connected API 37 instrumentation tests passed; failures, errors, and skips were 0. The offline `emulator-5562` was not available; connected verification ran on `emulator-5554`.
+- Lint completed with 29 warnings and 0 errors. Debug APK assembly succeeded; the checked-in artifact remains `releases/RalLedger-debug.apk` (76,481,620 bytes, SHA-256 `95593B7FFB2D322EE15074A1A8F1EF0BC27BAF5D56EC7E42BA0DAD5C815A3E12`). It verifies with APK Signature Scheme v2 and the Android Debug signer, not a production key.
+- This was a verification-only iteration; no app behavior or financial records changed. Test data was synthetic. Phase II remains in progress, with repeat scheduling, broader manual/accessibility coverage, remaining user journeys, and owner-managed production signing still open. This checkpoint does not publish or push changes.

@@ -39,6 +39,12 @@ This matrix distinguishes a working lifecycle from a create-only screen or repos
 
 ## Phase II navigation and preference notes
 
+## Current Phase II verification checkpoint — 2026-10-26
+
+- Current source snapshot `96209fb` passes 115 unit tests and 45 connected API 37 instrumentation tests with no failures, errors, or skips. Lint reports 29 warnings and 0 errors; `:app:assembleDebug` succeeds. The connected run used `emulator-5554`; the secondary `emulator-5562` was offline.
+- The current debug artifact and hash are recorded in `DEVELOPMENT_PROGRESS.md`. It is signed with the Android Debug certificate and is not a production release.
+- This checkpoint changes no CRUD behavior. Remaining lifecycle and manual-journey gaps stay open as marked in the matrix; Phase II is not complete.
+
 - Settings now opens with purpose-based Appearance, Preferences, Dashboard, Categories, Data & Backup, Security, and About sections. Existing preference, import/export, backup/restore and app-lock operations remain available in their section; backup restore still requires preview and explicit confirmation.
 - Section navigation uses an in-screen return action and Android Back. The 84-test unit suite, lint (32 warnings and 0 errors), debug APK assembly, and Android-test Kotlin compilation pass. ADB reports only an offline emulator, so Settings navigation, touch targets, and text scaling remain for device review.
 - Settings-slice APK at that build: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes, SHA-256 `2A6B256B0AE5A9FE78F325D529088D9E389EC45BE4B62145E2060820CCB9937B`; it was debug-signed, not a release artifact.

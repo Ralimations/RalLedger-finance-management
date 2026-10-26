@@ -95,3 +95,9 @@ This map compares existing controls with the Phase II destination. Financial ope
 - The subscription-reminder reschedule receiver now ignores null and unrelated broadcast actions before starting database/scheduler work; only its four manifest-declared system actions are accepted.
 - Added two unit tests for the action allowlist. Current verification: 109 unit tests and 42 connected API 37 instrumentation tests passed; lint reports 29 warnings and 0 errors; debug assembly and Android-test Kotlin compilation passed. The receiver security lint finding is cleared.
 - Current local debug APK: 76,543,542 bytes, SHA-256 `F7D6B49F1DF5EAF2C5456DCB4858AF4B96C7CA1ADDAEBDF6957072B4D4D73FE3`; v2 signature verified. It remains debug-signed. Release and manual QA gates listed above are still open.
+
+## Quick Add template reuse — 2026-10-26
+
+- The transaction-template manager is now reachable directly from Quick Add. Selecting a preset fills the unsaved form and expands optional details; posting still requires the user to review and explicitly save.
+- Focused API 37 verification passed 3/3 Quick Add instrumentation tests, including template prefill/save and draft restoration. Unit tests passed 115/115; lint reported 29 warnings and 0 errors; debug assembly and APK v2 verification passed.
+- Automatic repeat scheduling is still an open requirement; reusable templates do not schedule or post transactions. Full TalkBack and screen/device release checks and owner-managed production signing also remain open. No real financial data was used.

@@ -952,3 +952,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Refreshed `releases/RalLedger-debug.apk`: 76,222,984 bytes; SHA-256 `28F40BF377B5D67B610246C8483747DD94769ACB670AE3D239EE68BD6DA0ED7A`. APK Signature Scheme v2 verifies; signer is Android Debug, not a production key.
 - Remaining release work includes repeat scheduling, broader screen-by-screen and TalkBack review, remaining manual journeys, and owner-managed production signing. This completes the draft-recovery/idempotency slice only; Phase II remains in progress. Test data was synthetic; no real financial data was used.
 - Published source, documentation, and APK in commit `2cfa3c0fa6e597b02da82d12179ca966567aa0f0` to `main`: [GitHub commit](https://github.com/Ralimations/RalLedger-finance-management/commit/2cfa3c0fa6e597b02da82d12179ca966567aa0f0). GitHub accepted the APK and warned that its 72.69 MB size exceeds the recommended 50 MB threshold.
+
+## Phase II — Quick Add transaction templates — 2026-10-26
+
+- Quick Add now exposes the existing transaction-template manager. A selected template fills the current draft's type, amount, account, destination, category, fee, counterparty, description, and notes, and expands optional details for review. Selecting a template never posts; the user must still choose Save.
+- Focused API 37 instrumentation passed 3/3: optional details and editable date/time, unsaved draft restoration after Activity recreation (including Notes), and template prefill followed by a saved expense. The template case also verifies the journal is unchanged before Save and checks the saved account/category/details after posting.
+- Regression verification: 115 unit tests passed; `:app:lintDebug` reported 29 warnings and 0 errors; `:app:assembleDebug` succeeded. No real financial records were used.
+- Refreshed `releases/RalLedger-debug.apk`: 76,481,620 bytes; SHA-256 `95593B7FFB2D322EE15074A1A8F1EF0BC27BAF5D56EC7E42BA0DAD5C815A3E12`. APK Signature Scheme v2 verifies with the Android Debug certificate; this is not a production-signed APK.
+- Source commit: `f399583efb8dc45e88ccb4ce1008b2b14840ad77`. Phase II remains in progress: automatic repeat scheduling, complete screen/TalkBack journeys, remaining accessibility/device coverage, and owner-managed production signing are open.

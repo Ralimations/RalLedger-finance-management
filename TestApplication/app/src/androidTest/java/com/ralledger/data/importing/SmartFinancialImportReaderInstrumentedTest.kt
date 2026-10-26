@@ -25,8 +25,10 @@ class SmartFinancialImportReaderInstrumentedTest {
     @Test
     fun readsFirstVisibleWorksheetFromXlsxAndFindsItsHeader() {
         val workbook = createXlsx()
-        val parsed = XlsxFinancialTableReader.parse(workbook)
+        val document = FinancialImportFileReader.parse("statement.xlsx", null, workbook)
+        val parsed = document.table
 
+        assertEquals(FinancialImportFormat.XLSX, document.format)
         assertEquals(listOf("Date", "Amount", "Account", "Category", "Description"), parsed.headers)
         assertEquals("2026-06-01", parsed.rows.single().values[0])
         assertEquals("12.50", parsed.rows.single().values[1])

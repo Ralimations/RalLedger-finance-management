@@ -70,6 +70,12 @@ object FinancialImportFileReader {
 
     fun parse(fileName: String?, mimeType: String?, bytes: ByteArray): FinancialImportDocument {
         val format = detectFormat(fileName, mimeType, bytes)
+        return parseDetected(format, bytes)
+    }
+
+    internal fun parseDetected(format: FinancialImportFormat, bytes: ByteArray): FinancialImportDocument {
+        require(bytes.isNotEmpty()) { "The selected file is empty" }
+        require(bytes.size <= MAX_INPUT_BYTES) { "Imports are limited to 20 MB per file" }
         return when (format) {
             FinancialImportFormat.CSV, FinancialImportFormat.TSV -> FinancialImportDocument(
                 table = normalizeHeaderRow(TransactionCsvImporter.parse(decodeText(bytes))),
@@ -164,12 +170,36 @@ object FinancialImportFileReader {
     }
 
     private fun containsWorkbookEntry(bytes: ByteArray): Boolean = runCatching {
+        hasWorkbookEntryWithinLimits(bytes)
+    }.getOrDefault(false)
+
+    private fun hasWorkbookEntryWithinLimits(bytes: ByteArray): Boolean {
         ZipInputStream(ByteArrayInputStream(bytes)).use { zip ->
-            generateSequence { zip.nextEntry }.any { entry ->
-                entry.name == "xl/workbook.xml"
+            val buffer = ByteArray(8_192)
+            var entryCount = 0
+            var uncompressedTotal = 0L
+            while (true) {
+                val entry = zip.nextEntry ?: break
+                entryCount++
+                if (entryCount > XlsxFinancialTableReader.MAX_ENTRIES) return false
+                if (entry.name == "xl/workbook.xml") return true
+
+                // nextEntry drains the previous member. Drain it ourselves so detection shares
+                // the XLSX reader's bounds instead of allowing a compressed ZIP bomb to expand
+                // without limit before the real parser gets a chance to reject it.
+                while (true) {
+                    val count = zip.read(buffer)
+                    if (count < 0) break
+                    uncompressedTotal += count
+                    if (uncompressedTotal > XlsxFinancialTableReader.MAX_UNCOMPRESSED_BYTES) {
+                        return false
+                    }
+                }
+                zip.closeEntry()
             }
         }
-    }.getOrDefault(false)
+        return false
+    }
 
     private fun ByteArray.startsWithAscii(prefix: String): Boolean =
         size >= prefix.length && prefix.indices.all { this[it] == prefix[it].code.toByte() }

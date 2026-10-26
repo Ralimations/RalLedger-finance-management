@@ -22,7 +22,7 @@ class SmartFinancialImportReader(context: Context) {
 
     fun parse(fileName: String?, mimeType: String?, bytes: ByteArray): FinancialImportDocument {
         val format = FinancialImportFileReader.detectFormat(fileName, mimeType, bytes)
-        if (format != FinancialImportFormat.PDF) return FinancialImportFileReader.parse(fileName, mimeType, bytes)
+        if (format != FinancialImportFormat.PDF) return FinancialImportFileReader.parseDetected(format, bytes)
         return PdfFinancialStatementReader(appContext).parse(bytes)
     }
 }

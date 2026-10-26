@@ -7,9 +7,13 @@ import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.TransactionType
 import org.junit.Assert.assertEquals
+import org.junit.Assert.fail
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.charset.StandardCharsets
+import java.io.ByteArrayOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class FinancialImportFileReaderTest {
     @Test
@@ -34,6 +38,31 @@ class FinancialImportFileReaderTest {
             FinancialImportFormat.CSV,
             FinancialImportFileReader.detectFormat("statement.csv", "application/vnd.ms-excel", "Date,Amount\n2026-01-01,1.00".toByteArray())
         )
+    }
+
+    @Test
+    fun rejectsZipWorkbookProbeThatExceedsTheSafeExpansionLimit() {
+        val archive = ByteArrayOutputStream().use { output ->
+            ZipOutputStream(output).use { zip ->
+                zip.putNextEntry(ZipEntry("unrelated.bin"))
+                val repeated = ByteArray(8_192)
+                repeat(5_005) { zip.write(repeated) }
+                zip.write(ByteArray(8_192))
+                zip.closeEntry()
+                zip.putNextEntry(ZipEntry("xl/workbook.xml"))
+                zip.write("<workbook/>".toByteArray())
+                zip.closeEntry()
+            }
+            output.toByteArray()
+        }
+        assertTrue("The test archive should remain small while expanding past 40 MB", archive.size < 100_000)
+
+        try {
+            FinancialImportFileReader.detectFormat("statement.xlsx", null, archive)
+            fail("An archive whose earlier member exceeds the expansion limit must be rejected")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("This ZIP file is not an Excel workbook", error.message)
+        }
     }
 
     @Test

@@ -9,8 +9,8 @@ import java.util.Locale
 import java.util.zip.ZipInputStream
 
 object XlsxFinancialTableReader {
-    private const val MAX_ENTRIES = 128
-    private const val MAX_UNCOMPRESSED_BYTES = 40_000_000
+    internal const val MAX_ENTRIES = 128
+    internal const val MAX_UNCOMPRESSED_BYTES = 40_000_000
     private const val MAX_ROWS = 50_000
     private const val MAX_COLUMNS = 100
     private const val RELATIONSHIP_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"

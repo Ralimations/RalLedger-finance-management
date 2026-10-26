@@ -6,6 +6,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ralledger.MainActivity
+import com.ralledger.testing.markWelcomeCompleteForMainActivityTest
 import com.ralledger.ui.dashboard.DashboardPreferences
 import com.ralledger.ui.dashboard.DashboardWidget
 import kotlinx.coroutines.flow.first
@@ -21,6 +22,7 @@ class DashboardSettingsAccessibilityInstrumentedTest {
     fun dashboardWidgetSwitchExposesItsLabelAndStateAsOneControl() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val appLockPreferences = AppLockPreferences(instrumentation.targetContext)
+        markWelcomeCompleteForMainActivityTest()
         runBlocking { appLockPreferences.setEnabled(false) }
 
         var scenario: ActivityScenario<MainActivity>? = null
@@ -68,6 +70,7 @@ class DashboardSettingsAccessibilityInstrumentedTest {
         val targetContext = instrumentation.targetContext
         val appLockPreferences = AppLockPreferences(targetContext)
         val dashboardPreferences = DashboardPreferences(targetContext)
+        markWelcomeCompleteForMainActivityTest()
         runBlocking { appLockPreferences.setEnabled(false) }
         val originalSettings = runBlocking { dashboardPreferences.settings.first() }
 

@@ -8,6 +8,7 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ralledger.MainActivity
+import com.ralledger.testing.markWelcomeCompleteForMainActivityTest
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeFalse
@@ -21,6 +22,7 @@ class AppLockGateInstrumentedTest {
     fun navigationUsesFullAccessibleDestinationName() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val preferences = AppLockPreferences(instrumentation.targetContext)
+        markWelcomeCompleteForMainActivityTest()
         runBlocking { preferences.setEnabled(false) }
 
         var scenario: ActivityScenario<MainActivity>? = null
@@ -52,6 +54,7 @@ class AppLockGateInstrumentedTest {
         )
 
         val preferences = AppLockPreferences(context)
+        markWelcomeCompleteForMainActivityTest()
         runBlocking { preferences.setEnabled(true) }
 
         var scenario: ActivityScenario<MainActivity>? = null

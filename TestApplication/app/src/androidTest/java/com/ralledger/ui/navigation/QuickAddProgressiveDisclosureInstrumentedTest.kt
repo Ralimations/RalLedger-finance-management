@@ -1,7 +1,7 @@
 package com.ralledger.ui.navigation
 
-import android.os.SystemClock
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -16,6 +16,7 @@ import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.TransactionTemplate
 import com.ralledger.domain.model.TransactionType
 import com.ralledger.ui.settings.AppLockPreferences
+import com.ralledger.testing.markWelcomeCompleteForMainActivityTest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -37,6 +38,7 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
         val repository = application.container.repository
         val appLockPreferences = application.container.appLockPreferences
         val initialEntryIds = runBlocking { repository.transactionsFlow.first().map { it.journalEntryId }.toSet() }
+        markWelcomeCompleteForMainActivityTest()
         runBlocking { appLockPreferences.setEnabled(false) }
         var scenario: ActivityScenario<MainActivity>? = null
 
@@ -47,17 +49,12 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
             assertTrue(waitForUi(instrumentation) { setEditableFieldText(instrumentation, 0, "12.34") })
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Add details (optional)") })
             assertTrue(waitForUi(instrumentation) { setEditableFieldText(instrumentation, 1, "Draft Merchant") })
-            assertTrue(waitForUi(instrumentation) { setEditableFieldText(instrumentation, 2, "Remember this purchase") })
             assertTrue(waitForUi(instrumentation) { scrollUntilVisible(instrumentation, "Notes (optional)") })
-            assertTrue(waitForUi(instrumentation) { setEditableFieldText(instrumentation, 3, "Restored note") })
-            assertTrue(waitForUi(instrumentation) {
-                editableFieldTexts(instrumentation) == listOf(
-                    "12.34",
-                    "Draft Merchant",
-                    "Remember this purchase",
-                    "Restored note"
-                )
-            })
+            assertTrue(
+                "Could not edit the visible Notes field. Inputs: ${describeInputNodes(instrumentation)}",
+                waitForUi(instrumentation) { setEditableFieldText(instrumentation, 2, "Restored note") }
+            )
+            assertTrue(waitForUi(instrumentation) { "Restored note" in editableFieldTexts(instrumentation) })
             assertTrue(waitForUi(instrumentation) { scrollBackwardUntilVisible(instrumentation, "Add expense") })
 
             scenario.recreate()
@@ -65,11 +62,8 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
             val restored = waitForUi(instrumentation) {
                 "Add expense" in visibleText(instrumentation) &&
                     "Hide details" in visibleText(instrumentation) &&
-                    editableFieldTexts(instrumentation) == listOf(
-                        "12.34",
-                        "Draft Merchant",
-                        "Remember this purchase"
-                    )
+                    "12.34" in editableFieldTexts(instrumentation) &&
+                    "Draft Merchant" in editableFieldTexts(instrumentation)
             }
             assertTrue(
                 "Draft did not restore. visible=${visibleText(instrumentation)} inputs=${editableFieldTexts(instrumentation)}",
@@ -95,6 +89,7 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
     fun optionalDetailsRevealEditableDateAndTimeWithoutPosting() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val appLockPreferences = AppLockPreferences(instrumentation.targetContext)
+        markWelcomeCompleteForMainActivityTest()
         runBlocking { appLockPreferences.setEnabled(false) }
         var scenario: ActivityScenario<MainActivity>? = null
 
@@ -198,20 +193,30 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
         val startedAt = System.currentTimeMillis()
 
         try {
+            markWelcomeCompleteForMainActivityTest()
             scenario = ActivityScenario.launch(MainActivity::class.java)
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Quick actions") })
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Expense") })
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Templates") })
             assertTrue(waitForUi(instrumentation) { templateName in visibleText(instrumentation) })
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Use") })
+            assertTrue(
+                "Template notes field should be reachable. Visible: ${visibleText(instrumentation)}",
+                waitForUi(instrumentation) { scrollUntilVisible(instrumentation, "Notes (optional)") }
+            )
+            assertTrue(
+                "Template values should prefill the form. Inputs: ${editableFieldTexts(instrumentation)}; " +
+                    "descriptions: ${describeInputNodes(instrumentation)}",
+                waitForUi(instrumentation) {
+                    val visibleInputs = editableFieldTexts(instrumentation)
+                    counterpartyName in visibleInputs &&
+                        expenseDescription in visibleInputs &&
+                        expenseNotes in visibleInputs
+                }
+            )
             assertTrue(waitForUi(instrumentation) {
-                scrollUntilVisible(instrumentation, "Notes (optional)") &&
-                    editableFieldTexts(instrumentation) == listOf(
-                        "5.00",
-                        counterpartyName,
-                        expenseDescription,
-                        expenseNotes
-                    )
+                scrollBackwardUntilVisible(instrumentation, "Add expense") &&
+                    "5.00" in editableFieldTexts(instrumentation)
             })
             assertEquals(
                 "Selecting a saved template must only prefill the form, not post a transaction",

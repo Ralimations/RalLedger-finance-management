@@ -209,6 +209,7 @@ object FinancialImportFileReader {
 }
 
 object OfxFinancialStatementReader {
+    private const val MAX_ROWS = 50_000
     private val transactionBlock = Regex(
         "<STMTTRN\\b[^>]*>(.*?)(?:</STMTTRN>|(?=<STMTTRN\\b)|(?=</BANKTRANLIST>))",
         setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
@@ -218,10 +219,9 @@ object OfxFinancialStatementReader {
 
     fun parse(text: String): ParsedCsvDocument {
         require(text.isNotBlank()) { "The OFX file is empty" }
-        val blocks = transactionBlock.findAll(text).toList()
-        require(blocks.isNotEmpty()) { "No OFX transactions were found" }
-        require(blocks.size <= 50_000) { "The statement has more than 50,000 transactions" }
-        val rows = blocks.mapIndexed { index, match ->
+        val rows = mutableListOf<ParsedCsvRow>()
+        transactionBlock.findAll(text).forEach { match ->
+            require(rows.size < MAX_ROWS) { "The statement has more than 50,000 transactions" }
             val fields = tagValue.findAll(match.groupValues[1]).associate { result ->
                 result.groupValues[1].uppercase(Locale.ROOT) to decodeEntities(result.groupValues[2].trim())
             }
@@ -237,7 +237,7 @@ object OfxFinancialStatementReader {
             }
             val payee = fields["NAME"].orEmpty()
             val memo = fields["MEMO"].orEmpty()
-            listOf(
+            rows += ParsedCsvRow(rows.size + 1, listOf(
                 date,
                 type,
                 fields["TRNAMT"].orEmpty(),
@@ -250,8 +250,9 @@ object OfxFinancialStatementReader {
                     fields["FITID"].orEmpty().takeIf(String::isNotBlank)?.let { "OFX ID $it" }
                 )
                     .joinToString(" · ")
-            ).let { ParsedCsvRow(index + 1, it) }
+            ))
         }
+        require(rows.isNotEmpty()) { "No OFX transactions were found" }
         return ParsedCsvDocument(headers, rows)
     }
 
@@ -264,6 +265,7 @@ object OfxFinancialStatementReader {
 }
 
 object QifFinancialStatementReader {
+    private const val MAX_ROWS = 50_000
     private val headers = listOf("Date", "Type", "Amount", "Account", "Destination account", "Category", "Counterparty", "Description", "Notes")
 
     fun parse(text: String): ParsedCsvDocument {
@@ -291,6 +293,7 @@ object QifFinancialStatementReader {
                     if (splitCount > 0) add("QIF split categories require review")
                 }.joinToString(" · ")
                 if (date.isNotBlank() || amount.isNotBlank()) {
+                    require(rows.size < MAX_ROWS) { "The statement has more than 50,000 transactions" }
                     rows += ParsedCsvRow(
                         recordLine,
                         listOf(
@@ -344,7 +347,6 @@ object QifFinancialStatementReader {
         }
         finishRecord()
         require(rows.isNotEmpty()) { "No QIF transactions were found" }
-        require(rows.size <= 50_000) { "The statement has more than 50,000 transactions" }
         return ParsedCsvDocument(headers, rows)
     }
 }

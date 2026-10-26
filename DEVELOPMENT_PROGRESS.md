@@ -1071,3 +1071,10 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Added a JVM regression test that constructs a sub-100 KB ZIP expanding beyond 40 MB before its workbook index; detection rejects it at the configured bound. Added an API 37 instrumentation assertion that routes a synthetic valid XLSX through format detection and the complete file reader.
 - Verification: 126/126 Debug unit tests passed; the focused XLSX API 37 instrumentation case passed 1/1; Debug lint has 37 warnings and 0 errors; Debug and Android-test APK assembly succeeded. The latest complete connected suite remains the separately recorded 51/51 run. `releases/RalLedger-debug.apk` is refreshed at 78,027,213 bytes, SHA-256 `967CA479728CD8837B70E38F6F29D810E0A4DC5413A86CEC70609B14F53FC917`; APK Signature Scheme v2 verifies with the Android Debug signer. Release remains unsigned and unminified.
 - No real financial data was used. The root logo files remain untouched. PesoMind's native opener remains as implemented and no website work was added. Phase II remains active; signing and broader accessibility/device acceptance remain open.
+
+## OFX and QIF transaction scan limits — 2026-10-26
+
+- The OFX reader previously converted every regex match to a list before applying its 50,000-transaction limit. The QIF reader likewise built every row before rejecting overflow. Both now enforce the existing limit as each row is scanned, before adding row 50,001.
+- Added synthetic 50,001-row regressions for both formats. The full Debug unit suite passed 128/128; Debug lint reported 37 warnings and 0 errors; Debug and Android-test APK assembly succeeded. The connected suite was not rerun; the latest complete result remains 51/51, with the separate focused XLSX instrumentation check passing.
+- Refreshed `releases/RalLedger-debug.apk`: 78,027,140 bytes, SHA-256 `6F7F6B757D808B7F93D7800E7C9B940BB4BBCBD0D70384B3DB52220266E748D3`; APK Signature Scheme v2 verifies with the Android Debug signer. Release remains unsigned and unminified.
+- No real financial data was used. Phase II remains active; owner-managed signing and wider device/accessibility acceptance remain open.

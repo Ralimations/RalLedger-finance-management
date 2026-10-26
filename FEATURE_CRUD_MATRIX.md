@@ -5,7 +5,7 @@ Branch: `feature/ralledger-v2-live-ready`; see the API 37 walkthrough supplement
 
 This matrix distinguishes a working lifecycle from a create-only screen or repository primitive. “Partial” means one or more requested operations remain unavailable in the app UI or lack verified persistence. A button or repository method alone is not counted as complete.
 
-Latest import hardening (2026-10-26): XLSX ZIP detection and parsing enforce a 128-entry limit and a 40 MB expanded-data limit. A compressed archive expanding beyond the limit before its workbook index is rejected by a JVM regression test; the valid XLSX reader path passes on API 37. Full import lifecycle, bank-format coverage, PDF OCR review, and manual preview confirmation remain tracked below.
+Latest import hardening (2026-10-26): XLSX ZIP detection and parsing enforce a 128-entry limit and a 40 MB expanded-data limit. OFX and QIF enforce their 50,000-row caps during scanning, before materializing excess transactions. Synthetic overflow regressions pass; the valid XLSX reader path passes on API 37. Full import lifecycle, bank-format coverage, PDF OCR review, and manual preview confirmation remain tracked below.
 
 | Record or feature | Create | View / search | Edit | Archive / pause / restore | Delete / void / close | History and integrity | Status |
 |---|---|---|---|---|---|---|---|

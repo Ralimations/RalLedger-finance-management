@@ -135,6 +135,22 @@ class FinancialImportFileReaderTest {
     }
 
     @Test
+    fun rejectsOfxTransactionOverflowWhileScanning() {
+        val statement = buildString {
+            append("<OFX><BANKTRANLIST>")
+            repeat(50_001) { append("<STMTTRN><TRNAMT>1.00</TRNAMT></STMTTRN>") }
+            append("</BANKTRANLIST></OFX>")
+        }
+
+        try {
+            OfxFinancialStatementReader.parse(statement)
+            fail("OFX input beyond the transaction limit must be rejected")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("The statement has more than 50,000 transactions", error.message)
+        }
+    }
+
+    @Test
     fun parsesQifTransfersAndRejectsSplitRowsFromAccidentalImport() {
         val qif = """
             !Type:Bank
@@ -178,5 +194,20 @@ class FinancialImportFileReaderTest {
         assertEquals(2, preview.importableCount)
         assertEquals(1, preview.errorCount)
         assertEquals(TransactionType.EXPENSE, preview.transactions[1].transactionType)
+    }
+
+    @Test
+    fun rejectsQifTransactionOverflowWhileScanning() {
+        val statement = buildString {
+            append("!Type:Bank\n")
+            repeat(50_001) { append("D6/3/2026\nT1.00\n^\n") }
+        }
+
+        try {
+            QifFinancialStatementReader.parse(statement)
+            fail("QIF input beyond the transaction limit must be rejected")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("The statement has more than 50,000 transactions", error.message)
+        }
     }
 }

@@ -129,6 +129,12 @@ Still requiring explicit manual review: secure-device app-lock setup/unlock/relo
 - A separate emulator walkthrough moved Available Money below Net Worth, force-stopped and reopened the app, verified the same order in Settings, and restored the original order. No financial data was present. Screenshot evidence is in ignored `.ralledger-local/qa/dashboard-order-after-force-stop.png`.
 - Verification: 107 unit tests and 42 connected API 37 tests passed; lint reported 32 warnings and 0 errors; debug assembly was up to date and APK Signature Scheme v2 verified.
 
+## Compact and large-text Quick Add check — 2026-10-26
+
+- At 320 dp and 1.3× text, the Quick Action hub and transaction type selector reflow into two columns. All three transaction types and their labels remain visible.
+- Quick Add's account, destination, and category labels are separate from their selection prompts. A temporary QA account's ₱0.00 balance remained visible above the amount field. The calculator applied `12 + 3 = 15.00` to the unsaved draft; scrolling exposed Save. The draft was discarded and no transaction was recorded.
+- The disposable account/profile was cleared. Standard emulator size, density, and text scale were restored. See `DEVELOPMENT_PROGRESS.md` for evidence filenames, regression results, and the large-text Dashboard Settings accessibility test limitation.
+
 ## API 37 responsive visual checkpoint — 2026-10-26
 
 - Home and Settings were inspected at 320dp, 411dp, and 480dp. Light mode was checked at each size; dark mode was checked at 480dp. Visible content remained within the width and bottom-navigation bounds; vertical content remained scrollable.

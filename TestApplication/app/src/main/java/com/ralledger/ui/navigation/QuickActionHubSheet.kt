@@ -43,7 +43,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.ralledger.ui.planning.PlanningQuickAction
@@ -58,6 +61,14 @@ private data class QuickActionOption(
 private data class QuickActionGroup(
     val title: String,
     val options: List<QuickActionOption>
+)
+
+private data class PrimaryQuickActionOption(
+    val title: String,
+    val description: String,
+    val icon: ImageVector,
+    val tone: Color,
+    val transactionType: String
 )
 
 private val quickActionGroups = listOf(
@@ -96,6 +107,33 @@ fun QuickActionHubSheet(
 ) {
     var showMoreActions by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val fontScale = LocalDensity.current.fontScale
+    val useTwoColumnActionGrid = screenWidthDp < 380 || (fontScale >= 1.2f && screenWidthDp < 460)
+    val primaryActions = listOf(
+        PrimaryQuickActionOption(
+            title = "Income",
+            description = "Money in",
+            icon = Icons.Default.ArrowDownward,
+            tone = MaterialTheme.colorScheme.tertiaryContainer,
+            transactionType = "INCOME"
+        ),
+        PrimaryQuickActionOption(
+            title = "Expense",
+            description = "Money out",
+            icon = Icons.Default.ArrowUpward,
+            tone = MaterialTheme.colorScheme.errorContainer,
+            transactionType = "EXPENSE"
+        ),
+        PrimaryQuickActionOption(
+            title = "Transfer",
+            description = "Between accounts",
+            icon = Icons.Default.SwapHoriz,
+            tone = MaterialTheme.colorScheme.secondaryContainer,
+            transactionType = "TRANSFER"
+        )
+    )
+    val primaryActionRows = if (useTwoColumnActionGrid) primaryActions.chunked(2) else listOf(primaryActions)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -141,28 +179,19 @@ fun QuickActionHubSheet(
                     }
                 }
             } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    PrimaryQuickAction(
-                        modifier = Modifier.weight(1f),
-                        title = "Income",
-                        description = "Money in",
-                        icon = Icons.Default.ArrowDownward,
-                        tone = MaterialTheme.colorScheme.tertiaryContainer
-                    ) { onTransactionSelected("INCOME") }
-                    PrimaryQuickAction(
-                        modifier = Modifier.weight(1f),
-                        title = "Expense",
-                        description = "Money out",
-                        icon = Icons.Default.ArrowUpward,
-                        tone = MaterialTheme.colorScheme.errorContainer
-                    ) { onTransactionSelected("EXPENSE") }
-                    PrimaryQuickAction(
-                        modifier = Modifier.weight(1f),
-                        title = "Transfer",
-                        description = "Between accounts",
-                        icon = Icons.Default.SwapHoriz,
-                        tone = MaterialTheme.colorScheme.secondaryContainer
-                    ) { onTransactionSelected("TRANSFER") }
+                primaryActionRows.forEach { actionRow ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        actionRow.forEach { action ->
+                            PrimaryQuickAction(
+                                modifier = Modifier.weight(1f),
+                                title = action.title,
+                                description = action.description,
+                                icon = action.icon,
+                                tone = action.tone
+                            ) { onTransactionSelected(action.transactionType) }
+                        }
+                        if (actionRow.size == 1) Spacer(Modifier.weight(1f))
+                    }
                 }
                 Card(
                     modifier = Modifier

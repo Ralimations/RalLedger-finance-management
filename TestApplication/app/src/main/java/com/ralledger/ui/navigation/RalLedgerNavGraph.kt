@@ -451,6 +451,11 @@ fun QuickAddTransactionDialog(
         skipPartiallyExpanded = true,
         confirmValueChange = { target -> target != SheetValue.Hidden || !isSaving }
     )
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp
+    val fontScale = LocalDensity.current.fontScale
+    val useTwoColumnTypeSelector = screenWidthDp < 380 || (fontScale >= 1.2f && screenWidthDp < 460)
+    val transactionTypes = listOf("EXPENSE" to "Expense", "INCOME" to "Income", "TRANSFER" to "Transfer")
+    val transactionTypeRows = if (useTwoColumnTypeSelector) transactionTypes.chunked(2) else listOf(transactionTypes)
     val requestDismiss = {
         when (quickAddDismissAction(hasUserEdited, isSaving)) {
             QuickAddDismissAction.IGNORE -> Unit
@@ -532,14 +537,17 @@ fun QuickAddTransactionDialog(
                 }
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf("EXPENSE" to "Expense", "INCOME" to "Income", "TRANSFER" to "Transfer").forEach { (type, label) ->
-                    FilterChip(
-                        modifier = Modifier.weight(1f),
-                        selected = txType == type,
-                        onClick = { txType = type; inputError = null; hasUserEdited = true },
-                        label = { Text(label, maxLines = 1, fontSize = 12.sp) }
-                    )
+            transactionTypeRows.forEach { typeRow ->
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    typeRow.forEach { (type, label) ->
+                        FilterChip(
+                            modifier = Modifier.weight(1f),
+                            selected = txType == type,
+                            onClick = { txType = type; inputError = null; hasUserEdited = true },
+                            label = { Text(label, maxLines = 1, fontSize = 12.sp) }
+                        )
+                    }
+                    if (typeRow.size == 1) Spacer(Modifier.weight(1f))
                 }
             }
 
@@ -551,60 +559,73 @@ fun QuickAddTransactionDialog(
                 label = "Amount (${eligibleAccounts.find { it.id == accountId }?.currency ?: "PHP"})"
             )
 
-            Box(modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(onClick = { accountMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            "Account · ${eligibleAccounts.find { it.id == accountId }?.name ?: "Choose an account"}",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                }
-                DropdownMenu(expanded = accountMenuExpanded, onDismissRequest = { accountMenuExpanded = false }) {
-                    eligibleAccounts.forEach { account ->
-                        DropdownMenuItem(text = { Text(account.name) }, onClick = {
-                            accountId = account.id
-                            accountMenuExpanded = false
-                            hasUserEdited = true
-                        })
-                    }
-                }
-            }
-
-            if (txType == "TRANSFER") {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("Account", style = androidx.compose.material3.MaterialTheme.typography.labelMedium)
                 Box(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(onClick = { destinationMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = { accountMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
                         Text(
-                            "To account · ${eligibleAccounts.find { it.id == destAccountId }?.name ?: "Choose destination"}",
+                            eligibleAccounts.find { it.id == accountId }?.name ?: "Choose account",
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    DropdownMenu(expanded = destinationMenuExpanded, onDismissRequest = { destinationMenuExpanded = false }) {
-                        eligibleAccounts.filter { it.id != accountId }.forEach { account ->
+                    DropdownMenu(expanded = accountMenuExpanded, onDismissRequest = { accountMenuExpanded = false }) {
+                        eligibleAccounts.forEach { account ->
                             DropdownMenuItem(text = { Text(account.name) }, onClick = {
-                                destAccountId = account.id
-                                destinationMenuExpanded = false
+                                accountId = account.id
+                                accountMenuExpanded = false
                                 hasUserEdited = true
                             })
                         }
                     }
                 }
-            } else {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(onClick = { categoryMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            "${if (txType == "INCOME") "Income source" else "Category"} · ${eligibleCategories.find { it.id == categoryId }?.name ?: "Choose"}",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+            }
+
+            if (txType == "TRANSFER") {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("To account", style = androidx.compose.material3.MaterialTheme.typography.labelMedium)
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(onClick = { destinationMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                eligibleAccounts.find { it.id == destAccountId }?.name ?: "Choose destination",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        DropdownMenu(expanded = destinationMenuExpanded, onDismissRequest = { destinationMenuExpanded = false }) {
+                            eligibleAccounts.filter { it.id != accountId }.forEach { account ->
+                                DropdownMenuItem(text = { Text(account.name) }, onClick = {
+                                    destAccountId = account.id
+                                    destinationMenuExpanded = false
+                                    hasUserEdited = true
+                                })
+                            }
+                        }
                     }
-                    DropdownMenu(expanded = categoryMenuExpanded, onDismissRequest = { categoryMenuExpanded = false }) {
-                        eligibleCategories.forEach { category ->
-                            DropdownMenuItem(text = { Text(category.name) }, onClick = {
-                                categoryId = category.id
-                                categoryMenuExpanded = false
-                                hasUserEdited = true
-                            })
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        if (txType == "INCOME") "Income source" else "Category",
+                        style = androidx.compose.material3.MaterialTheme.typography.labelMedium
+                    )
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(onClick = { categoryMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                eligibleCategories.find { it.id == categoryId }?.name
+                                    ?: if (txType == "INCOME") "Choose income source" else "Choose category",
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        DropdownMenu(expanded = categoryMenuExpanded, onDismissRequest = { categoryMenuExpanded = false }) {
+                            eligibleCategories.forEach { category ->
+                                DropdownMenuItem(text = { Text(category.name) }, onClick = {
+                                    categoryId = category.id
+                                    categoryMenuExpanded = false
+                                    hasUserEdited = true
+                                })
+                            }
                         }
                     }
                 }

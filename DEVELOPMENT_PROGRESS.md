@@ -1197,3 +1197,18 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Disabled app lock, cleared the temporary device credential, and cleared the empty QA app profile. The emulator was restored to its initial no-credential state; no financial records were entered.
 - Focused `:app:connectedDebugAndroidTest` for `AppLockGateInstrumentedTest` passed 2/2 with 0 failures, errors, or skips on API 37. The test verifies the visible lock gate, `FLAG_SECURE`, and the accessible Accounts destination. The second configured emulator was offline and skipped.
 - This provides emulator device-credential evidence; fingerprint hardware, physical-device behavior, full TalkBack, and wider device acceptance remain unverified. The latest full API 37 suite remains the separately recorded 62/62 run. No Android application source changed.
+
+## API 37 expected-income conversion and restart acceptance — 2026-10-27
+
+- On a clean API 37 QA profile, created a synthetic `QAPayment` expected-income forecast for ₱123.45 using the existing Freelance & Consulting category. The confirmation explained that conversion recognizes income immediately and links the forecast to a receivable; confirmed that action once.
+- The expected-income list showed the converted state, Receivables showed the linked confirmed record at ₱123.45 outstanding, and Activity showed one Income journal entry with receivable/category context.
+- Force-stopped and reopened the app. The receivable remained; Home showed Net Worth of ₱123.45 while Available Money remained ₱0.00, so the receivable was not counted as liquid cash. `pm clear com.ralledger` removed the synthetic app profile afterward. No wallet or real financial data was used.
+- This was a manual API 37 UI and persistence check; automated tests were not rerun, and application source did not change. Other Expected Income lifecycle/conversion edge cases, broader device/accessibility checks, and production signing remain open.
+
+## PesoMind native opener correction — API 37 acceptance — 2026-10-27
+
+- Re-read the supplied correction. The existing AndroidX SplashScreen, DataStore-backed first-run Compose welcome, existing-install bypass, app-lock gate, and `com.ralledger` identity already satisfy its native-app scope. The tracked tree has no marketing website, WebView, separate frontend, or deployment artifact to remove.
+- SHA-256 checks confirmed `logo.png` and `logo 2.png` are identical to the tracked horizontal and icon assets already used by the app. All four supplied root logo files were left untouched.
+- On a clean API 37 emulator profile, Welcome showed the PesoMind symbol and copy; **Get Started** opened Home. Force-stop/relaunch returned to Home without showing Welcome again. The empty QA profile was cleared afterward.
+- Fresh `WelcomePreferencesTest` passed 3/3; focused `PesoMindBrandInstrumentedTest` passed 2/2; focused `AppLockGateInstrumentedTest` passed 2/2. Debug instrumentation used API 37; the second configured emulator was offline. `:app:assembleRelease` succeeded and produced an unsigned APK. No Android source changed.
+- Rotation, theme switching, and installed-upgrade checks were not repeated in this pass; prior acceptance evidence remains recorded above. Production signing, full TalkBack, broader device coverage, and remaining Phase II journeys stay open.

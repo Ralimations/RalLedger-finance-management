@@ -105,3 +105,9 @@ Current verification snapshot (2026-10-27): Debug unit tests pass 134/134; the A
 - The transaction-template manager is now reachable directly from Quick Add. Selecting a preset fills the unsaved form and expands optional details; posting still requires the user to review and explicitly save.
 - Focused API 37 verification passed 3/3 Quick Add instrumentation tests, including template prefill/save and draft restoration. Unit tests passed 115/115; lint reported 29 warnings and 0 errors; debug assembly and APK v2 verification passed.
 - At this earlier template checkpoint, repeat scheduling remained open; schedules are now implemented as documented above. Full TalkBack and screen/device release checks and owner-managed production signing remain open. No real financial data was used.
+
+## API 37 expected-income conversion and persistence — 2026-10-27
+
+- A synthetic ₱123.45 expected-income forecast was converted through the UI to a linked confirmed receivable after explicit confirmation. The Activity journal showed one Income entry; the Receivables list showed ₱123.45 outstanding.
+- After force-stop/relaunch, Home showed Net Worth ₱123.45 and Available Money ₱0.00. The synthetic app profile was cleared afterward.
+- This manually verifies conversion, classification, and restart persistence on API 37. It does not replace the automated migration/backup suite or complete the remaining Expected Income lifecycle and manual acceptance journeys. No application source changed.

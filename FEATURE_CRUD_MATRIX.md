@@ -1,6 +1,6 @@
 # RalLedger CRUD and lifecycle matrix
 
-Updated: 2026-10-26
+Updated: 2026-10-27
 Branch: `feature/ralledger-v2-live-ready`; see the API 37 walkthrough supplement below for the latest manual evidence
 
 This matrix distinguishes a working lifecycle from a create-only screen or repository primitive. “Partial” means one or more requested operations remain unavailable in the app UI or lack verified persistence. A button or repository method alone is not counted as complete.
@@ -43,11 +43,11 @@ Latest import hardening (2026-10-26): CSV and XLSX now enforce a 500,000-cell to
 
 ## Phase II navigation and preference notes
 
-## Current Phase II verification checkpoint — 2026-10-26
+## Current Phase II verification checkpoint — 2026-10-27
 
-- Current working-tree verification passes 125/125 Debug unit tests and 51/51 connected API 37 instrumentation tests. The suite includes recurring-schedule edit/history and money-format coverage. Debug and Release lint report 37 warnings and 0 errors; Debug, Android-test, and Release APK assembly succeed.
+- Latest complete source test run (before the night-theme resource-only update) passed 130/130 Debug unit tests and 53/53 connected API 37 instrumentation tests (0 failures, errors, or skips). The suite covers recurring-schedule editing, Quick Add, PesoMind branding, and app-lock gating. Debug lint reports 37 warnings and Release lint reports 40 warnings; both have 0 errors; Debug, Android-test, and Release APK assembly succeed.
 - `Money.format` now preserves integer-centavo precision above the exact-integer range of Double; JVM and API 37 tests verify the result. The Quick Add template journey test now scrolls to the amount input instead of treating a pinned header as proof of visibility.
-- The current Debug APK/hash and unsigned Release APK/hash are recorded in `DEVELOPMENT_PROGRESS.md`. Release remains unsigned and unminified; no owner-managed production key is configured, and the Release APK has not been installed or runtime-tested.
+- The current Debug APK and unsigned Release APK hashes are recorded in `DEVELOPMENT_PROGRESS.md`. The production Release remains unsigned and unminified because the owner-managed signing key is not configured. A separate debug-signed QA copy from the unsigned Release payload passed API 37 first-run and returning-user smoke checks in Light and Dark; the QA copy is not production-signed.
 - Both Debug and Release APKs omit `INTERNET` and `ACCESS_NETWORK_STATE`; the user app has no network client. Bundled ML Kit text recognition is retained for local OCR. Repeat schedules have schema-23 persistence, Quick Add controls, lifecycle actions, explicit occurrence confirmation, encrypted backup/restore, and safe future-template editing. Automatic posting/reminders and remaining manual, accessibility, and device journeys remain open; Phase II is not complete.
 
 - Settings now opens with purpose-based Appearance, Preferences, Dashboard, Categories, Data & Backup, Security, and About sections. Existing preference, import/export, backup/restore and app-lock operations remain available in their section; backup restore still requires preview and explicit confirmation.

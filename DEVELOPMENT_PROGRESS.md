@@ -1,6 +1,6 @@
 # RalLedger v2.0 Development Progress
 
-Updated: 2026-10-26
+Updated: 2026-10-27
 Branch: `feature/ralledger-v2-live-ready` (schema-22 restore-recovery release published to `main`)
 Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
@@ -1107,3 +1107,13 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Full verification on API 37: 130/130 Debug unit tests and 53/53 connected instrumentation tests passed with 0 failures, errors, or skips. Debug lint reported 37 warnings and 0 errors; Debug and Android-test APK assembly succeeded.
 - Generated Debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 78,298,888 bytes, SHA-256 `824C43C3E0FD1E66676FE0BF06E2512A2212136424A3DB11AC686E1192EFBA1D`. APK Signature Scheme v2 verifies with the Android Debug signer; this is not a production-signed release.
 - The connected Gradle run removed the app from the emulator; `com.ralledger` is not currently installed, so no synthetic test fixtures remain there. No real financial data was used. This iteration did not change the already-verified opener behavior or publish to GitHub. Production signing and broader accessibility/device acceptance remain open.
+
+## PesoMind native opener — Release QA and night-theme verification — 2026-10-27
+
+- The latest correction is implemented as an Android-only experience. No marketing website, WebView, separate frontend, or deployment artifacts were found or added. The application ID remains `com.ralledger`; Room identity, schema, and financial data paths are unchanged. Supplied root logo files remain untouched.
+- Aligned the Android night-mode platform theme with PesoMind's calm blue, ocean blue, deep indigo, and splash background resources. No Kotlin, accounting, database, or preference migration code changed in this iteration.
+- Rebuilt Release successfully with `:app:lintRelease :app:assembleRelease`; Release lint reports 40 warnings and 0 errors. The production Release APK remains unsigned and unminified because no owner-managed signing key is configured.
+- On API 37, a clean, empty test profile on a separate Release QA copy showed the native PesoMind welcome, then Get Started opened the dashboard. Dark-mode Welcome and Dashboard were visually checked; returning to light mode and force-stop/relaunch opened the dashboard without Welcome. The final test profile contains no financial records. Captures are in ignored `TestApplication/.ralledger-local/qa/pesomind-release-*.png`.
+- The unsigned Release APK is `TestApplication/app/build/outputs/apk/release/app-release-unsigned.apk`, 69,114,432 bytes, SHA-256 `042AFCAA9FFCEB826935AC7263D845433C34169D018B7E67037B08681B8FCB03`. A separate QA copy at `TestApplication/.ralledger-local/qa/app-release-qa-debug-signed.apk` is 69,213,611 bytes, SHA-256 `1BDEC2F3FF901164D5530B87024F7A60D0564B8CCC8109D4364CAAA144651321`, signed with the Android debug certificate (SHA-256 `fabee57ffeb8f0ab41f1f3cd9ab03386c84a65d653f800b80ade78320ce14816`; v2 and v3 verified). This QA signature is not a production signature and the QA copy was not published.
+- Latest source test evidence remains 130/130 Debug unit tests and 53/53 connected API 37 instrumentation tests from commit `f152e61012fbc67c1f463b173299b1bb172cef4c`; this theme-resource-only change was checked with Release lint/build and Release runtime smoke, not by rerunning the full test suite. Existing app-lock test coverage passed in that connected suite; a device-credential journey on personal hardware remains unverified.
+- No GitHub push, merge, or publication occurred. Production signing, full TalkBack/text-scaling review, remaining manual journeys, and broader device/theme coverage remain open.

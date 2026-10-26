@@ -185,7 +185,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 val preview = backupRepository.writeEncryptedBackupToDocument(password, writeDocument)
-                _backupStatus.value = "Encrypted backup saved. ${preview.accounts} accounts, ${preview.counterparties} clients/counterparties, ${preview.transactionTemplates} transaction templates, ${preview.expectedIncome} expected-income records, ${preview.plannedPayments} planned payments with ${preview.plannedPaymentEvents} payment-history entries, ${preview.debts} bills and loans, ${preview.journalEntries} journal entries, and ${preview.receivables} receivables included."
+                _backupStatus.value = "Encrypted backup saved. ${preview.accounts} accounts, ${preview.counterparties} clients/counterparties, ${preview.transactionTemplates} transaction templates, ${preview.recurringTransactions} recurring transactions, ${preview.expectedIncome} expected-income records, ${preview.plannedPayments} planned payments with ${preview.plannedPaymentEvents} payment-history entries, ${preview.debts} bills and loans, ${preview.journalEntries} journal entries, and ${preview.receivables} receivables included."
             } catch (e: Exception) {
                 _backupStatus.value = "Backup failed: ${e.localizedMessage}"
             }
@@ -216,7 +216,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             try {
                 val preview = backupRepository.restorePreparedBackup()
-                _backupStatus.value = "Restore complete. ${preview.accounts} accounts, ${preview.counterparties} clients/counterparties, ${preview.financialProjects} projects, ${preview.projectAssignments} project assignments, ${preview.customReports} saved reports, ${preview.transactionTemplates} transaction templates, ${preview.expectedIncome} expected-income records, ${preview.plannedPayments} planned payments with ${preview.plannedPaymentEvents} payment-history entries, ${preview.debts} bills and loans, ${preview.journalEntries} journal entries, and ${preview.receivables} receivables restored."
+                _backupStatus.value = "Restore complete. ${preview.accounts} accounts, ${preview.counterparties} clients/counterparties, ${preview.financialProjects} projects, ${preview.projectAssignments} project assignments, ${preview.customReports} saved reports, ${preview.transactionTemplates} transaction templates, ${preview.recurringTransactions} recurring transactions, ${preview.expectedIncome} expected-income records, ${preview.plannedPayments} planned payments with ${preview.plannedPaymentEvents} payment-history entries, ${preview.debts} bills and loans, ${preview.journalEntries} journal entries, and ${preview.receivables} receivables restored."
                 _restorePreview.value = null
             } catch (e: Exception) {
                 _backupStatus.value = "Restore failed; existing data was retained: ${e.localizedMessage}"

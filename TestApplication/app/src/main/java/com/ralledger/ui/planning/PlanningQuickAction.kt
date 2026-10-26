@@ -16,5 +16,6 @@ enum class PlanningQuickAction(
     ADD_SUBSCRIPTION(tabIndex = 5, opensEditor = true),
     OPEN_SUBSCRIPTIONS(tabIndex = 5, opensEditor = false),
     ADD_SAVINGS_GOAL(tabIndex = 6, opensEditor = true),
-    OPEN_INTEREST_PRODUCTS(tabIndex = 7, opensEditor = false)
+    OPEN_INTEREST_PRODUCTS(tabIndex = 7, opensEditor = false),
+    OPEN_RECURRING_TRANSACTIONS(tabIndex = 11, opensEditor = false)
 }

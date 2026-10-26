@@ -27,6 +27,9 @@ import com.ralledger.data.local.entity.TransactionTagEntity
 import com.ralledger.data.local.entity.TransactionTemplateEntity
 import com.ralledger.data.local.entity.PlannedPaymentEntity
 import com.ralledger.data.local.entity.PlannedPaymentRecordEntity
+import com.ralledger.data.local.entity.RecurringTransactionEntity
+import com.ralledger.data.local.entity.RecurringTransactionOccurrenceEntity
+import com.ralledger.data.local.entity.RecurringTransactionTagEntity
 import com.ralledger.data.local.entity.CustomReportEntity
 import com.ralledger.data.local.entity.FinancialProjectEntity
 import com.ralledger.data.local.entity.JournalEntryProjectEntity
@@ -86,17 +89,23 @@ import com.ralledger.domain.model.TransactionTag
 import com.ralledger.domain.model.SavedTransactionFilter
 import com.ralledger.domain.model.TransactionFilter
 import com.ralledger.domain.model.TransactionTemplate
+import com.ralledger.domain.model.RecurringTransaction
+import com.ralledger.domain.model.RecurringTransactionOccurrence
+import com.ralledger.domain.model.RecurringTransactionStatus
+import com.ralledger.domain.model.TransactionRepeatFrequency
 import com.ralledger.domain.model.normalizeTransactionTemplateName
 import com.ralledger.domain.usecase.AccountingEngine
 import com.ralledger.domain.usecase.BudgetSpendingCalculator
 import com.ralledger.domain.usecase.BudgetSpendingKey
 import com.ralledger.domain.usecase.DashboardSummaryCalculator
 import com.ralledger.domain.usecase.SubscriptionSchedule
+import com.ralledger.domain.usecase.TransactionRepeatSchedule
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import java.util.Calendar
 import java.util.UUID
+import java.time.ZoneId
 
 class RalLedgerRepository(
     private val database: RalLedgerDatabase
@@ -118,6 +127,7 @@ class RalLedgerRepository(
     private val plannedPaymentDao = database.plannedPaymentDao()
     private val savedTransactionFilterDao = database.savedTransactionFilterDao()
     private val counterpartyDao = database.counterpartyDao()
+    private val recurringTransactionDao = database.recurringTransactionDao()
     private val customReportDao = database.customReportDao()
     private val financialProjectDao = database.financialProjectDao()
 
@@ -566,6 +576,7 @@ class RalLedgerRepository(
                 debtDao.countDebtsForFundingAccount(id) +
                 subscriptionDao.countAccountReferences(id) +
                 interestDao.countProductsForAccount(id) +
+                recurringTransactionDao.countAccountReferences(id) +
                 transactionTemplateDao.countAccountReferences(id) +
                 customReportDao.countAccountReferences(id)
             require(referenceCount == 0L && account.openingBalanceCentavos == 0L) {
@@ -651,6 +662,7 @@ class RalLedgerRepository(
                 debtDao.countDebtsForCategory(id) == 0L && debtDao.countPaymentsForCategory(id) == 0L &&
                 interestDao.countCreditsForTaxCategory(id) == 0L &&
                 subscriptionPaymentDao.countPaymentsForCategory(id) == 0L &&
+                recurringTransactionDao.countCategoryReferences(id) == 0L &&
                 transactionTemplateDao.countCategoryReferences(id) == 0L &&
                 customReportDao.countCategoryReferences(id) == 0L &&
                 plannedPaymentDao.countCategoryReferences(id) == 0L &&
@@ -695,6 +707,7 @@ class RalLedgerRepository(
             customReportDao.reassignCategory(sourceId, targetId, updatedAt)
             transactionTemplateDao.reassignFeeCategory(sourceId, targetId, updatedAt)
             plannedPaymentDao.reassignCategory(sourceId, targetId)
+            recurringTransactionDao.reassignCategory(sourceId, targetId, System.currentTimeMillis())
             categoryDao.moveChildren(sourceId, targetId)
             categoryDao.deleteCategory(sourceId)
         }
@@ -752,6 +765,45 @@ class RalLedgerRepository(
 
     val transactionTemplatesFlow: Flow<List<TransactionTemplate>> = transactionTemplateDao.getAllFlow()
         .map { rows -> rows.map(TransactionTemplateEntity::toDomainModel) }
+
+    val recurringTransactionsFlow: Flow<List<RecurringTransaction>> = combine(
+        recurringTransactionDao.getAllFlow(),
+        recurringTransactionDao.getAllTagsFlow()
+    ) { rows, tags ->
+        val tagsBySchedule = tags.groupBy { it.recurringTransactionId }
+            .mapValues { (_, rowsForSchedule) -> rowsForSchedule.map { it.tagId }.toSet() }
+        rows.map { it.toDomainModel(tagsBySchedule[it.id].orEmpty()) }
+    }
+
+    fun recurringTransactionOccurrencesFlow(id: String): Flow<List<RecurringTransactionOccurrence>> =
+        recurringTransactionDao.getOccurrencesFlow(id).map { rows ->
+            rows.map { row ->
+                RecurringTransactionOccurrence(
+                    id = row.id,
+                    recurringTransactionId = row.recurringTransactionId,
+                    occurrenceIndex = row.occurrenceIndex,
+                    journalEntryId = row.journalEntryId,
+                    scheduledTimestamp = row.scheduledTimestamp,
+                    recordedTimestamp = row.recordedTimestamp,
+                    createdAt = row.createdAt
+                )
+            }
+        }
+
+    suspend fun setRecurringTransactionStatus(id: String, status: RecurringTransactionStatus) {
+        database.withTransaction {
+            val current = recurringTransactionDao.getById(id)
+                ?: throw IllegalArgumentException("This recurring transaction no longer exists")
+            val currentStatus = RecurringTransactionStatus.valueOf(current.status)
+            val allowed = when (currentStatus) {
+                RecurringTransactionStatus.ACTIVE -> status in setOf(RecurringTransactionStatus.PAUSED, RecurringTransactionStatus.CANCELLED)
+                RecurringTransactionStatus.PAUSED -> status in setOf(RecurringTransactionStatus.ACTIVE, RecurringTransactionStatus.CANCELLED)
+                RecurringTransactionStatus.CANCELLED, RecurringTransactionStatus.COMPLETED -> false
+            }
+            require(allowed) { "This recurring transaction cannot move from ${currentStatus.name.lowercase()} to ${status.name.lowercase()}" }
+            recurringTransactionDao.update(current.copy(status = status.name, updatedAt = System.currentTimeMillis()))
+        }
+    }
 
     suspend fun createTransactionTemplate(template: TransactionTemplate): String {
         val now = System.currentTimeMillis()
@@ -1819,7 +1871,11 @@ class RalLedgerRepository(
         notes: String = "",
         timestamp: Long = System.currentTimeMillis(),
         tagIds: Set<String> = emptySet(),
-        submissionId: String? = null
+        submissionId: String? = null,
+        repeatFrequency: TransactionRepeatFrequency? = null,
+        repeatEndTimestamp: Long? = null,
+        recurringTransactionId: String? = null,
+        recurrenceOccurrenceIndex: Long? = null
     ) {
         database.withTransaction {
             if (quickAddSubmissionAlreadyPosted(
@@ -1837,6 +1893,19 @@ class RalLedgerRepository(
                     tagIds
                 )
             ) return@withTransaction
+            require((recurringTransactionId == null) == (recurrenceOccurrenceIndex == null)) {
+                "Choose a valid recurring transaction occurrence"
+            }
+            require(repeatFrequency == null || recurringTransactionId == null) {
+                "A recurring occurrence cannot start another schedule"
+            }
+            val recurringRule = recurringTransactionId?.let { id ->
+                requireNotNull(recurrenceOccurrenceIndex)
+                validateRecurringOccurrence(id, recurrenceOccurrenceIndex, TransactionType.INCOME)
+            }
+            require(repeatFrequency != null || repeatEndTimestamp == null) {
+                "Choose a repeat frequency before setting an end date"
+            }
             validateFinancialAccount(accountId)
             validateCategory(categoryId, CategoryType.INCOME)
             val entry = AccountingEngine.createIncomeEntry(
@@ -1859,6 +1928,28 @@ class RalLedgerRepository(
                 notes,
                 tagIds = tagIds
             )
+            when {
+                repeatFrequency != null -> createRecurringTransactionInCurrentTransaction(
+                    transactionType = TransactionType.INCOME,
+                    amount = amount,
+                    accountId = accountId,
+                    categoryId = categoryId,
+                    counterparty = counterparty,
+                    description = description,
+                    notes = notes,
+                    tagIds = tagIds,
+                    frequency = repeatFrequency,
+                    anchorTimestamp = timestamp,
+                    endTimestamp = repeatEndTimestamp,
+                    journalEntryId = entry.id
+                )
+                recurringRule != null -> recordRecurringOccurrenceInCurrentTransaction(
+                    recurringRule,
+                    requireNotNull(recurrenceOccurrenceIndex),
+                    entry.id,
+                    timestamp
+                )
+            }
         }
     }
 
@@ -1871,7 +1962,11 @@ class RalLedgerRepository(
         notes: String = "",
         timestamp: Long = System.currentTimeMillis(),
         tagIds: Set<String> = emptySet(),
-        submissionId: String? = null
+        submissionId: String? = null,
+        repeatFrequency: TransactionRepeatFrequency? = null,
+        repeatEndTimestamp: Long? = null,
+        recurringTransactionId: String? = null,
+        recurrenceOccurrenceIndex: Long? = null
     ) {
         database.withTransaction {
             if (quickAddSubmissionAlreadyPosted(
@@ -1889,6 +1984,19 @@ class RalLedgerRepository(
                     tagIds
                 )
             ) return@withTransaction
+            require((recurringTransactionId == null) == (recurrenceOccurrenceIndex == null)) {
+                "Choose a valid recurring transaction occurrence"
+            }
+            require(repeatFrequency == null || recurringTransactionId == null) {
+                "A recurring occurrence cannot start another schedule"
+            }
+            val recurringRule = recurringTransactionId?.let { id ->
+                requireNotNull(recurrenceOccurrenceIndex)
+                validateRecurringOccurrence(id, recurrenceOccurrenceIndex, TransactionType.EXPENSE)
+            }
+            require(repeatFrequency != null || repeatEndTimestamp == null) {
+                "Choose a repeat frequency before setting an end date"
+            }
             validateFinancialAccount(accountId)
             validateCategory(categoryId, CategoryType.EXPENSE)
             val entry = AccountingEngine.createExpenseEntry(
@@ -1911,8 +2019,169 @@ class RalLedgerRepository(
                 notes,
                 tagIds = tagIds
             )
+            when {
+                repeatFrequency != null -> createRecurringTransactionInCurrentTransaction(
+                    transactionType = TransactionType.EXPENSE,
+                    amount = amount,
+                    accountId = accountId,
+                    categoryId = categoryId,
+                    counterparty = counterparty,
+                    description = description,
+                    notes = notes,
+                    tagIds = tagIds,
+                    frequency = repeatFrequency,
+                    anchorTimestamp = timestamp,
+                    endTimestamp = repeatEndTimestamp,
+                    journalEntryId = entry.id
+                )
+                recurringRule != null -> recordRecurringOccurrenceInCurrentTransaction(
+                    recurringRule,
+                    requireNotNull(recurrenceOccurrenceIndex),
+                    entry.id,
+                    timestamp
+                )
+            }
         }
     }
+
+    private suspend fun createRecurringTransactionInCurrentTransaction(
+        transactionType: TransactionType,
+        amount: Money,
+        accountId: String,
+        categoryId: String,
+        counterparty: String,
+        description: String,
+        notes: String,
+        tagIds: Set<String>,
+        frequency: TransactionRepeatFrequency,
+        anchorTimestamp: Long,
+        endTimestamp: Long?,
+        journalEntryId: String
+    ) {
+        require(transactionType == TransactionType.INCOME || transactionType == TransactionType.EXPENSE) {
+            "Only income and expenses can repeat"
+        }
+        require(amount.isPositive && anchorTimestamp > 0L) { "A recurring transaction needs a valid amount and start date" }
+        val zone = ZoneId.systemDefault()
+        val nextTimestamp = TransactionRepeatSchedule.occurrenceAt(anchorTimestamp, frequency, 1L, zone)
+        require(endTimestamp == null || endTimestamp >= nextTimestamp) {
+            "The repeat end date must include at least one upcoming occurrence"
+        }
+        val now = System.currentTimeMillis()
+        val id = UUID.randomUUID().toString()
+        val schedule = RecurringTransactionEntity(
+            id = id,
+            transactionType = transactionType.name,
+            amountCentavos = amount.centavos,
+            accountId = accountId,
+            categoryId = categoryId,
+            counterparty = counterparty.trim(),
+            description = description.trim().ifBlank { if (transactionType == TransactionType.INCOME) "Income transaction" else "Expense transaction" },
+            notes = notes.trim(),
+            frequency = frequency.name,
+            timeZoneId = zone.id,
+            anchorTimestamp = anchorTimestamp,
+            nextOccurrenceIndex = 1L,
+            nextOccurrenceTimestamp = nextTimestamp,
+            endTimestamp = endTimestamp,
+            status = RecurringTransactionStatus.ACTIVE.name,
+            createdAt = now,
+            updatedAt = now
+        )
+        recurringTransactionDao.insert(schedule)
+        if (tagIds.isNotEmpty()) {
+            recurringTransactionDao.insertTags(tagIds.map { RecurringTransactionTagEntity(id, it) })
+        }
+        recurringTransactionDao.insertOccurrence(
+            RecurringTransactionOccurrenceEntity(
+                id = recurringOccurrenceId(id, 0L),
+                recurringTransactionId = id,
+                occurrenceIndex = 0L,
+                journalEntryId = journalEntryId,
+                scheduledTimestamp = anchorTimestamp,
+                recordedTimestamp = anchorTimestamp,
+                createdAt = now
+            )
+        )
+    }
+
+    private suspend fun validateRecurringOccurrence(
+        recurringTransactionId: String,
+        occurrenceIndex: Long,
+        transactionType: TransactionType
+    ): RecurringTransactionEntity {
+        require(occurrenceIndex > 0L) { "Recurring occurrence index is invalid" }
+        val schedule = recurringTransactionDao.getById(recurringTransactionId)
+            ?: throw IllegalArgumentException("This recurring transaction no longer exists")
+        require(schedule.status == RecurringTransactionStatus.ACTIVE.name) {
+            "This recurring transaction is paused or no longer active"
+        }
+        require(schedule.transactionType == transactionType.name) {
+            "This recurring transaction has a different transaction type"
+        }
+        require(schedule.nextOccurrenceIndex == occurrenceIndex) {
+            "This recurring occurrence was already recorded or is no longer current"
+        }
+        val zone = runCatching { ZoneId.of(schedule.timeZoneId) }
+            .getOrElse { throw IllegalStateException("The recurring transaction's time zone is invalid") }
+        val expectedTimestamp = TransactionRepeatSchedule.occurrenceAt(
+            schedule.anchorTimestamp,
+            TransactionRepeatFrequency.valueOf(schedule.frequency),
+            occurrenceIndex,
+            zone
+        )
+        require(schedule.nextOccurrenceTimestamp == expectedTimestamp) {
+            "The recurring schedule has an invalid next date"
+        }
+        require(schedule.endTimestamp == null || expectedTimestamp <= schedule.endTimestamp) {
+            "This recurring transaction has reached its end date"
+        }
+        return schedule
+    }
+
+    private suspend fun recordRecurringOccurrenceInCurrentTransaction(
+        schedule: RecurringTransactionEntity,
+        occurrenceIndex: Long,
+        journalEntryId: String,
+        recordedTimestamp: Long
+    ) {
+        val now = System.currentTimeMillis()
+        recurringTransactionDao.insertOccurrence(
+            RecurringTransactionOccurrenceEntity(
+                id = recurringOccurrenceId(schedule.id, occurrenceIndex),
+                recurringTransactionId = schedule.id,
+                occurrenceIndex = occurrenceIndex,
+                journalEntryId = journalEntryId,
+                scheduledTimestamp = schedule.nextOccurrenceTimestamp,
+                recordedTimestamp = recordedTimestamp,
+                createdAt = now
+            )
+        )
+        val nextIndex = Math.addExact(occurrenceIndex, 1L)
+        val zone = ZoneId.of(schedule.timeZoneId)
+        val nextTimestamp = TransactionRepeatSchedule.occurrenceAt(
+            schedule.anchorTimestamp,
+            TransactionRepeatFrequency.valueOf(schedule.frequency),
+            nextIndex,
+            zone
+        )
+        val status = if (schedule.endTimestamp != null && nextTimestamp > schedule.endTimestamp) {
+            RecurringTransactionStatus.COMPLETED
+        } else {
+            RecurringTransactionStatus.ACTIVE
+        }
+        recurringTransactionDao.update(
+            schedule.copy(
+                nextOccurrenceIndex = nextIndex,
+                nextOccurrenceTimestamp = nextTimestamp,
+                status = status.name,
+                updatedAt = now
+            )
+        )
+    }
+
+    private fun recurringOccurrenceId(recurringTransactionId: String, occurrenceIndex: Long): String =
+        "$recurringTransactionId:$occurrenceIndex"
 
     suspend fun recordTransfer(
         sourceAccountId: String,

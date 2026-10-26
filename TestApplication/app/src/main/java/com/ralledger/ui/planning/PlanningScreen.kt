@@ -75,11 +75,12 @@ private val planningModules = listOf(
     PlanningModule("Interest & deposits", "Review deposit profiles and credited interest", Icons.Default.Savings),
     PlanningModule("Clients", "Organize clients, suppliers, and counterparties", Icons.Default.Payments),
     PlanningModule("Reports", "Save and revisit financial reports", Icons.Default.Analytics),
-    PlanningModule("Projects", "Separate personal and business activity", Icons.Default.Work)
+    PlanningModule("Projects", "Separate personal and business activity", Icons.Default.Work),
+    PlanningModule("Recurring transactions", "Review and confirm repeating income and expenses", Icons.Default.EventRepeat)
 )
 
 private val planningGroups = listOf(
-    PlanningGroup("Money in and commitments", listOf(1, 2, 3, 4, 5)),
+    PlanningGroup("Money in and commitments", listOf(1, 2, 3, 4, 5, 11)),
     PlanningGroup("Budgets and savings", listOf(0, 6, 7)),
     PlanningGroup("Organization and reports", listOf(8, 9, 10))
 )
@@ -97,6 +98,8 @@ fun PlanningScreen(
     counterpartiesViewModel: CounterpartiesViewModel,
     customReportsViewModel: CustomReportsViewModel,
     financialProjectsViewModel: FinancialProjectsViewModel,
+    recurringTransactionsViewModel: RecurringTransactionsViewModel,
+    onRecordRecurringTransaction: (com.ralledger.domain.model.RecurringTransaction) -> Unit,
     quickActionRequest: PlanningQuickAction? = null,
     onQuickActionHandled: () -> Unit = {}
 ) {
@@ -204,6 +207,10 @@ fun PlanningScreen(
                         8 -> CounterpartiesScreen(viewModel = counterpartiesViewModel)
                         9 -> CustomReportsScreen(viewModel = customReportsViewModel)
                         10 -> FinancialProjectsScreen(viewModel = financialProjectsViewModel)
+                        11 -> RecurringTransactionsScreen(
+                            viewModel = recurringTransactionsViewModel,
+                            onRecordNext = onRecordRecurringTransaction
+                        )
                     }
                 }
             }

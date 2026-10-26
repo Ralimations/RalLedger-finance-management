@@ -1,5 +1,6 @@
 package com.ralledger.domain.usecase
 
+import com.ralledger.domain.model.TransactionRepeatFrequency
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -8,14 +9,6 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 
 /** Calendar cadence for an income or expense series. Occurrences require user confirmation. */
-enum class TransactionRepeatFrequency(val displayName: String) {
-    DAILY("Daily"),
-    WEEKLY("Weekly"),
-    MONTHLY("Monthly"),
-    QUARTERLY("Every 3 months"),
-    ANNUALLY("Yearly")
-}
-
 /**
  * Computes a series occurrence from its original local-time anchor rather than from the prior
  * occurrence. This avoids month-end drift (Jan 31 -> Feb 28 -> Mar 28) and preserves wall-clock

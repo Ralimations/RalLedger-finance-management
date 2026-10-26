@@ -74,6 +74,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ralledger.di.AppContainer
 import com.ralledger.domain.model.Money
+import com.ralledger.domain.model.RecurringTransaction
+import com.ralledger.domain.model.TransactionRepeatFrequency
 import com.ralledger.domain.model.TransactionTemplate
 import com.ralledger.domain.usecase.InsightsPeriodType
 import com.ralledger.ui.accounts.AccountsScreen
@@ -95,6 +97,7 @@ import com.ralledger.ui.planning.PlanningQuickAction
 import com.ralledger.domain.usecase.DashboardAttentionDestination
 import com.ralledger.ui.planning.CustomReportsViewModel
 import com.ralledger.ui.planning.FinancialProjectsViewModel
+import com.ralledger.ui.planning.RecurringTransactionsViewModel
 import com.ralledger.ui.planning.BudgetsViewModel
 import com.ralledger.ui.planning.ExpectedIncomeViewModel
 import com.ralledger.ui.planning.PlannedPaymentsViewModel
@@ -165,6 +168,9 @@ fun RalLedgerMainScreen(
     var showQuickActionHub by remember { mutableStateOf(false) }
     var dialogInitialTransactionType by rememberSaveable { mutableStateOf("EXPENSE") }
     var dialogInitialAccountId by rememberSaveable { mutableStateOf<String?>(null) }
+    var dialogInitialRecurringId by rememberSaveable { mutableStateOf<String?>(null) }
+    var dialogRecurringOccurrenceIndex by rememberSaveable { mutableStateOf<Long?>(null) }
+    val recurringTransactions by appContainer.repository.recurringTransactionsFlow.collectAsState(initial = emptyList())
     var pendingPlanningAction by remember { mutableStateOf<PlanningQuickAction?>(null) }
     val themeSettings by appContainer.themePreferences.settings.collectAsState(initial = ThemeSettings())
     val dashboardSettings by appContainer.dashboardPreferences.settings.collectAsState(initial = DashboardSettings())
@@ -177,6 +183,8 @@ fun RalLedgerMainScreen(
         normalizeWidgetTransactionType(widgetQuickAddType)?.let { type ->
             dialogInitialTransactionType = type
             dialogInitialAccountId = null
+            dialogInitialRecurringId = null
+            dialogRecurringOccurrenceIndex = null
             showAddDialog = true
             onWidgetQuickAddHandled()
         }
@@ -301,6 +309,8 @@ fun RalLedgerMainScreen(
                     onQuickAddForAccount = { type, accountId ->
                         dialogInitialTransactionType = type
                         dialogInitialAccountId = accountId
+                        dialogInitialRecurringId = null
+                        dialogRecurringOccurrenceIndex = null
                         showAddDialog = true
                     }
                 )
@@ -325,6 +335,7 @@ fun RalLedgerMainScreen(
                 val counterpartiesVm: CounterpartiesViewModel = viewModel(factory = CounterpartiesViewModel.Factory(appContainer.repository))
                 val customReportsVm: CustomReportsViewModel = viewModel(factory = CustomReportsViewModel.Factory(appContainer.repository))
                 val financialProjectsVm: FinancialProjectsViewModel = viewModel(factory = FinancialProjectsViewModel.Factory(appContainer.repository))
+                val recurringTransactionsVm: RecurringTransactionsViewModel = viewModel(factory = RecurringTransactionsViewModel.Factory(appContainer.repository))
                 PlanningScreen(
                     budgetsViewModel = budgetsVm,
                     receivablesViewModel = recVm,
@@ -337,6 +348,14 @@ fun RalLedgerMainScreen(
                     counterpartiesViewModel = counterpartiesVm,
                     customReportsViewModel = customReportsVm,
                     financialProjectsViewModel = financialProjectsVm,
+                    recurringTransactionsViewModel = recurringTransactionsVm,
+                    onRecordRecurringTransaction = { schedule ->
+                        dialogInitialTransactionType = schedule.transactionType.name
+                        dialogInitialAccountId = schedule.accountId
+                        dialogInitialRecurringId = schedule.id
+                        dialogRecurringOccurrenceIndex = schedule.nextOccurrenceIndex
+                        showAddDialog = true
+                    },
                     quickActionRequest = pendingPlanningAction,
                     onQuickActionHandled = { pendingPlanningAction = null }
                 )
@@ -404,6 +423,8 @@ fun RalLedgerMainScreen(
                     onTransactionSelected = { type ->
                         dialogInitialTransactionType = type
                         dialogInitialAccountId = null
+                        dialogInitialRecurringId = null
+                        dialogRecurringOccurrenceIndex = null
                         showQuickActionHub = false
                         showAddDialog = true
                     },
@@ -423,7 +444,14 @@ fun RalLedgerMainScreen(
                     defaultTransactionAccountId = financialSettings.defaultTransactionAccountId,
                     initialTransactionType = dialogInitialTransactionType,
                     initialAccountId = dialogInitialAccountId,
-                    onDismiss = { showAddDialog = false; dialogInitialAccountId = null }
+                    initialRecurringTransaction = recurringTransactions.firstOrNull { it.id == dialogInitialRecurringId },
+                    recurringOccurrenceIndex = dialogRecurringOccurrenceIndex,
+                    onDismiss = {
+                        showAddDialog = false
+                        dialogInitialAccountId = null
+                        dialogInitialRecurringId = null
+                        dialogRecurringOccurrenceIndex = null
+                    }
                 )
             }
         }
@@ -437,31 +465,34 @@ fun QuickAddTransactionDialog(
     defaultTransactionAccountId: String?,
     initialTransactionType: String = "EXPENSE",
     initialAccountId: String? = null,
+    initialRecurringTransaction: RecurringTransaction? = null,
+    recurringOccurrenceIndex: Long? = null,
     onDismiss: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    var txType by rememberSaveable(initialTransactionType) {
-        mutableStateOf(normalizeWidgetTransactionType(initialTransactionType) ?: "EXPENSE")
+    var txType by rememberSaveable(initialTransactionType, initialRecurringTransaction?.id) {
+        mutableStateOf(initialRecurringTransaction?.transactionType?.name ?: normalizeWidgetTransactionType(initialTransactionType) ?: "EXPENSE")
     } // EXPENSE, INCOME, TRANSFER
     var draftSubmissionId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
-    var amountStr by rememberSaveable { mutableStateOf("") }
-    var description by rememberSaveable { mutableStateOf("") }
-    var notes by rememberSaveable { mutableStateOf("") }
-    var counterparty by rememberSaveable { mutableStateOf("") }
+    var amountStr by rememberSaveable(initialRecurringTransaction?.id) { mutableStateOf(initialRecurringTransaction?.amount?.let(::quickAddAmountInput).orEmpty()) }
+    var description by rememberSaveable(initialRecurringTransaction?.id) { mutableStateOf(initialRecurringTransaction?.description.orEmpty()) }
+    var notes by rememberSaveable(initialRecurringTransaction?.id) { mutableStateOf(initialRecurringTransaction?.notes.orEmpty()) }
+    var counterparty by rememberSaveable(initialRecurringTransaction?.id) { mutableStateOf(initialRecurringTransaction?.counterparty.orEmpty()) }
     var selectedTagIds by rememberSaveable(
+        initialRecurringTransaction?.id,
         stateSaver = listSaver(
             save = { selectedIds: Set<String> -> selectedIds.toList() },
             restore = { restoredIds: List<String> -> restoredIds.toSet() }
         )
-    ) { mutableStateOf(emptySet()) }
-    var selectedTimestamp by rememberSaveable { mutableStateOf(System.currentTimeMillis()) }
+    ) { mutableStateOf(initialRecurringTransaction?.tagIds.orEmpty()) }
+    var selectedTimestamp by rememberSaveable(initialRecurringTransaction?.id) { mutableStateOf(initialRecurringTransaction?.nextOccurrenceTimestamp ?: System.currentTimeMillis()) }
     var feeAmountStr by rememberSaveable { mutableStateOf("") }
     var feeCategoryId by rememberSaveable { mutableStateOf("") }
     var accountId by rememberSaveable(initialAccountId) { mutableStateOf(initialAccountId.orEmpty()) }
     var hasManuallySelectedAccount by rememberSaveable(initialAccountId) { mutableStateOf(false) }
     var accountDefaultSource by remember { mutableStateOf(QuickAddAccountDefaultSource.NONE) }
     var destAccountId by rememberSaveable { mutableStateOf("") }
-    var categoryId by rememberSaveable { mutableStateOf("") }
+    var categoryId by rememberSaveable(initialRecurringTransaction?.id) { mutableStateOf(initialRecurringTransaction?.categoryId.orEmpty()) }
     var hasManuallySelectedCategory by rememberSaveable { mutableStateOf(false) }
     var categoryWasSuggested by rememberSaveable { mutableStateOf(false) }
     var inputError by remember { mutableStateOf<String?>(null) }
@@ -473,6 +504,9 @@ fun QuickAddTransactionDialog(
     var counterpartyMenuExpanded by remember { mutableStateOf(false) }
     var hasUserEdited by rememberSaveable { mutableStateOf(false) }
     var showDiscardConfirmation by remember { mutableStateOf(false) }
+    var repeatEnabled by rememberSaveable(initialRecurringTransaction?.id) { mutableStateOf(false) }
+    var repeatFrequency by rememberSaveable(initialRecurringTransaction?.id) { mutableStateOf(TransactionRepeatFrequency.MONTHLY) }
+    var repeatFrequencyMenuExpanded by remember { mutableStateOf(false) }
     var showAdvancedDetails by rememberSaveable { mutableStateOf(false) }
     var showTemplateManager by rememberSaveable { mutableStateOf(false) }
     var templateMessage by remember { mutableStateOf<String?>(null) }
@@ -617,7 +651,12 @@ fun QuickAddTransactionDialog(
                         FilterChip(
                             modifier = Modifier.weight(1f),
                             selected = txType == type,
-                            onClick = { txType = type; inputError = null; hasUserEdited = true },
+                            onClick = {
+                                txType = type
+                                if (type == "TRANSFER") repeatEnabled = false
+                                inputError = null
+                                hasUserEdited = true
+                            },
                             label = { Text(label, maxLines = 1, fontSize = 12.sp) }
                         )
                     }
@@ -720,6 +759,43 @@ fun QuickAddTransactionDialog(
                             color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+            }
+
+            if (txType != "TRANSFER" && initialRecurringTransaction == null) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(
+                        selected = repeatEnabled,
+                        onClick = { repeatEnabled = !repeatEnabled; hasUserEdited = true },
+                        label = { Text("Repeat this transaction") }
+                    )
+                    if (repeatEnabled) {
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedButton(onClick = { repeatFrequencyMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                                Text("Repeats ${repeatFrequency.name.lowercase().replace('_', ' ')}")
+                            }
+                            DropdownMenu(
+                                expanded = repeatFrequencyMenuExpanded,
+                                onDismissRequest = { repeatFrequencyMenuExpanded = false }
+                            ) {
+                                TransactionRepeatFrequency.entries.forEach { frequency ->
+                                    DropdownMenuItem(
+                                        text = { Text(frequency.name.lowercase().replace('_', ' ').replaceFirstChar(Char::uppercase)) },
+                                        onClick = {
+                                            repeatFrequency = frequency
+                                            repeatFrequencyMenuExpanded = false
+                                            hasUserEdited = true
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            "Future entries appear in Planning and are only posted when you confirm them.",
+                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
 
             TextButton(onClick = { showAdvancedDetails = !showAdvancedDetails }) {
@@ -893,7 +969,10 @@ fun QuickAddTransactionDialog(
                                         notes = notes,
                                         timestamp = selectedTimestamp,
                                         tagIds = selectedTagIds,
-                                        submissionId = draftSubmissionId
+                                        submissionId = initialRecurringTransaction?.let { "${it.id}:${recurringOccurrenceIndex ?: it.nextOccurrenceIndex}" } ?: draftSubmissionId,
+                                        repeatFrequency = repeatFrequency.takeIf { repeatEnabled },
+                                        recurringTransactionId = initialRecurringTransaction?.id,
+                                        recurrenceOccurrenceIndex = initialRecurringTransaction?.let { recurringOccurrenceIndex ?: it.nextOccurrenceIndex }
                                     )
                                     "INCOME" -> appContainer.repository.recordIncome(
                                         accountId,
@@ -904,7 +983,10 @@ fun QuickAddTransactionDialog(
                                         notes = notes,
                                         timestamp = selectedTimestamp,
                                         tagIds = selectedTagIds,
-                                        submissionId = draftSubmissionId
+                                        submissionId = initialRecurringTransaction?.let { "${it.id}:${recurringOccurrenceIndex ?: it.nextOccurrenceIndex}" } ?: draftSubmissionId,
+                                        repeatFrequency = repeatFrequency.takeIf { repeatEnabled },
+                                        recurringTransactionId = initialRecurringTransaction?.id,
+                                        recurrenceOccurrenceIndex = initialRecurringTransaction?.let { recurringOccurrenceIndex ?: it.nextOccurrenceIndex }
                                     )
                                     else -> appContainer.repository.recordTransfer(
                                         accountId,

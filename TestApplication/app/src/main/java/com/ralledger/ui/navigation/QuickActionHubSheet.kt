@@ -93,7 +93,8 @@ private val quickActionGroups = listOf(
         options = listOf(
             QuickActionOption("Add a bill", "Track an expense you owe", Icons.Default.ArrowUpward, PlanningQuickAction.ADD_BILL),
             QuickActionOption("Add a loan", "Track borrowed money and repayments", Icons.Default.SwapHoriz, PlanningQuickAction.ADD_LOAN),
-            QuickActionOption("Interest & deposits", "Review profiles and credited interest", Icons.Default.Savings, PlanningQuickAction.OPEN_INTEREST_PRODUCTS)
+            QuickActionOption("Interest & deposits", "Review profiles and credited interest", Icons.Default.Savings, PlanningQuickAction.OPEN_INTEREST_PRODUCTS),
+            QuickActionOption("Recurring transactions", "Review and confirm repeating income and expenses", Icons.Default.EventRepeat, PlanningQuickAction.OPEN_RECURRING_TRANSACTIONS)
         )
     )
 )

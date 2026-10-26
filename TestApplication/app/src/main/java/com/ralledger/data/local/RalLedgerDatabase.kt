@@ -27,6 +27,7 @@ import com.ralledger.data.local.dao.PlannedPaymentDao
 import com.ralledger.data.local.dao.CustomReportDao
 import com.ralledger.data.local.dao.FinancialProjectDao
 import com.ralledger.data.local.dao.BackupRestoreStateDao
+import com.ralledger.data.local.dao.RecurringTransactionDao
 import com.ralledger.data.local.entity.AccountEntity
 import com.ralledger.data.local.entity.BudgetEntity
 import com.ralledger.data.local.entity.CategoryEntity
@@ -56,6 +57,9 @@ import com.ralledger.data.local.entity.CustomReportEntity
 import com.ralledger.data.local.entity.FinancialProjectEntity
 import com.ralledger.data.local.entity.JournalEntryProjectEntity
 import com.ralledger.data.local.entity.BackupRestoreStateEntity
+import com.ralledger.data.local.entity.RecurringTransactionEntity
+import com.ralledger.data.local.entity.RecurringTransactionTagEntity
+import com.ralledger.data.local.entity.RecurringTransactionOccurrenceEntity
 import com.ralledger.domain.model.AccountCategory
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.CategoryType
@@ -93,9 +97,12 @@ import kotlinx.coroutines.launch
         CustomReportEntity::class,
         FinancialProjectEntity::class,
         JournalEntryProjectEntity::class,
-        BackupRestoreStateEntity::class
+        BackupRestoreStateEntity::class,
+        RecurringTransactionEntity::class,
+        RecurringTransactionTagEntity::class,
+        RecurringTransactionOccurrenceEntity::class
     ],
-    version = 22,
+    version = 23,
     exportSchema = false
 )
 abstract class RalLedgerDatabase : RoomDatabase() {
@@ -120,9 +127,10 @@ abstract class RalLedgerDatabase : RoomDatabase() {
     abstract fun customReportDao(): CustomReportDao
     abstract fun financialProjectDao(): FinancialProjectDao
     abstract fun backupRestoreStateDao(): BackupRestoreStateDao
+    abstract fun recurringTransactionDao(): RecurringTransactionDao
 
     companion object {
-        const val CURRENT_SCHEMA_VERSION = 22
+        const val CURRENT_SCHEMA_VERSION = 23
         const val SYSTEM_OPENING_EQUITY_ACCOUNT_ID = "sys_opening_equity"
         const val SYSTEM_RECONCILIATION_EQUITY_ACCOUNT_ID = "sys_reconcile_equity"
 
@@ -661,6 +669,64 @@ abstract class RalLedgerDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS recurring_transactions (
+                        id TEXT NOT NULL,
+                        transactionType TEXT NOT NULL,
+                        amountCentavos INTEGER NOT NULL,
+                        accountId TEXT NOT NULL,
+                        categoryId TEXT NOT NULL,
+                        counterparty TEXT NOT NULL,
+                        description TEXT NOT NULL,
+                        notes TEXT NOT NULL,
+                        frequency TEXT NOT NULL,
+                        timeZoneId TEXT NOT NULL,
+                        anchorTimestamp INTEGER NOT NULL,
+                        nextOccurrenceIndex INTEGER NOT NULL,
+                        nextOccurrenceTimestamp INTEGER NOT NULL,
+                        endTimestamp INTEGER,
+                        status TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(accountId) REFERENCES accounts(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(categoryId) REFERENCES categories(id) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_recurring_transactions_accountId ON recurring_transactions(accountId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_recurring_transactions_categoryId ON recurring_transactions(categoryId)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_recurring_transactions_status_nextOccurrenceTimestamp ON recurring_transactions(status, nextOccurrenceTimestamp)")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS recurring_transaction_tags (
+                        recurringTransactionId TEXT NOT NULL,
+                        tagId TEXT NOT NULL,
+                        PRIMARY KEY(recurringTransactionId, tagId),
+                        FOREIGN KEY(recurringTransactionId) REFERENCES recurring_transactions(id) ON UPDATE NO ACTION ON DELETE CASCADE,
+                        FOREIGN KEY(tagId) REFERENCES transaction_tags(id) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )"""
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_recurring_transaction_tags_tagId ON recurring_transaction_tags(tagId)")
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS recurring_transaction_occurrences (
+                        id TEXT NOT NULL,
+                        recurringTransactionId TEXT NOT NULL,
+                        occurrenceIndex INTEGER NOT NULL,
+                        journalEntryId TEXT NOT NULL,
+                        scheduledTimestamp INTEGER NOT NULL,
+                        recordedTimestamp INTEGER NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        PRIMARY KEY(id),
+                        FOREIGN KEY(recurringTransactionId) REFERENCES recurring_transactions(id) ON UPDATE NO ACTION ON DELETE RESTRICT,
+                        FOREIGN KEY(journalEntryId) REFERENCES journal_entries(id) ON UPDATE NO ACTION ON DELETE RESTRICT
+                    )"""
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_recurring_transaction_occurrences_recurringTransactionId_occurrenceIndex ON recurring_transaction_occurrences(recurringTransactionId, occurrenceIndex)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_recurring_transaction_occurrences_journalEntryId ON recurring_transaction_occurrences(journalEntryId)")
+            }
+        }
+
         @Volatile
         private var INSTANCE: RalLedgerDatabase? = null
 
@@ -671,7 +737,7 @@ abstract class RalLedgerDatabase : RoomDatabase() {
                     RalLedgerDatabase::class.java,
                     "ralledger_db"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
                 .addCallback(DatabaseCallback())
                 .build()
                 INSTANCE = instance

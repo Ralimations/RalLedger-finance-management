@@ -637,6 +637,7 @@ fun SettingsScreen(
                     Text("${preview.transactionTags} transaction labels · ${preview.taggedJournalEntries} labeled journal entries")
                     Text("${preview.savedTransactionFilters} saved transaction filters")
                     Text("${preview.transactionTemplates} transaction templates")
+                    Text("${preview.recurringTransactions} recurring transactions · ${preview.recurringOccurrences} recorded occurrences")
                     Text("${preview.customReports} saved reports")
                     Text("${preview.financialProjects} projects · ${preview.projectAssignments} transaction assignments")
                     Text(

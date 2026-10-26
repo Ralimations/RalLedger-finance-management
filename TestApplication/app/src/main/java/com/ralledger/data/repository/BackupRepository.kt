@@ -30,10 +30,17 @@ import com.ralledger.data.local.entity.CustomReportEntity
 import com.ralledger.data.local.entity.FinancialProjectEntity
 import com.ralledger.data.local.entity.JournalEntryProjectEntity
 import com.ralledger.data.local.entity.SubscriptionEntity
+import com.ralledger.data.local.entity.RecurringTransactionEntity
+import com.ralledger.data.local.entity.RecurringTransactionTagEntity
+import com.ralledger.data.local.entity.RecurringTransactionOccurrenceEntity
 import com.ralledger.domain.model.LineType
+import com.ralledger.domain.model.TransactionType
+import com.ralledger.domain.model.TransactionRepeatFrequency
+import com.ralledger.domain.model.RecurringTransactionStatus
 import com.ralledger.domain.model.normalizeCounterpartyName
 import com.ralledger.domain.model.normalizeTransactionTemplateName
 import com.ralledger.data.local.entity.normalizeCustomReportName
+import com.ralledger.domain.usecase.TransactionRepeatSchedule
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -43,6 +50,7 @@ import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
 import java.util.UUID
+import java.time.ZoneId
 import java.util.Arrays
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
@@ -82,7 +90,9 @@ data class BackupPreview(
     val transactionTemplates: Int = 0,
     val customReports: Int = 0,
     val financialProjects: Int = 0,
-    val projectAssignments: Int = 0
+    val projectAssignments: Int = 0,
+    val recurringTransactions: Int = 0,
+    val recurringOccurrences: Int = 0
 ) {
     val canRestore: Boolean get() = validationErrors.isEmpty()
 }
@@ -177,9 +187,13 @@ class BackupRepository(
                 val receivables = database.receivableDao()
                 val subscriptions = database.subscriptionDao()
                 val reconciliations = database.reconciliationDao()
+                val recurringTransactions = database.recurringTransactionDao()
 
                 // Clear child rows first. Room rolls this entire replacement back if any insert or
                 // the verification step fails.
+                recurringTransactions.clearOccurrences()
+                recurringTransactions.clearAllTags()
+                recurringTransactions.clearAll()
                 receivables.clearPayments()
                 receivables.clearWriteOffs()
                 expectedIncome.clear()
@@ -230,6 +244,9 @@ class BackupRepository(
                 if (snapshot.subscriptions.isNotEmpty()) subscriptions.insertSubscriptions(snapshot.subscriptions)
                 if (snapshot.subscriptionPayments.isNotEmpty()) subscriptionPayments.insertPayments(snapshot.subscriptionPayments)
                 if (snapshot.transactionTags.isNotEmpty()) transactionTags.insertTags(snapshot.transactionTags)
+                if (snapshot.recurringTransactions.isNotEmpty()) recurringTransactions.insertForRestore(snapshot.recurringTransactions)
+                if (snapshot.recurringTransactionTags.isNotEmpty()) recurringTransactions.insertTagsForRestore(snapshot.recurringTransactionTags)
+                if (snapshot.recurringOccurrences.isNotEmpty()) recurringTransactions.insertOccurrencesForRestore(snapshot.recurringOccurrences)
                 if (snapshot.financialProjects.isNotEmpty()) financialProjects.insertAll(snapshot.financialProjects)
                 if (snapshot.customReports.isNotEmpty()) customReports.insertAll(snapshot.customReports)
                 if (snapshot.journalEntryTags.isNotEmpty()) transactionTags.insertAssignments(snapshot.journalEntryTags)
@@ -369,6 +386,9 @@ class BackupRepository(
         writeOffs = database.receivableDao().getAllWriteOffs(),
         subscriptions = database.subscriptionDao().getAllSubscriptions(),
         reconciliations = database.reconciliationDao().getAllReconciliations(),
+        recurringTransactions = database.recurringTransactionDao().getAll(),
+        recurringTransactionTags = database.recurringTransactionDao().getAllTags(),
+        recurringOccurrences = database.recurringTransactionDao().getAllOccurrences(),
         userPreferences = userPreferences
     )
 
@@ -470,6 +490,9 @@ class BackupRepository(
         val writeOffs: List<ReceivableWriteOffEntity>,
         val subscriptions: List<SubscriptionEntity>,
         val reconciliations: List<ReconciliationEntity>,
+        val recurringTransactions: List<RecurringTransactionEntity> = emptyList(),
+        val recurringTransactionTags: List<RecurringTransactionTagEntity> = emptyList(),
+        val recurringOccurrences: List<RecurringTransactionOccurrenceEntity> = emptyList(),
         val userPreferences: BackupUserPreferences? = null
     ) {
         fun toJson() = JSONObject().apply {
@@ -505,6 +528,9 @@ class BackupRepository(
             put("receivableWriteOffs", JSONArray().also { array -> writeOffs.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("subscriptions", JSONArray().also { array -> subscriptions.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
             put("reconciliations", JSONArray().also { array -> reconciliations.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("recurringTransactions", JSONArray().also { array -> recurringTransactions.sortedBy { it.id }.forEach { array.put(it.toJson()) } })
+            put("recurringTransactionTags", JSONArray().also { array -> recurringTransactionTags.sortedWith(compareBy<RecurringTransactionTagEntity> { it.recurringTransactionId }.thenBy { it.tagId }).forEach { array.put(it.toJson()) } })
+            put("recurringOccurrences", JSONArray().also { array -> recurringOccurrences.sortedWith(compareBy<RecurringTransactionOccurrenceEntity> { it.recurringTransactionId }.thenBy { it.occurrenceIndex }).forEach { array.put(it.toJson()) } })
             userPreferences?.let { put("userPreferences", it.toJson()) }
         }
 
@@ -551,6 +577,11 @@ class BackupRepository(
             checkUnique("receivable write-off", writeOffs) { it.id }
             checkUnique("subscription", subscriptions) { it.id }
             checkUnique("reconciliation", reconciliations) { it.id }
+            checkUnique("recurring transaction", recurringTransactions) { it.id }
+            checkUnique("recurring transaction tag", recurringTransactionTags) { "${it.recurringTransactionId}\u0000${it.tagId}" }
+            checkUnique("recurring occurrence", recurringOccurrences) { it.id }
+            checkUnique("recurring occurrence index", recurringOccurrences) { "${it.recurringTransactionId}\u0000${it.occurrenceIndex}" }
+            checkUnique("recurring occurrence journal entry", recurringOccurrences) { it.journalEntryId }
             userPreferences?.let { errors += it.validationErrors(accounts) }
 
             val counterpartiesById = counterparties.associateBy { it.id }
@@ -595,6 +626,61 @@ class BackupRepository(
             }
 
             val entryIds = entries.map { it.id }.toSet()
+            val transactionTagsById = transactionTags.associateBy { it.id }
+            val recurringById = recurringTransactions.associateBy { it.id }
+            val recurringTagsByRule = recurringTransactionTags.groupBy { it.recurringTransactionId }
+            val recurringOccurrencesByRule = recurringOccurrences.groupBy { it.recurringTransactionId }
+            val accountById = accounts.associateBy { it.id }
+            val categoryById = categories.associateBy { it.id }
+            val journalById = entries.associateBy { it.id }
+            if (recurringTransactionTags.any { it.recurringTransactionId !in recurringById || it.tagId !in transactionTagsById }) {
+                errors += "Recurring transaction labels reference a missing schedule or label"
+            }
+            recurringTransactions.forEach { rule ->
+                val type = runCatching { TransactionType.valueOf(rule.transactionType) }.getOrNull()
+                val frequency = runCatching { TransactionRepeatFrequency.valueOf(rule.frequency) }.getOrNull()
+                val status = runCatching { RecurringTransactionStatus.valueOf(rule.status) }.getOrNull()
+                val account = accountById[rule.accountId]
+                val accountType = account?.let { runCatching { com.ralledger.domain.model.AccountType.valueOf(it.accountType) }.getOrNull() }
+                val category = categoryById[rule.categoryId]
+                val validCategory = when (type) {
+                    TransactionType.INCOME -> category?.type == "INCOME"
+                    TransactionType.EXPENSE -> category?.type == "EXPENSE"
+                    else -> false
+                }
+                val zone = runCatching { ZoneId.of(rule.timeZoneId) }.getOrNull()
+                val expectedNext = if (frequency != null && zone != null && rule.anchorTimestamp > 0L && rule.nextOccurrenceIndex > 0L) {
+                    runCatching { TransactionRepeatSchedule.occurrenceAt(rule.anchorTimestamp, frequency, rule.nextOccurrenceIndex, zone) }.getOrNull()
+                } else null
+                if (type !in setOf(TransactionType.INCOME, TransactionType.EXPENSE) || rule.amountCentavos <= 0L ||
+                    account == null || accountType?.isAsset != true || accountType?.isReceivable == true || !validCategory ||
+                    frequency == null || status == null || zone == null || expectedNext == null || expectedNext != rule.nextOccurrenceTimestamp ||
+                    (rule.endTimestamp != null && rule.endTimestamp < rule.anchorTimestamp) ||
+                    rule.createdAt <= 0L || rule.createdAt > now || rule.updatedAt < rule.createdAt || rule.updatedAt > now ||
+                    (status in setOf(RecurringTransactionStatus.ACTIVE, RecurringTransactionStatus.PAUSED) && rule.endTimestamp != null && expectedNext > rule.endTimestamp) ||
+                    (status == RecurringTransactionStatus.COMPLETED && (rule.endTimestamp == null || expectedNext <= rule.endTimestamp))
+                ) errors += "Recurring transaction ${rule.id} has invalid type, account, category, cadence, status, or date"
+                val occurrences = recurringOccurrencesByRule[rule.id].orEmpty().sortedBy { it.occurrenceIndex }
+                if (occurrences.size.toLong() != rule.nextOccurrenceIndex || occurrences.withIndex().any { (position, item) -> item.occurrenceIndex != position.toLong() }) {
+                    errors += "Recurring transaction ${rule.id} has incomplete occurrence history"
+                }
+                occurrences.forEach { occurrence ->
+                    val entry = journalById[occurrence.journalEntryId]
+                    val scheduled = if (frequency != null && zone != null) runCatching {
+                        TransactionRepeatSchedule.occurrenceAt(rule.anchorTimestamp, frequency, occurrence.occurrenceIndex, zone)
+                    }.getOrNull() else null
+                    if (occurrence.occurrenceIndex < 0L || scheduled != occurrence.scheduledTimestamp ||
+                        occurrence.recordedTimestamp <= 0L || occurrence.createdAt <= 0L || occurrence.createdAt > now ||
+                        entry == null || entry.transactionType != rule.transactionType || entry.timestamp != occurrence.recordedTimestamp
+                    ) errors += "Recurring transaction ${rule.id} has an occurrence that does not match its journal entry"
+                }
+                if (recurringTagsByRule[rule.id].orEmpty().map { it.tagId }.toSet().size != recurringTagsByRule[rule.id].orEmpty().size) {
+                    errors += "Recurring transaction ${rule.id} has duplicate labels"
+                }
+            }
+            if (recurringOccurrences.any { it.recurringTransactionId !in recurringById || it.journalEntryId !in entryIds }) {
+                errors += "Recurring occurrence references a missing schedule or journal entry"
+            }
             val financialProjectsById = financialProjects.associateBy { it.id }
             if (financialProjects.any { project ->
                     project.id.isBlank() || project.name.isBlank() || project.name.trim().length > 60 ||
@@ -606,7 +692,6 @@ class BackupRepository(
             if (journalEntryProjects.any { it.journalEntryId !in entryIds || it.projectId !in financialProjectsById }) {
                 errors += "Project assignment references a missing project or journal entry"
             }
-            val transactionTagsById = transactionTags.associateBy { it.id }
             val tagsByNormalizedName = transactionTags.groupBy { it.normalizedName }
             if (transactionTags.any {
                     it.name.isBlank() || it.name.trim().length > 40 ||
@@ -1053,6 +1138,8 @@ class BackupRepository(
                 customReports = customReports.size,
                 financialProjects = financialProjects.size,
                 projectAssignments = journalEntryProjects.size,
+                recurringTransactions = recurringTransactions.size,
+                recurringOccurrences = recurringOccurrences.size,
                 journalEntries = entries.size,
                 journalLines = lines.size,
                 receivables = receivables.size,
@@ -1103,6 +1190,9 @@ class BackupRepository(
                     writeOffs = json.optJSONArray("receivableWriteOffs")?.objects()?.map { it.toReceivableWriteOff() }.orEmpty(),
                     subscriptions = json.getJSONArray("subscriptions").objects().map { it.toSubscription() },
                     reconciliations = json.getJSONArray("reconciliations").objects().map { it.toReconciliation() },
+                    recurringTransactions = json.optJSONArray("recurringTransactions")?.objects()?.map { it.toRecurringTransaction() }.orEmpty(),
+                    recurringTransactionTags = json.optJSONArray("recurringTransactionTags")?.objects()?.map { it.toRecurringTransactionTag() }.orEmpty(),
+                    recurringOccurrences = json.optJSONArray("recurringOccurrences")?.objects()?.map { it.toRecurringOccurrence() }.orEmpty(),
                     userPreferences = json.optJSONObject("userPreferences")?.let(BackupUserPreferences::fromJson)
                 )
             }
@@ -1465,4 +1555,39 @@ private fun JSONObject.toReconciliation() = ReconciliationEntity(
     recordedBalanceCentavos = getLong("recordedBalanceCentavos"), actualBalanceCentavos = getLong("actualBalanceCentavos"),
     differenceCentavos = getLong("differenceCentavos"), adjustmentReason = getString("adjustmentReason"),
     journalEntryId = stringOrNull("journalEntryId")
+)
+
+private fun RecurringTransactionEntity.toJson() = JSONObject().apply {
+    put("id", id); put("transactionType", transactionType); put("amountCentavos", amountCentavos)
+    put("accountId", accountId); put("categoryId", categoryId); put("counterparty", counterparty)
+    put("description", description); put("notes", notes); put("frequency", frequency); put("timeZoneId", timeZoneId)
+    put("anchorTimestamp", anchorTimestamp); put("nextOccurrenceIndex", nextOccurrenceIndex)
+    put("nextOccurrenceTimestamp", nextOccurrenceTimestamp); putNullable("endTimestamp", endTimestamp)
+    put("status", status); put("createdAt", createdAt); put("updatedAt", updatedAt)
+}
+private fun JSONObject.toRecurringTransaction() = RecurringTransactionEntity(
+    id = getString("id"), transactionType = getString("transactionType"), amountCentavos = getLong("amountCentavos"),
+    accountId = getString("accountId"), categoryId = getString("categoryId"), counterparty = getString("counterparty"),
+    description = getString("description"), notes = getString("notes"), frequency = getString("frequency"),
+    timeZoneId = getString("timeZoneId"), anchorTimestamp = getLong("anchorTimestamp"),
+    nextOccurrenceIndex = getLong("nextOccurrenceIndex"), nextOccurrenceTimestamp = getLong("nextOccurrenceTimestamp"),
+    endTimestamp = longOrNull("endTimestamp"), status = getString("status"), createdAt = getLong("createdAt"),
+    updatedAt = getLong("updatedAt")
+)
+private fun RecurringTransactionTagEntity.toJson() = JSONObject().apply {
+    put("recurringTransactionId", recurringTransactionId); put("tagId", tagId)
+}
+private fun JSONObject.toRecurringTransactionTag() = RecurringTransactionTagEntity(
+    recurringTransactionId = getString("recurringTransactionId"), tagId = getString("tagId")
+)
+private fun RecurringTransactionOccurrenceEntity.toJson() = JSONObject().apply {
+    put("id", id); put("recurringTransactionId", recurringTransactionId); put("occurrenceIndex", occurrenceIndex)
+    put("journalEntryId", journalEntryId); put("scheduledTimestamp", scheduledTimestamp)
+    put("recordedTimestamp", recordedTimestamp); put("createdAt", createdAt)
+}
+private fun JSONObject.toRecurringOccurrence() = RecurringTransactionOccurrenceEntity(
+    id = getString("id"), recurringTransactionId = getString("recurringTransactionId"),
+    occurrenceIndex = getLong("occurrenceIndex"), journalEntryId = getString("journalEntryId"),
+    scheduledTimestamp = getLong("scheduledTimestamp"), recordedTimestamp = getLong("recordedTimestamp"),
+    createdAt = getLong("createdAt")
 )

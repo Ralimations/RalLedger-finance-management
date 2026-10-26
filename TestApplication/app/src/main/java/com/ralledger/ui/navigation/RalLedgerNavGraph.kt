@@ -74,6 +74,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.ralledger.di.AppContainer
 import com.ralledger.domain.model.Money
+import com.ralledger.domain.model.TransactionTemplate
 import com.ralledger.domain.usecase.InsightsPeriodType
 import com.ralledger.ui.accounts.AccountsScreen
 import com.ralledger.ui.components.AccountBalancesSummary
@@ -110,9 +111,11 @@ import com.ralledger.ui.theme.ThemeMode
 import com.ralledger.ui.theme.ThemePalette
 import com.ralledger.ui.theme.ThemeSettings
 import com.ralledger.ui.subscriptions.SubscriptionsViewModel
+import com.ralledger.ui.transactions.TransactionTemplatesDialog
 import com.ralledger.ui.transactions.TransactionsScreen
 import com.ralledger.ui.transactions.TransactionsViewModel
 import com.ralledger.ui.widgets.normalizeWidgetTransactionType
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -471,6 +474,8 @@ fun QuickAddTransactionDialog(
     var hasUserEdited by rememberSaveable { mutableStateOf(false) }
     var showDiscardConfirmation by remember { mutableStateOf(false) }
     var showAdvancedDetails by rememberSaveable { mutableStateOf(false) }
+    var showTemplateManager by rememberSaveable { mutableStateOf(false) }
+    var templateMessage by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
         confirmValueChange = { target -> target != SheetValue.Hidden || !isSaving }
@@ -488,10 +493,25 @@ fun QuickAddTransactionDialog(
         }
     }
 
+    fun runTemplateOperation(successMessage: String, operation: suspend () -> Unit) {
+        scope.launch {
+            templateMessage = null
+            try {
+                operation()
+                templateMessage = successMessage
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                templateMessage = error.localizedMessage ?: "The template could not be updated."
+            }
+        }
+    }
+
     val accounts by appContainer.repository.accountsFlow.collectAsState(initial = emptyList())
     val categories by appContainer.repository.categoriesFlow.collectAsState(initial = emptyList())
     val transactions by appContainer.repository.transactionsFlow.collectAsState(initial = emptyList())
     val transactionTags by appContainer.repository.transactionTagsFlow.collectAsState(initial = emptyList())
+    val transactionTemplates by appContainer.repository.transactionTemplatesFlow.collectAsState(initial = emptyList())
     val counterparties by appContainer.repository.counterpartiesFlow.collectAsState(initial = emptyList())
     val eligibleAccounts = accounts.filter { it.accountType.isAsset && !it.isArchived }
     val eligibleCategories = categories.filter {
@@ -585,6 +605,11 @@ fun QuickAddTransactionDialog(
                     Icon(Icons.Default.Close, contentDescription = "Close transaction form")
                 }
             }
+
+            TextButton(
+                onClick = { showTemplateManager = true },
+                modifier = Modifier.align(Alignment.End)
+            ) { Text("Templates") }
 
             transactionTypeRows.forEach { typeRow ->
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -929,4 +954,63 @@ fun QuickAddTransactionDialog(
             }
         )
     }
+
+    if (showTemplateManager) {
+        TransactionTemplatesDialog(
+            templates = transactionTemplates,
+            accounts = accounts,
+            categories = categories,
+            message = templateMessage,
+            onDismiss = {
+                showTemplateManager = false
+                templateMessage = null
+            },
+            onCreate = { template ->
+                runTemplateOperation("Template saved.") {
+                    appContainer.repository.createTransactionTemplate(template)
+                    Unit
+                }
+            },
+            onUpdate = { template ->
+                runTemplateOperation("Template updated.") {
+                    appContainer.repository.updateTransactionTemplate(template)
+                }
+            },
+            onArchive = { id, isArchived ->
+                runTemplateOperation(if (isArchived) "Template archived." else "Template restored.") {
+                    appContainer.repository.setTransactionTemplateArchived(id, isArchived)
+                }
+            },
+            onDelete = { id ->
+                runTemplateOperation("Template deleted.") {
+                    appContainer.repository.deleteTransactionTemplate(id)
+                }
+            },
+            onUse = { template ->
+                txType = template.transactionType.name
+                amountStr = quickAddAmountInput(template.amount)
+                accountId = template.accountId
+                hasManuallySelectedAccount = true
+                accountDefaultSource = QuickAddAccountDefaultSource.NONE
+                destAccountId = template.destinationAccountId.orEmpty()
+                categoryId = template.categoryId.orEmpty()
+                hasManuallySelectedCategory = true
+                categoryWasSuggested = false
+                counterparty = template.counterparty
+                description = template.description
+                notes = template.notes
+                feeAmountStr = template.fee.takeIf { it.isPositive }
+                    ?.let { quickAddAmountInput(it) }.orEmpty()
+                feeCategoryId = template.feeCategoryId.orEmpty()
+                if (template.transactionType.name == "TRANSFER") selectedTagIds = emptySet()
+                showAdvancedDetails = true
+                inputError = null
+                hasUserEdited = true
+            },
+            onClearMessage = { templateMessage = null }
+        )
+    }
 }
+
+private fun quickAddAmountInput(money: Money): String =
+    java.math.BigDecimal.valueOf(money.centavos, 2).toPlainString()

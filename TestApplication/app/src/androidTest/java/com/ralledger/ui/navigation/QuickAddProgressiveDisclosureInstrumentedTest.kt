@@ -13,6 +13,7 @@ import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.CounterpartyKind
 import com.ralledger.domain.model.Money
+import com.ralledger.domain.model.TransactionTemplate
 import com.ralledger.domain.model.TransactionType
 import com.ralledger.ui.settings.AppLockPreferences
 import kotlinx.coroutines.flow.first
@@ -47,6 +48,7 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Add details (optional)") })
             assertTrue(waitForUi(instrumentation) { setEditableFieldText(instrumentation, 1, "Draft Merchant") })
             assertTrue(waitForUi(instrumentation) { setEditableFieldText(instrumentation, 2, "Remember this purchase") })
+            assertTrue(waitForUi(instrumentation) { scrollUntilVisible(instrumentation, "Notes (optional)") })
             assertTrue(waitForUi(instrumentation) { setEditableFieldText(instrumentation, 3, "Restored note") })
             assertTrue(waitForUi(instrumentation) {
                 editableFieldTexts(instrumentation) == listOf(
@@ -56,19 +58,28 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
                     "Restored note"
                 )
             })
+            assertTrue(waitForUi(instrumentation) { scrollBackwardUntilVisible(instrumentation, "Add expense") })
 
             scenario.recreate()
 
-            assertTrue(waitForUi(instrumentation) {
+            val restored = waitForUi(instrumentation) {
                 "Add expense" in visibleText(instrumentation) &&
                     "Hide details" in visibleText(instrumentation) &&
                     editableFieldTexts(instrumentation) == listOf(
                         "12.34",
                         "Draft Merchant",
-                        "Remember this purchase",
-                        "Restored note"
+                        "Remember this purchase"
                     )
-            })
+            }
+            assertTrue(
+                "Draft did not restore. visible=${visibleText(instrumentation)} inputs=${editableFieldTexts(instrumentation)}",
+                restored
+            )
+            assertTrue(waitForUi(instrumentation) { scrollUntilVisible(instrumentation, "Notes (optional)") })
+            assertTrue(
+                "Draft note did not restore. inputs=${editableFieldTexts(instrumentation)}",
+                "Restored note" in editableFieldTexts(instrumentation)
+            )
             assertTrue(waitForUi(instrumentation) { performClickWithScroll(instrumentation, "Cancel") })
             assertTrue(waitForUi(instrumentation) { "Discard this transaction?" in visibleText(instrumentation) })
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Discard") })
@@ -124,6 +135,9 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
         val destinationName = "B Phase II QA destination ${destinationId.takeLast(6)}"
         val tagName = "Phase II QA label ${sourceId.takeLast(6)}"
         val counterpartyName = "Phase II QA merchant ${sourceId.takeLast(6)}"
+        val templateName = "Phase II QA template ${sourceId.takeLast(6)}"
+        val expenseDescription = "Coffee from saved template"
+        val expenseNotes = "Review before posting"
         var wasLockEnabled = false
 
         val expenseCategory = runBlocking {
@@ -158,9 +172,27 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
         }
         val tagId = runBlocking { repository.createTransactionTag(tagName, "#1565C0") }
         runBlocking { repository.createCounterparty(counterpartyName, CounterpartyKind.BOTH) }
+        val templateId = runBlocking {
+            repository.createTransactionTemplate(
+                TransactionTemplate(
+                    id = "ignored-template-id",
+                    name = templateName,
+                    transactionType = TransactionType.EXPENSE,
+                    amount = Money.parse("5.00")!!,
+                    accountId = sourceId,
+                    categoryId = expenseCategory.id,
+                    counterparty = counterpartyName,
+                    description = expenseDescription,
+                    notes = expenseNotes,
+                    createdAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+        }
 
         var scenario: ActivityScenario<MainActivity>? = null
         val expenseStartedAt = System.currentTimeMillis()
+        val entryIdsBeforeExpense = runBlocking { repository.transactionsFlow.first().map { it.journalEntryId }.toSet() }
         val description = "Phase II QA transfer ${sourceId.takeLast(6)}"
         val notes = "Fee and notes save check"
         val startedAt = System.currentTimeMillis()
@@ -169,12 +201,23 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
             scenario = ActivityScenario.launch(MainActivity::class.java)
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Quick actions") })
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Expense") })
+            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Templates") })
+            assertTrue(waitForUi(instrumentation) { templateName in visibleText(instrumentation) })
+            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Use") })
             assertTrue(waitForUi(instrumentation) {
-                setEditableFieldText(instrumentation, 0, "5.00")
+                scrollUntilVisible(instrumentation, "Notes (optional)") &&
+                    editableFieldTexts(instrumentation) == listOf(
+                        "5.00",
+                        counterpartyName,
+                        expenseDescription,
+                        expenseNotes
+                    )
             })
-            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Add details (optional)") })
-            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Choose saved counterparty") })
-            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, counterpartyName) })
+            assertEquals(
+                "Selecting a saved template must only prefill the form, not post a transaction",
+                entryIdsBeforeExpense,
+                runBlocking { repository.transactionsFlow.first().map { it.journalEntryId }.toSet() }
+            )
             assertTrue(waitForUi(instrumentation) { scrollUntilVisible(instrumentation, "Tags (optional)") })
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, tagName) })
             assertTrue(waitForUi(instrumentation) {
@@ -186,12 +229,16 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
                         rows.any { row ->
                             row.transactionType == TransactionType.EXPENSE &&
                                 row.amount == Money.parse("5.00") &&
+                                row.description == expenseDescription &&
+                                row.notes == expenseNotes &&
                                 row.tagIds == setOf(tagId) &&
                                 row.timestamp >= expenseStartedAt
                         }
                     }.first { row ->
                         row.transactionType == TransactionType.EXPENSE &&
                             row.amount == Money.parse("5.00") &&
+                            row.description == expenseDescription &&
+                            row.notes == expenseNotes &&
                             row.tagIds == setOf(tagId) &&
                             row.timestamp >= expenseStartedAt
                     }
@@ -199,6 +246,8 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
             }
             assertEquals(listOf(tagName), savedExpense.tagNames)
             assertEquals(counterpartyName, savedExpense.counterparty)
+            assertEquals(sourceId, savedExpense.accountId)
+            assertEquals(expenseCategory.id, savedExpense.categoryId)
 
             val entriesBeforeExpenseRetry = runBlocking { repository.transactionsFlow.first().size }
             runBlocking {
@@ -206,8 +255,9 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
                     sourceId,
                     expenseCategory.id,
                     Money.parse("5.00")!!,
-                    description = "",
+                    description = expenseDescription,
                     counterparty = counterpartyName,
+                    notes = expenseNotes,
                     timestamp = savedExpense.timestamp,
                     tagIds = setOf(tagId),
                     submissionId = savedExpense.journalEntryId
@@ -226,8 +276,9 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
                         sourceId,
                         expenseCategory.id,
                         Money.parse("6.00")!!,
-                        description = "",
+                        description = expenseDescription,
                         counterparty = counterpartyName,
+                        notes = expenseNotes,
                         timestamp = savedExpense.timestamp,
                         tagIds = setOf(tagId),
                         submissionId = savedExpense.journalEntryId
@@ -328,7 +379,10 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
             assertEquals(Money.parse("100.00"), balances.first { it.id == destinationId }.currentLedgerBalance)
         } finally {
             scenario?.close()
-            runBlocking { appLockPreferences.setEnabled(wasLockEnabled) }
+            runBlocking {
+                appLockPreferences.setEnabled(wasLockEnabled)
+                repository.deleteTransactionTemplate(templateId)
+            }
         }
     }
 
@@ -489,6 +543,40 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
         } finally {
             root.recycle()
         }
+    }
+
+    private fun scrollBackwardUntilVisible(
+        instrumentation: android.app.Instrumentation,
+        label: String
+    ): Boolean {
+        repeat(12) {
+            if (label in visibleText(instrumentation)) return true
+            if (!performScrollBackward(instrumentation)) return false
+            instrumentation.waitForIdleSync()
+        }
+        return label in visibleText(instrumentation)
+    }
+
+    private fun performScrollBackward(instrumentation: android.app.Instrumentation): Boolean {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return false
+        return try {
+            scrollBackward(root)
+        } finally {
+            root.recycle()
+        }
+    }
+
+    private fun scrollBackward(node: AccessibilityNodeInfo): Boolean {
+        if (node.isScrollable && node.performAction(AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)) return true
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            try {
+                if (scrollBackward(child)) return true
+            } finally {
+                child.recycle()
+            }
+        }
+        return false
     }
 
     private fun scrollUntilVisible(

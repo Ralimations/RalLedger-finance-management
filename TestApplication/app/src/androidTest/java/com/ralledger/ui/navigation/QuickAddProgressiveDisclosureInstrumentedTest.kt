@@ -214,10 +214,15 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
                         expenseNotes in visibleInputs
                 }
             )
-            assertTrue(waitForUi(instrumentation) {
+            val templateDraftVisible = waitForUi(instrumentation) {
                 scrollBackwardUntilVisible(instrumentation, "Add expense") &&
                     "5.00" in editableFieldTexts(instrumentation)
-            })
+            }
+            assertTrue(
+                "Template draft was not visible after scrolling. Visible=${visibleText(instrumentation)} " +
+                    "inputs=${editableFieldTexts(instrumentation)}",
+                templateDraftVisible
+            )
             assertEquals(
                 "Selecting a saved template must only prefill the form, not post a transaction",
                 entryIdsBeforeExpense,

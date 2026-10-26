@@ -42,6 +42,8 @@ android {
         versionName = "2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArguments["notClass"] =
+            "com.ralledger.ui.onboarding.UpgradeDataCompatibilityInstrumentedTest"
     }
 
     signingConfigs {

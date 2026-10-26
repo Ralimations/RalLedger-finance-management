@@ -87,7 +87,8 @@ import com.ralledger.ui.components.AccountBalancesSummary
 import com.ralledger.ui.components.DiscardChangesDialog
 import com.ralledger.ui.components.FinancialAccountSelector
 import com.ralledger.ui.components.FinancialCategorySelector
-import com.ralledger.ui.components.FinancialDateSelector
+import com.ralledger.ui.components.FinancialDateTimeSelector
+import com.ralledger.ui.components.localTimestampToPickerDateMillis
 import com.ralledger.ui.components.FinancialDescriptionField
 import com.ralledger.ui.components.FinancialNotesField
 import com.ralledger.ui.components.MoneyAmountField
@@ -621,32 +622,12 @@ private fun savedFilterSummary(filter: TransactionFilter): String = buildList {
     if (filter.startInclusive != null || filter.endExclusive != null) add("Date range")
 }.ifEmpty { listOf("All transactions") }.joinToString(" · ")
 
-private fun localTimestampToPickerDateMillis(timestamp: Long): Long {
-    val localDate = Calendar.getInstance().apply { timeInMillis = timestamp }
-    return Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
-        clear()
-        set(localDate.get(Calendar.YEAR), localDate.get(Calendar.MONTH), localDate.get(Calendar.DAY_OF_MONTH), 12, 0, 0)
-    }.timeInMillis
-}
-
 private fun pickerDateToLocalDayStart(pickerMillis: Long): Long {
     val utcDate = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = pickerMillis }
     return Calendar.getInstance().apply {
         clear()
         set(utcDate.get(Calendar.YEAR), utcDate.get(Calendar.MONTH), utcDate.get(Calendar.DAY_OF_MONTH), 0, 0, 0)
     }.timeInMillis
-}
-
-private fun pickerDateToLocalTimestamp(pickerMillis: Long, preserveTimeFrom: Long): Long {
-    val utcDate = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = pickerMillis }
-    val local = Calendar.getInstance().apply { timeInMillis = preserveTimeFrom }
-    val hour = local.get(Calendar.HOUR_OF_DAY)
-    val minute = local.get(Calendar.MINUTE)
-    val second = local.get(Calendar.SECOND)
-    val millisecond = local.get(Calendar.MILLISECOND)
-    local.set(utcDate.get(Calendar.YEAR), utcDate.get(Calendar.MONTH), utcDate.get(Calendar.DAY_OF_MONTH), hour, minute, second)
-    local.set(Calendar.MILLISECOND, millisecond)
-    return local.timeInMillis
 }
 
 private fun nextLocalDay(dayStart: Long): Long = Calendar.getInstance().apply {
@@ -844,7 +825,6 @@ private fun RecordTransactionDialog(
     var counterparty by remember(transactionKey, isCorrection) { mutableStateOf(initialCounterparty) }
     var notes by remember(transactionKey, isCorrection) { mutableStateOf(initialNotes) }
     var selectedTimestamp by remember(transactionKey, isCorrection) { mutableStateOf(initialTimestamp) }
-    var showDatePicker by remember { mutableStateOf(false) }
     var confirmDiscard by remember(transactionKey, isCorrection) { mutableStateOf(false) }
     var inputError by remember { mutableStateOf<String?>(null) }
     val categoryType = if (selectedTab == 1) "INCOME" else "EXPENSE"
@@ -981,7 +961,10 @@ private fun RecordTransactionDialog(
                     onValueChange = { notes = it },
                     label = "Notes"
                 )
-                FinancialDateSelector(value = displayDate(selectedTimestamp), onClick = { showDatePicker = true })
+                FinancialDateTimeSelector(
+                    timestamp = selectedTimestamp,
+                    onTimestampChange = { selectedTimestamp = it }
+                )
                 inputError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             }
         },
@@ -1042,21 +1025,6 @@ private fun RecordTransactionDialog(
         DiscardChangesDialog(onDiscard = { confirmDiscard = false; onDismiss() }, onKeepEditing = { confirmDiscard = false })
     }
 
-    if (showDatePicker) {
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = localTimestampToPickerDateMillis(selectedTimestamp))
-        DatePickerDialog(
-            onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    datePickerState.selectedDateMillis?.let { selectedTimestamp = pickerDateToLocalTimestamp(it, selectedTimestamp) }
-                    showDatePicker = false
-                }) { Text("Set date") }
-            },
-            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancel") } }
-        ) {
-            DatePicker(state = datePickerState)
-        }
-    }
 }
 
 private fun moneyForInput(money: Money): String = BigDecimal.valueOf(money.centavos, 2).toPlainString()

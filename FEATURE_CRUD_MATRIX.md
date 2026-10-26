@@ -169,3 +169,10 @@ Still requiring explicit manual review: secure-device app-lock setup/unlock/relo
 ## Dashboard Settings accessibility — 2026-10-26
 
 - Accessibility verification now scrolls the widget list to reach the Recent transactions switch at compact width and 1.3× text. The focused test passed 2/2; the full connected API 37 suite passed 42/42. No production behavior changed.
+
+## Phase II shared transaction details — 2026-10-26
+
+- Quick Add and transaction correction share the editable local date/time selector. Quick Add keeps date/time, description, and notes in a collapsed optional-details section; transfer details include an optional fee and fee category. Recent account/category defaults are identified as suggestions and stop being labeled as suggestions after a manual choice.
+- Unit verification: 115 passed. Connected API 37 instrumentation: 43 passed. Both suites report 0 failures, errors, or skips. Lint: 29 warnings, 0 errors. Debug APK assembly and APK v2 signature verification passed.
+- Fresh emulator profile Home was captured at 1080×2400, 420 dpi, 1.0× text with zero Available Money and Net Worth. Direct screenshot was used because `uiautomator dump` could not connect to its accessibility bridge.
+- Updated APK: `releases/RalLedger-debug.apk`, 76,630,462 bytes, SHA-256 `D3D553D0FCCAC4478DBB11D037F57BC0726BF12469A15C575D94ABACCC5E1C18`; Android Debug signer. Picker tests open and cancel date/time dialogs; end-to-end posting of edited date/time and optional transfer fees still needs a manual journey. Phase II remains in progress.

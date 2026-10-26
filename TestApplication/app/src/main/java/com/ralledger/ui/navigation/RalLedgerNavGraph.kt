@@ -74,6 +74,8 @@ import com.ralledger.domain.model.Money
 import com.ralledger.domain.usecase.InsightsPeriodType
 import com.ralledger.ui.accounts.AccountsScreen
 import com.ralledger.ui.components.AccountBalancesSummary
+import com.ralledger.ui.components.FinancialDateTimeSelector
+import com.ralledger.ui.components.FinancialNotesField
 import com.ralledger.ui.components.MoneyAmountField
 import com.ralledger.ui.accounts.AccountsViewModel
 import com.ralledger.ui.categories.CategoriesScreen
@@ -436,17 +438,26 @@ fun QuickAddTransactionDialog(
     } // EXPENSE, INCOME, TRANSFER
     var amountStr by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var notes by remember { mutableStateOf("") }
+    var selectedTimestamp by remember { mutableStateOf(System.currentTimeMillis()) }
+    var feeAmountStr by remember { mutableStateOf("") }
+    var feeCategoryId by remember { mutableStateOf("") }
     var accountId by remember(initialAccountId) { mutableStateOf(initialAccountId.orEmpty()) }
+    var hasManuallySelectedAccount by remember(initialAccountId) { mutableStateOf(false) }
+    var accountDefaultSource by remember { mutableStateOf(QuickAddAccountDefaultSource.NONE) }
     var destAccountId by remember { mutableStateOf("") }
     var categoryId by remember { mutableStateOf("") }
+    var hasManuallySelectedCategory by remember { mutableStateOf(false) }
+    var categoryWasSuggested by remember { mutableStateOf(false) }
     var inputError by remember { mutableStateOf<String?>(null) }
     var isSaving by remember { mutableStateOf(false) }
     var accountMenuExpanded by remember { mutableStateOf(false) }
     var destinationMenuExpanded by remember { mutableStateOf(false) }
     var categoryMenuExpanded by remember { mutableStateOf(false) }
+    var feeCategoryMenuExpanded by remember { mutableStateOf(false) }
     var hasUserEdited by remember { mutableStateOf(false) }
     var showDiscardConfirmation by remember { mutableStateOf(false) }
-    var showDescription by remember { mutableStateOf(false) }
+    var showAdvancedDetails by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
         confirmValueChange = { target -> target != SheetValue.Hidden || !isSaving }
@@ -471,39 +482,56 @@ fun QuickAddTransactionDialog(
     val eligibleCategories = categories.filter {
         !it.isArchived && it.type.name == if (txType == "INCOME") "INCOME" else "EXPENSE"
     }
-    LaunchedEffect(eligibleAccounts, defaultTransactionAccountId, initialAccountId, transactions, txType) {
-        val eligibleAccountIds = eligibleAccounts.map { it.id }
-        val eligibleIds = eligibleAccountIds.toSet()
-        val expectedType = if (txType == "INCOME") "INCOME" else if (txType == "EXPENSE") "EXPENSE" else null
-        val lastUsedAccountId = expectedType?.let { type ->
-            transactions.asSequence()
-                .filter { it.transactionType.name == type && !it.isReversed }
-                .maxByOrNull { it.timestamp }
-                ?.accountId
-        }
-        val defaultAccount = resolveQuickAddAccountId(
+    val eligibleFeeCategories = categories.filter { !it.isArchived && it.type.name == "EXPENSE" }
+    val expectedTransactionType = when (txType) {
+        "INCOME" -> "INCOME"
+        "EXPENSE" -> "EXPENSE"
+        else -> null
+    }
+    val lastRelevantTransaction = expectedTransactionType?.let { type ->
+        transactions.asSequence()
+            .filter { it.transactionType.name == type && !it.isReversed }
+            .maxByOrNull { it.timestamp }
+    }
+    val lastUsedAccountId = lastRelevantTransaction?.accountId
+    val lastUsedCategoryId = lastRelevantTransaction?.categoryId
+    val eligibleAccountIds = remember(eligibleAccounts) { eligibleAccounts.map { it.id } }
+    val eligibleCategoryIds = remember(eligibleCategories) { eligibleCategories.map { it.id } }
+    val accountDefault = remember(initialAccountId, defaultTransactionAccountId, lastUsedAccountId, eligibleAccountIds) {
+        resolveQuickAddAccountDefault(
             contextualAccountId = initialAccountId,
             preferredAccountId = defaultTransactionAccountId,
             lastUsedAccountId = lastUsedAccountId,
             eligibleAccountIds = eligibleAccountIds
         )
-        if (accountId.isBlank() || accountId !in eligibleIds) accountId = defaultAccount
+    }
+    val categoryDefault = remember(lastUsedCategoryId, eligibleCategoryIds) {
+        resolveQuickAddCategoryDefault(lastUsedCategoryId, eligibleCategoryIds)
+    }
+    LaunchedEffect(eligibleAccountIds, accountDefault, hasManuallySelectedAccount) {
+        if (accountId !in eligibleAccountIds) {
+            hasManuallySelectedAccount = false
+        }
+        if (!hasManuallySelectedAccount) {
+            accountId = accountDefault.accountId
+            accountDefaultSource = accountDefault.source
+        }
+        val eligibleIds = eligibleAccountIds.toSet()
         val fallbackDestination = eligibleAccounts.firstOrNull { it.id != accountId }?.id.orEmpty()
         if (destAccountId.isBlank() || destAccountId !in eligibleIds || destAccountId == accountId) {
             destAccountId = fallbackDestination
         }
     }
-    LaunchedEffect(eligibleCategories, transactions, txType) {
-        if (categoryId !in eligibleCategories.map { it.id }) {
-            val expectedType = if (txType == "INCOME") "INCOME" else if (txType == "EXPENSE") "EXPENSE" else null
-            val lastUsedCategoryId = expectedType?.let { type ->
-                transactions.asSequence()
-                    .filter { it.transactionType.name == type && !it.isReversed }
-                    .maxByOrNull { it.timestamp }
-                    ?.categoryId
-            }
-            categoryId = lastUsedCategoryId?.takeIf { id -> eligibleCategories.any { it.id == id } }
-                ?: eligibleCategories.firstOrNull()?.id.orEmpty()
+    LaunchedEffect(eligibleCategoryIds, categoryDefault, txType) {
+        if (categoryId !in eligibleCategoryIds) {
+            categoryId = categoryDefault.categoryId
+            categoryWasSuggested = categoryDefault.source == QuickAddCategoryDefaultSource.RECENT
+            hasManuallySelectedCategory = false
+        }
+    }
+    LaunchedEffect(eligibleFeeCategories) {
+        if (feeCategoryId !in eligibleFeeCategories.map { it.id }) {
+            feeCategoryId = eligibleFeeCategories.firstOrNull()?.id.orEmpty()
         }
     }
 
@@ -573,11 +601,19 @@ fun QuickAddTransactionDialog(
                         eligibleAccounts.forEach { account ->
                             DropdownMenuItem(text = { Text(account.name) }, onClick = {
                                 accountId = account.id
+                                hasManuallySelectedAccount = true
                                 accountMenuExpanded = false
                                 hasUserEdited = true
                             })
                         }
                     }
+                }
+                if (!hasManuallySelectedAccount && accountDefaultSource == QuickAddAccountDefaultSource.RECENT) {
+                    Text(
+                        "Suggested from recent ${if (txType == "INCOME") "income" else "expense"} transactions",
+                        style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
@@ -622,6 +658,8 @@ fun QuickAddTransactionDialog(
                             eligibleCategories.forEach { category ->
                                 DropdownMenuItem(text = { Text(category.name) }, onClick = {
                                     categoryId = category.id
+                                        hasManuallySelectedCategory = true
+                                        categoryWasSuggested = false
                                     categoryMenuExpanded = false
                                     hasUserEdited = true
                                 })
@@ -629,17 +667,67 @@ fun QuickAddTransactionDialog(
                         }
                     }
                 }
+                    if (categoryWasSuggested && !hasManuallySelectedCategory) {
+                        Text(
+                            "Suggested from recent ${if (txType == "INCOME") "income" else "expense"} transactions",
+                            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                            color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
             }
 
-            TextButton(onClick = { showDescription = !showDescription }) {
-                Text(if (showDescription) "Hide description" else "Add description (optional)")
+            TextButton(onClick = { showAdvancedDetails = !showAdvancedDetails }) {
+                Text(if (showAdvancedDetails) "Hide details" else "Add details (optional)")
             }
-            if (showDescription) {
+            if (showAdvancedDetails) {
+                if (txType == "TRANSFER") {
+                    MoneyAmountField(
+                        value = feeAmountStr,
+                        onValueChange = { feeAmountStr = it; inputError = null; hasUserEdited = true },
+                        label = "Transfer fee (optional)"
+                    )
+                    if (Money.parse(feeAmountStr)?.isPositive == true) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Fee category", style = androidx.compose.material3.MaterialTheme.typography.labelMedium)
+                            Box(modifier = Modifier.fillMaxWidth()) {
+                                OutlinedButton(onClick = { feeCategoryMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                                    Text(
+                                        eligibleFeeCategories.find { it.id == feeCategoryId }?.name ?: "Choose fee category",
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = feeCategoryMenuExpanded,
+                                    onDismissRequest = { feeCategoryMenuExpanded = false }
+                                ) {
+                                    eligibleFeeCategories.forEach { category ->
+                                        DropdownMenuItem(text = { Text(category.name) }, onClick = {
+                                            feeCategoryId = category.id
+                                            feeCategoryMenuExpanded = false
+                                            hasUserEdited = true
+                                        })
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                FinancialDateTimeSelector(
+                    timestamp = selectedTimestamp,
+                    onTimestampChange = { selectedTimestamp = it; hasUserEdited = true }
+                )
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it; hasUserEdited = true },
-                    label = { Text("Description") },
+                    label = { Text("Description (optional)") },
+                    singleLine = true,
                     modifier = Modifier.fillMaxWidth()
+                )
+                FinancialNotesField(
+                    value = notes,
+                    onValueChange = { notes = it; hasUserEdited = true },
+                    label = "Notes (optional)"
                 )
             }
 
@@ -654,11 +742,17 @@ fun QuickAddTransactionDialog(
                     onClick = {
                         if (isSaving) return@Button
                         val amount = Money.parse(amountStr)
+                        val fee = if (txType == "TRANSFER") {
+                            if (feeAmountStr.isBlank()) Money.ZERO else Money.parse(feeAmountStr)
+                        } else Money.ZERO
                         val validationError = when {
                             amount == null || !amount.isPositive -> "Enter a valid amount greater than zero."
                             accountId.isBlank() -> "Add or choose a financial account first."
                             txType != "TRANSFER" && categoryId.isBlank() -> "Choose a category or income source."
                             txType == "TRANSFER" && (destAccountId.isBlank() || destAccountId == accountId) -> "Choose a different destination account."
+                            txType == "TRANSFER" && feeAmountStr.isNotBlank() && fee == null -> "Enter a valid transfer fee."
+                            txType == "TRANSFER" && fee != null && fee.centavos < 0 -> "A transfer fee cannot be negative."
+                            txType == "TRANSFER" && fee?.isPositive == true && feeCategoryId.isBlank() -> "Choose a category for the transfer fee."
                             else -> null
                         }
                         if (validationError != null) {
@@ -666,13 +760,38 @@ fun QuickAddTransactionDialog(
                             return@Button
                         }
 
+                        val amountToSave = amount ?: return@Button
+                        val feeToSave = fee ?: Money.ZERO
                         isSaving = true
                         scope.launch {
                             try {
                                 when (txType) {
-                                    "EXPENSE" -> appContainer.repository.recordExpense(accountId, categoryId, amount!!, description)
-                                    "INCOME" -> appContainer.repository.recordIncome(accountId, categoryId, amount!!, description)
-                                    else -> appContainer.repository.recordTransfer(accountId, destAccountId, amount!!, description = description)
+                                    "EXPENSE" -> appContainer.repository.recordExpense(
+                                        accountId,
+                                        categoryId,
+                                        amountToSave,
+                                        description,
+                                        notes = notes,
+                                        timestamp = selectedTimestamp
+                                    )
+                                    "INCOME" -> appContainer.repository.recordIncome(
+                                        accountId,
+                                        categoryId,
+                                        amountToSave,
+                                        description,
+                                        notes = notes,
+                                        timestamp = selectedTimestamp
+                                    )
+                                    else -> appContainer.repository.recordTransfer(
+                                        accountId,
+                                        destAccountId,
+                                        amountToSave,
+                                        fee = feeToSave,
+                                        feeCategoryId = feeCategoryId.takeIf { feeToSave.isPositive },
+                                        description = description,
+                                        notes = notes,
+                                        timestamp = selectedTimestamp
+                                    )
                                 }
                                 onDismiss()
                             } catch (error: Exception) {

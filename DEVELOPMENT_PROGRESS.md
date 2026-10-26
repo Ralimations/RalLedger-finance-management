@@ -1089,3 +1089,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Verification on API 37: 130/130 Debug unit tests and 52/52 connected instrumentation tests passed with 0 failures and 0 skips. Debug lint reported 37 warnings and 0 errors. Debug and Android-test APKs assembled as part of the connected run.
 - Refreshed releases/RalLedger-debug.apk: 78,027,840 bytes; SHA-256 1E498AA3811AA2B308B27411F9351465846994C894F4C548D07FF9CDF7E74B55. APK Signature Scheme v2 verifies with the Android Debug signer. This is not a production-signed release.
 - No real financial data was used. Release signing and broader device/accessibility acceptance remain open.
+
+
+## Recurring schedule edit dialog — API 37 verification — 2026-10-26
+
+- Added Compose instrumentation for the actual recurring-schedule edit dialog. It uses an in-memory Room database with synthetic data, changes the future amount, description, and notes through the UI, then verifies the original posted transaction remains unchanged.
+- The focused API 37 UI test passed 1/1. The complete connected suite passed 53/53 with 0 failures, errors, or skips. The previously verified source baseline remains 130/130 Debug unit tests; Debug lint is 37 warnings and 0 errors.
+- Production app source did not change, so releases/RalLedger-debug.apk remains current at 78,027,840 bytes, SHA-256 1E498AA3811AA2B308B27411F9351465846994C894F4C548D07FF9CDF7E74B55, APK v2 signed with the Android Debug signer.
+- Updated the CRUD matrix: schedule editing now has connected UI evidence. Automatic posting/reminders, broader lifecycle checks, full accessibility review, and owner-managed production signing remain open. No personal financial data was used.

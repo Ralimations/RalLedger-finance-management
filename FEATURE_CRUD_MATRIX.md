@@ -67,6 +67,13 @@ Latest import hardening (2026-10-26): CSV and XLSX now enforce a 500,000-cell to
 - The full connected suite passed 44/44; 115 unit tests passed; lint reported 29 warnings and 0 errors; debug assembly succeeded. The test runs only when the profile has no accounts or transactions and uses synthetic data.
 - This verifies saving with the default timestamp. Saving with a user-edited date/time, full accessibility review, and production signing remain open; tags, repeat scheduling, counterparty selection, and draft restoration have since been implemented, with remaining coverage tracked above.
 
+## Quick Add Compose regression follow-up — 2026-10-27
+
+- Replaced positional accessibility text entry in the template/transfer end-to-end case with Compose semantics. The test explicitly chooses transfer accounts and verifies saved template values, expense tag/counterparty, fee category, description, notes, retry idempotency, and account balances.
+- The API 37 focused test passed, then the full connected suite passed 53/53. Debug unit tests passed 130/130; lint reported 37 warnings and 0 errors; Debug and Android-test APK assembly succeeded.
+- The connected test runner removed the app after the run. The emulator package query found no installed `com.ralledger`; synthetic test fixtures are not present on that emulator. No personal finance data was used.
+- The PesoMind opener behavior was not changed in this follow-up; its native splash/welcome and app-lock path have prior API 37 evidence. Production signing and broader device/accessibility acceptance remain open.
+
 ## Account lifecycle implementation notes
 
 - Account editing is deliberately limited to name, institution, description, icon, color and dashboard inclusion. Account type, currency, opening balance, creation time, ledger balance and reconciliation metadata remain unchanged.

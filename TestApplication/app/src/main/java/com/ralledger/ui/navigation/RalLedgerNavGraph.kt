@@ -689,13 +689,17 @@ fun QuickAddTransactionDialog(
             MoneyAmountField(
                 value = amountStr,
                 onValueChange = { amountStr = it; inputError = null; hasUserEdited = true },
-                label = "Amount (${eligibleAccounts.find { it.id == accountId }?.currency ?: "PHP"})"
+                label = "Amount (${eligibleAccounts.find { it.id == accountId }?.currency ?: "PHP"})",
+                modifier = Modifier.fillMaxWidth().testTag("quick-add-amount")
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Account", style = androidx.compose.material3.MaterialTheme.typography.labelMedium)
                 Box(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(onClick = { accountMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { accountMenuExpanded = true },
+                        modifier = Modifier.fillMaxWidth().testTag("quick-add-account")
+                    ) {
                         Text(
                             eligibleAccounts.find { it.id == accountId }?.name ?: "Choose account",
                             maxLines = 1,
@@ -704,12 +708,16 @@ fun QuickAddTransactionDialog(
                     }
                     DropdownMenu(expanded = accountMenuExpanded, onDismissRequest = { accountMenuExpanded = false }) {
                         eligibleAccounts.forEach { account ->
-                            DropdownMenuItem(text = { Text(account.name) }, onClick = {
-                                accountId = account.id
-                                hasManuallySelectedAccount = true
-                                accountMenuExpanded = false
-                                hasUserEdited = true
-                            })
+                            DropdownMenuItem(
+                                modifier = Modifier.testTag("quick-add-account-option-${account.id}"),
+                                text = { Text(account.name) },
+                                onClick = {
+                                    accountId = account.id
+                                    hasManuallySelectedAccount = true
+                                    accountMenuExpanded = false
+                                    hasUserEdited = true
+                                }
+                            )
                         }
                     }
                 }
@@ -726,7 +734,10 @@ fun QuickAddTransactionDialog(
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("To account", style = androidx.compose.material3.MaterialTheme.typography.labelMedium)
                     Box(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedButton(onClick = { destinationMenuExpanded = true }, modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { destinationMenuExpanded = true },
+                            modifier = Modifier.fillMaxWidth().testTag("quick-add-destination-account")
+                        ) {
                             Text(
                                 eligibleAccounts.find { it.id == destAccountId }?.name ?: "Choose destination",
                                 maxLines = 1,
@@ -735,11 +746,15 @@ fun QuickAddTransactionDialog(
                         }
                         DropdownMenu(expanded = destinationMenuExpanded, onDismissRequest = { destinationMenuExpanded = false }) {
                             eligibleAccounts.filter { it.id != accountId }.forEach { account ->
-                                DropdownMenuItem(text = { Text(account.name) }, onClick = {
-                                    destAccountId = account.id
-                                    destinationMenuExpanded = false
-                                    hasUserEdited = true
-                                })
+                                DropdownMenuItem(
+                                    modifier = Modifier.testTag("quick-add-destination-option-${account.id}"),
+                                    text = { Text(account.name) },
+                                    onClick = {
+                                        destAccountId = account.id
+                                        destinationMenuExpanded = false
+                                        hasUserEdited = true
+                                    }
+                                )
                             }
                         }
                     }
@@ -826,7 +841,8 @@ fun QuickAddTransactionDialog(
                     MoneyAmountField(
                         value = feeAmountStr,
                         onValueChange = { feeAmountStr = it; inputError = null; hasUserEdited = true },
-                        label = "Transfer fee (optional)"
+                        label = "Transfer fee (optional)",
+                        modifier = Modifier.fillMaxWidth().testTag("quick-add-transfer-fee")
                     )
                     if (Money.parse(feeAmountStr)?.isPositive == true) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -941,7 +957,8 @@ fun QuickAddTransactionDialog(
                 FinancialNotesField(
                     value = notes,
                     onValueChange = { notes = it; hasUserEdited = true },
-                    label = "Notes (optional)"
+                    label = "Notes (optional)",
+                    modifier = Modifier.testTag("quick-add-notes")
                 )
             }
 

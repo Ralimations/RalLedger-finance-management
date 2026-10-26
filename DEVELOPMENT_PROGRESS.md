@@ -925,3 +925,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Refreshed `releases/RalLedger-debug.apk`: 76,630,462 bytes; SHA-256 `D3D553D0FCCAC4478DBB11D037F57BC0726BF12469A15C575D94ABACCC5E1C18`. APK Signature Scheme v2 verification passed; signer is Android Debug, not a production key.
 - Published commit `10a622d6dbc53d2e673d5d82c7d4b27b1b982541` and the refreshed APK to `main` in [Ralimations/RalLedger-finance-management](https://github.com/Ralimations/RalLedger-finance-management/commit/10a622d6dbc53d2e673d5d82c7d4b27b1b982541). GitHub accepted the APK and warned that its 73.08 MB size exceeds the recommended 50 MB threshold.
 - This completes only the shared date/time and progressive-detail slice of Milestone B. Tags, repeat scheduling, counterparty selection, draft restoration, and broader screen-by-screen Phase II acceptance remain to be completed or verified. No real financial data was used.
+
+## Phase II — Quick Add transfer save journey — 2026-10-26
+
+- Added API 37 instrumentation that drives the real Quick Add transfer sheet on an empty test profile. It saves a ₱100 transfer with a ₱10 fee, an expense fee category, description, notes, and the selected timestamp, then checks the persisted transaction links and the source/destination ledger balances (₱390 and ₱100).
+- The instrumentation helper now targets the amount, fee, description, and notes controls in their actual accessibility traversal order and scrolls to the lower optional fields before editing. The initial failures were test-harness field targeting; no production behavior change was needed.
+- Verification: all 44 connected API 37 instrumentation tests passed with 0 failures, errors, or skips; 115 unit tests passed; `:app:lintDebug` and `:app:assembleDebug` succeeded; lint reports 29 warnings and 0 errors. The second configured emulator (`emulator-5562`) was offline and skipped.
+- This checkpoint changes only instrumentation and documentation, so the already published debug APK remains unchanged. The test used synthetic account/transaction values only; the Android Gradle test run removed the test app afterward.
+- The transfer-posting path is now covered end to end. Posting a deliberately edited date/time, tags, repeat scheduling, counterparty selection, draft restoration, remaining Phase II journey review, and production signing remain open.

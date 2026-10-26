@@ -50,6 +50,12 @@ This matrix distinguishes a working lifecycle from a create-only screen or repos
 - Three unit tests cover the dismissal decision. The current source passes 87 unit tests, lint (32 warnings, 0 errors), debug APK assembly, and Android-test Kotlin compilation. The emulator is offline, so UI gestures, IME behavior, and actual repository no-write-on-cancel behavior were not device-tested.
 - Current debug APK: `TestApplication/app/build/outputs/apk/debug/app-debug.apk`, 77,928,083 bytes, SHA-256 `B00263F02517E037759BB2B622C3F1BBC5C7D84C4D9ABD15F3F09DF963355BA8`; v2 signature verified; debug key only.
 
+## API 37 Quick Add transfer save verification — 2026-10-26
+
+- The Quick Add transfer UI now has an end-to-end connected test that enters and saves a ₱100 transfer plus a ₱10 fee, fee category, description, and notes. It verifies the persisted transaction's source/destination/category links, timestamp, notes, and resulting ledger balances.
+- The full connected suite passed 44/44; 115 unit tests passed; lint reported 29 warnings and 0 errors; debug assembly succeeded. The test runs only when the profile has no accounts or transactions and uses synthetic data.
+- This verifies saving with the default timestamp. Saving a user-edited date/time, plus remaining Phase II tags, repeat scheduling, counterparty selection, draft restoration, full accessibility review, and production signing, remains open.
+
 ## Account lifecycle implementation notes
 
 - Account editing is deliberately limited to name, institution, description, icon, color and dashboard inclusion. Account type, currency, opening balance, creation time, ledger balance and reconciliation metadata remain unchanged.

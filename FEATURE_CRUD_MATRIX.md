@@ -153,3 +153,9 @@ Still requiring explicit manual review: secure-device app-lock setup/unlock/relo
 - The local debug APK was refreshed and v2-verified. It is not production-signed; see `DEVELOPMENT_PROGRESS.md` for the artifact hash and the remaining release gates.
 
 - Commit `66171b1` and the debug APK were pushed to the public repository's `main` branch. The APK is available at `releases/RalLedger-debug.apk`; GitHub accepted the 73 MB file with a recommendation to use Git LFS for files over 50 MB.
+
+## API 37 post-fix PDF import confirmation — 2026-10-26
+
+- Rechecked the refreshed build through Android's file picker using a synthetic selectable-text PDF. The preview showed one ready ₱12.50 income row with date, description, chosen account and category; confirmation reported one added.
+- Verified QAWallet at ₱12.50, the Activity row at +₱12.50, and Home's available-money/net-worth totals after force-stop and relaunch. Cleared the synthetic app profile afterward and confirmed zero totals.
+- The previous unsuccessful recheck note is superseded for this path: the format-neutral success message now works on the current APK. Manual OCR, other statement layouts, and multi-amount mapping remain open.

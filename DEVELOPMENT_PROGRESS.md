@@ -1,6 +1,6 @@
 # RalLedger v2.0 Development Progress
 
-Updated: 2026-10-24
+Updated: 2026-10-26
 Branch: `feature/ralledger-v2-live-ready` (schema-22 restore-recovery release published to `main`)
 Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 
@@ -881,3 +881,12 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Refreshed `releases/RalLedger-debug.apk` (76,759,875 bytes; SHA-256 `5CE2565214F04A9D69601C06771C489C6A749E8B4E466FB588B6FB45821EF811`). APK Signature Scheme v2 verifies. This artifact is debug-signed, not production-signed.
 - Manual recheck of the updated message could not complete: after installing and clearing only the synthetic QA profile, API 37 repeatedly left RalLedger on its startup screen and logged `ANR in com.ralledger` / `failed to complete startup` during cold code verification. No import was attempted against the refreshed build. The prior selectable-text PDF import walkthrough did complete and verified its transaction and ₱12.50 account balance; scanned-PDF OCR, varied bank layouts, and multi-amount mapping remain unverified manually.
 - The emulator app profile was cleared; no real financial data was used. Full screen-reader review, the remaining Phase II device journeys, and production signing remain open.
+
+## Phase II — Post-fix PDF import confirmation — 2026-10-26
+
+- Repeated the Android 17/API 37 selectable-text PDF picker walkthrough on the refreshed build after the generic import-message fix. The first picker attempt selected an unrelated pre-existing CSV and was canceled before import; the successful retry searched for and selected only the synthetic PDF.
+- The PDF review extracted the synthetic row `2026-06-01 Freelance Payment 12.50`. After assigning the existing `QAWallet` and `Freelance & Consulting` category, the preview reported `Ready 1`, zero duplicates, zero repeated rows, and zero rows needing attention. The preview showed Income, ₱12.50, Jun 1, 2026, the description, account, and category.
+- Confirming the row displayed the format-neutral message `Import complete: 1 added, 0 duplicates skipped.` The account balance became ₱12.50 and the Activity journal showed `Freelance Payment` as `+₱12.50`. After force-stop/relaunch, Home still showed ₱12.50 available money and net worth; this verifies database persistence across process restart.
+- Cleanup cleared the synthetic-only app profile and removed only the synthetic PDF and XML files created for this recheck. Home returned to ₱0.00 available money and ₱0.00 net worth. Pre-existing Downloads CSV files were left untouched.
+- Screenshot evidence is in ignored `.ralledger-local/qa/`: `pdf-preview-row-final.png`, `pdf-import-result.png`, `account-balance-pdf.png`, `activity-pdf.png`, `relaunched-after-import.png`, and `empty-after-cleanup.png`.
+- This was a manual verification of the previously built APK/source state; no source code or APK changed and automated tests were not rerun. Latest automated verification remains 110 unit tests, 42 connected API 37 tests, lint with 29 warnings and 0 errors, and successful debug assembly. PDF OCR, varied bank layouts, multi-amount PDF mapping, full TalkBack review, and production signing remain open.

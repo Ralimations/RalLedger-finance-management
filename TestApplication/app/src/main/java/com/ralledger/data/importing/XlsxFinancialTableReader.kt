@@ -13,6 +13,8 @@ object XlsxFinancialTableReader {
     internal const val MAX_UNCOMPRESSED_BYTES = 40_000_000
     private const val MAX_ROWS = 50_000
     private const val MAX_COLUMNS = 100
+    private const val MAX_CELLS = TransactionCsvImporter.MAX_CELLS
+    private const val MAX_CELL_LENGTH = TransactionCsvImporter.MAX_CELL_LENGTH
     private const val RELATIONSHIP_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 
     fun parse(bytes: ByteArray): ParsedCsvDocument {
@@ -138,7 +140,7 @@ object XlsxFinancialTableReader {
                     "si" -> { values += text.toString(); inItem = false }
                 }
             }
-            require(values.size <= MAX_ROWS * MAX_COLUMNS) { "Excel workbook has too many shared strings" }
+            require(values.size <= MAX_CELLS) { "Excel workbook has too many shared strings" }
         }
         return values
     }
@@ -187,6 +189,7 @@ object XlsxFinancialTableReader {
         var inInlineText = false
         var value = StringBuilder()
         var cellText = StringBuilder()
+        var totalCells = 0
         while (parser.next() != XmlPullParser.END_DOCUMENT) {
             when (parser.eventType) {
                 XmlPullParser.START_TAG -> when (parser.name) {
@@ -195,6 +198,8 @@ object XlsxFinancialTableReader {
                         currentValues = linkedMapOf()
                     }
                     "c" -> {
+                        totalCells++
+                        require(totalCells <= MAX_CELLS) { "The worksheet has more than 500,000 cells" }
                         val reference = parser.getAttributeValue(null, "r").orEmpty()
                         currentColumn = columnIndex(reference)
                         require(currentColumn < MAX_COLUMNS) { "The worksheet has more than $MAX_COLUMNS columns" }
@@ -207,8 +212,14 @@ object XlsxFinancialTableReader {
                     "t" -> if (currentType == "inlineStr") inInlineText = true
                 }
                 XmlPullParser.TEXT -> when {
-                    inValue -> value.append(parser.text)
-                    inInlineText -> cellText.append(parser.text)
+                    inValue -> {
+                        require(parser.text.length <= MAX_CELL_LENGTH - value.length) { "A worksheet cell is too large" }
+                        value.append(parser.text)
+                    }
+                    inInlineText -> {
+                        require(parser.text.length <= MAX_CELL_LENGTH - cellText.length) { "A worksheet cell is too large" }
+                        cellText.append(parser.text)
+                    }
                 }
                 XmlPullParser.END_TAG -> when (parser.name) {
                     "v" -> inValue = false
@@ -222,7 +233,7 @@ object XlsxFinancialTableReader {
                             "e" -> ""
                             else -> if (currentStyle in dateStyles) excelDate(raw) else raw
                         }
-                        if (resolved.length > 100_000) throw IllegalArgumentException("A worksheet cell is too large")
+                        if (resolved.length > MAX_CELL_LENGTH) throw IllegalArgumentException("A worksheet cell is too large")
                         if (currentColumn >= 0 && currentValues != null) currentValues?.put(currentColumn, resolved)
                         currentColumn = -1
                     }

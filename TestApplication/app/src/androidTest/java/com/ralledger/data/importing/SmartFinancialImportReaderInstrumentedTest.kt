@@ -13,6 +13,7 @@ import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
 import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
 import com.tom_roush.pdfbox.pdmodel.graphics.image.LosslessFactory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.fail
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -33,6 +34,22 @@ class SmartFinancialImportReaderInstrumentedTest {
         assertEquals("2026-06-01", parsed.rows.single().values[0])
         assertEquals("12.50", parsed.rows.single().values[1])
         assertEquals("Market", parsed.rows.single().values[4])
+    }
+
+    @Test
+    fun rejectsXlsxCellBudgetOverflowDuringParsing() {
+        val worksheet = buildString {
+            append("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData><row r=\"1\">")
+            repeat(500_001) { append("<c r=\"A1\"/>") }
+            append("</row></sheetData></worksheet>")
+        }
+
+        try {
+            XlsxFinancialTableReader.parse(createXlsx(worksheet))
+            fail("XLSX input beyond the total cell limit must be rejected")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("The worksheet has more than 500,000 cells", error.message)
+        }
     }
 
     @Test
@@ -92,11 +109,11 @@ class SmartFinancialImportReaderInstrumentedTest {
         assertTrue(parsed.warnings.any { it.contains("OCR") })
     }
 
-    private fun createXlsx(): ByteArray {
+    private fun createXlsx(worksheetXml: String? = null): ByteArray {
         val entries = linkedMapOf(
             "xl/workbook.xml" to """<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Transactions" sheetId="1" r:id="rId1"/></sheets></workbook>""",
             "xl/_rels/workbook.xml.rels" to """<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>""",
-            "xl/worksheets/sheet1.xml" to """<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Date</t></is></c><c r="B1" t="inlineStr"><is><t>Amount</t></is></c><c r="C1" t="inlineStr"><is><t>Account</t></is></c><c r="D1" t="inlineStr"><is><t>Category</t></is></c><c r="E1" t="inlineStr"><is><t>Description</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>2026-06-01</t></is></c><c r="B2"><v>12.50</v></c><c r="C2" t="inlineStr"><is><t>Wallet</t></is></c><c r="D2" t="inlineStr"><is><t>Food</t></is></c><c r="E2" t="inlineStr"><is><t>Market</t></is></c></row></sheetData></worksheet>"""
+            "xl/worksheets/sheet1.xml" to (worksheetXml ?: """<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Date</t></is></c><c r="B1" t="inlineStr"><is><t>Amount</t></is></c><c r="C1" t="inlineStr"><is><t>Account</t></is></c><c r="D1" t="inlineStr"><is><t>Category</t></is></c><c r="E1" t="inlineStr"><is><t>Description</t></is></c></row><row r="2"><c r="A2" t="inlineStr"><is><t>2026-06-01</t></is></c><c r="B2"><v>12.50</v></c><c r="C2" t="inlineStr"><is><t>Wallet</t></is></c><c r="D2" t="inlineStr"><is><t>Food</t></is></c><c r="E2" t="inlineStr"><is><t>Market</t></is></c></row></sheetData></worksheet>""")
         )
         return ByteArrayOutputStream().use { output ->
             ZipOutputStream(output).use { zip ->

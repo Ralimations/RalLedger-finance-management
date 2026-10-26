@@ -96,6 +96,8 @@ data class CsvImportExecutionResult(
 object TransactionCsvImporter {
     private const val MAX_ROWS = 50_000
     private const val MAX_COLUMNS = 100
+    internal const val MAX_CELLS = 500_000
+    internal const val MAX_CELL_LENGTH = 100_000
     private val utcFormatter = DateTimeFormatter.ISO_INSTANT
     private val localDatePatterns = listOf(
         DateTimeFormatter.ISO_LOCAL_DATE,
@@ -119,10 +121,18 @@ object TransactionCsvImporter {
         var line = 1
         var recordStartLine = 1
         var index = 0
+        var totalCells = 0
 
         fun finishCell() {
+            require(row.size < MAX_COLUMNS) { "The CSV file has more than $MAX_COLUMNS columns" }
+            require(totalCells < MAX_CELLS) { "The CSV file has more than 500,000 cells" }
             row += cell.toString()
+            totalCells++
             cell.setLength(0)
+        }
+        fun appendCellCharacter(character: Char) {
+            require(cell.length < MAX_CELL_LENGTH) { "A CSV field is too large" }
+            cell.append(character)
         }
         fun finishRecord() {
             finishCell()
@@ -137,21 +147,21 @@ object TransactionCsvImporter {
             if (quoted) {
                 when (character) {
                     '"' -> if (text.getOrNull(index + 1) == '"') {
-                        cell.append('"')
+                        appendCellCharacter('"')
                         index++
                     } else {
                         quoted = false
                     }
                     '\r' -> {
                         if (text.getOrNull(index + 1) == '\n') index++
-                        cell.append('\n')
+                        appendCellCharacter('\n')
                         line++
                     }
                     '\n' -> {
-                        cell.append('\n')
+                        appendCellCharacter('\n')
                         line++
                     }
-                    else -> cell.append(character)
+                    else -> appendCellCharacter(character)
                 }
             } else {
                 when (character) {
@@ -166,7 +176,7 @@ object TransactionCsvImporter {
                         line++
                         recordStartLine = line
                     }
-                    else -> cell.append(character)
+                    else -> appendCellCharacter(character)
                 }
             }
             index++

@@ -1078,3 +1078,14 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Added synthetic 50,001-row regressions for both formats. The full Debug unit suite passed 128/128; Debug lint reported 37 warnings and 0 errors; Debug and Android-test APK assembly succeeded. The connected suite was not rerun; the latest complete result remains 51/51, with the separate focused XLSX instrumentation check passing.
 - Refreshed `releases/RalLedger-debug.apk`: 78,027,140 bytes, SHA-256 `6F7F6B757D808B7F93D7800E7C9B940BB4BBCBD0D70384B3DB52220266E748D3`; APK Signature Scheme v2 verifies with the Android Debug signer. Release remains unsigned and unminified.
 - No real financial data was used. Phase II remains active; owner-managed signing and wider device/accessibility acceptance remain open.
+
+
+
+## PesoMind correction audit and import resource budgets — 2026-10-26
+
+- Re-read the supplied correction: PesoMind's opener is a native Android splash and one-time welcome. The existing Android implementation already covers this path; tracked-file and history searches found no marketing site, WebView, separate frontend, or deployment project. The user-supplied root logo files were left untouched.
+- Reviewed startup behavior: AndroidX SplashScreen holds during actual startup recovery; the welcome completion flag is in DataStore; existing installs with prior database/settings skip onboarding; the existing app-lock gate protects the dashboard. The app ID remains com.ralledger and the Room database identity and records are unchanged. The clean-install Welcome → Get Started → dashboard and returning-user relaunch were manually verified in the earlier API 37 opener walkthrough recorded above; this iteration did not clear app data or repeat that manual flow. The app-lock instrumentation check passed in this iteration.
+- CSV now rejects more than 500,000 scanned cells or a field over 100,000 characters. XLSX rejects more than 500,000 worksheet cells/shared strings and bounds cell text at 100,000 characters. The checks run during parsing; existing 50,000-row, 100-column, and 40 MB expanded-workbook limits remain. Added CSV cell/field and XLSX cell-overflow regressions.
+- Verification on API 37: 130/130 Debug unit tests and 52/52 connected instrumentation tests passed with 0 failures and 0 skips. Debug lint reported 37 warnings and 0 errors. Debug and Android-test APKs assembled as part of the connected run.
+- Refreshed releases/RalLedger-debug.apk: 78,027,840 bytes; SHA-256 1E498AA3811AA2B308B27411F9351465846994C894F4C548D07FF9CDF7E74B55. APK Signature Scheme v2 verifies with the Android Debug signer. This is not a production-signed release.
+- No real financial data was used. Release signing and broader device/accessibility acceptance remain open.

@@ -8,10 +8,43 @@ import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.Transaction
 import com.ralledger.domain.model.TransactionType
 import org.junit.Assert.assertEquals
+import org.junit.Assert.fail
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TransactionCsvImporterTest {
+    @Test
+    fun rejectsCsvCellBudgetOverflowDuringScanning() {
+        val text = buildString {
+            repeat(5_001) { rowIndex ->
+                if (rowIndex > 0) append('\n')
+                repeat(100) { columnIndex ->
+                    if (columnIndex > 0) append(',')
+                    append('x')
+                }
+            }
+        }
+
+        try {
+            TransactionCsvImporter.parse(text)
+            fail("CSV input beyond the total cell limit must be rejected")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("The CSV file has more than 500,000 cells", error.message)
+        }
+    }
+
+    @Test
+    fun rejectsCsvFieldOverflowWhileScanning() {
+        val text = "Header\n" + "x".repeat(TransactionCsvImporter.MAX_CELL_LENGTH + 1)
+
+        try {
+            TransactionCsvImporter.parse(text)
+            fail("A CSV field beyond the length limit must be rejected")
+        } catch (error: IllegalArgumentException) {
+            assertEquals("A CSV field is too large", error.message)
+        }
+    }
+
     @Test
     fun parsesQuotedCommasQuotesAndMultilineCells() {
         val document = TransactionCsvImporter.parse(

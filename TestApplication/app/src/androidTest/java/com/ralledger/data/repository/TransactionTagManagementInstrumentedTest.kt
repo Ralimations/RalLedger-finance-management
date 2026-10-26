@@ -55,12 +55,31 @@ class TransactionTagManagementInstrumentedTest {
 
             repository.setTransactionTagArchived(groceriesId, true)
             repository.setJournalEntryTags(originalEntry.id, setOf(groceriesId))
-            repository.recordExpense("tag_wallet", "tag_expense", Money(500L), "Dinner")
-            val secondEntry = database.journalDao().getAllJournalEntries().single { it.description == "Dinner" }
-            assertTrue(runCatching { repository.setJournalEntryTags(secondEntry.id, setOf(groceriesId)) }.isFailure)
+            val entriesBeforeRejectedPost = database.journalDao().getAllJournalEntries().size
+            assertTrue(
+                runCatching {
+                    repository.recordExpense(
+                        "tag_wallet",
+                        "tag_expense",
+                        Money(500L),
+                        "Dinner",
+                        tagIds = setOf(groceriesId)
+                    )
+                }.isFailure
+            )
+            assertEquals(entriesBeforeRejectedPost, database.journalDao().getAllJournalEntries().size)
             repository.setTransactionTagArchived(groceriesId, false)
-            repository.setJournalEntryTags(secondEntry.id, setOf(groceriesId))
-            assertFalse(repository.transactionsFlow.first().single { it.id == secondEntry.id }.tagNames.isEmpty())
+            repository.recordExpense(
+                "tag_wallet",
+                "tag_expense",
+                Money(500L),
+                "Dinner",
+                tagIds = setOf(groceriesId)
+            )
+            val taggedDinner = repository.transactionsFlow.first().single { it.description == "Dinner" }
+            assertEquals(setOf(groceriesId), taggedDinner.tagIds)
+            assertEquals(listOf("Market"), taggedDinner.tagNames)
+            assertFalse(taggedDinner.tagNames.isEmpty())
             assertTrue(runCatching { repository.deleteUnusedTransactionTag(groceriesId) }.isFailure)
         } finally {
             database.close()

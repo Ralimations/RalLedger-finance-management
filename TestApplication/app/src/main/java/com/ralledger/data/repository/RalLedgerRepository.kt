@@ -1721,7 +1721,8 @@ class RalLedgerRepository(
         categoryId: String? = null,
         counterparty: String = "",
         notes: String = "",
-        reversesEntryId: String? = null
+        reversesEntryId: String? = null,
+        tagIds: Set<String> = emptySet()
     ) {
         require(entry.isBalanced()) { "Journal entry is unbalanced and cannot be posted" }
         val entryEntity = JournalEntryEntity(
@@ -1750,6 +1751,16 @@ class RalLedgerRepository(
         }
 
         journalDao.insertJournalEntryWithLines(entryEntity, lineEntities)
+        if (tagIds.isNotEmpty()) {
+            val tags = tagIds.map { tagId ->
+                transactionTagDao.getTagById(tagId)
+                    ?: throw IllegalArgumentException("One of the selected labels no longer exists")
+            }
+            require(tags.none { it.isArchived }) { "Restore an archived label before using it" }
+            transactionTagDao.insertAssignments(tags.map { tag ->
+                JournalEntryTagEntity(journalEntryId = entry.id, tagId = tag.id)
+            })
+        }
     }
 
     suspend fun recordIncome(
@@ -1759,13 +1770,25 @@ class RalLedgerRepository(
         description: String,
         counterparty: String = "",
         notes: String = "",
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        tagIds: Set<String> = emptySet()
     ) {
         database.withTransaction {
             validateFinancialAccount(accountId)
             validateCategory(categoryId, CategoryType.INCOME)
             val entry = AccountingEngine.createIncomeEntry(accountId, categoryId, amount, description, timestamp)
-            postJournalEntry(entry, TransactionType.INCOME, amount, Money.ZERO, accountId, null, categoryId, counterparty, notes)
+            postJournalEntry(
+                entry,
+                TransactionType.INCOME,
+                amount,
+                Money.ZERO,
+                accountId,
+                null,
+                categoryId,
+                counterparty,
+                notes,
+                tagIds = tagIds
+            )
         }
     }
 
@@ -1776,13 +1799,25 @@ class RalLedgerRepository(
         description: String,
         counterparty: String = "",
         notes: String = "",
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        tagIds: Set<String> = emptySet()
     ) {
         database.withTransaction {
             validateFinancialAccount(accountId)
             validateCategory(categoryId, CategoryType.EXPENSE)
             val entry = AccountingEngine.createExpenseEntry(accountId, categoryId, amount, description, timestamp)
-            postJournalEntry(entry, TransactionType.EXPENSE, amount, Money.ZERO, accountId, null, categoryId, counterparty, notes)
+            postJournalEntry(
+                entry,
+                TransactionType.EXPENSE,
+                amount,
+                Money.ZERO,
+                accountId,
+                null,
+                categoryId,
+                counterparty,
+                notes,
+                tagIds = tagIds
+            )
         }
     }
 

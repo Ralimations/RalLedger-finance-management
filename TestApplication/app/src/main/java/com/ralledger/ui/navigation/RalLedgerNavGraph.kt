@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Close
@@ -439,6 +440,8 @@ fun QuickAddTransactionDialog(
     var amountStr by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
+    var counterparty by remember { mutableStateOf("") }
+    var selectedTagIds by remember { mutableStateOf(emptySet<String>()) }
     var selectedTimestamp by remember { mutableStateOf(System.currentTimeMillis()) }
     var feeAmountStr by remember { mutableStateOf("") }
     var feeCategoryId by remember { mutableStateOf("") }
@@ -455,6 +458,7 @@ fun QuickAddTransactionDialog(
     var destinationMenuExpanded by remember { mutableStateOf(false) }
     var categoryMenuExpanded by remember { mutableStateOf(false) }
     var feeCategoryMenuExpanded by remember { mutableStateOf(false) }
+    var counterpartyMenuExpanded by remember { mutableStateOf(false) }
     var hasUserEdited by remember { mutableStateOf(false) }
     var showDiscardConfirmation by remember { mutableStateOf(false) }
     var showAdvancedDetails by remember { mutableStateOf(false) }
@@ -478,11 +482,16 @@ fun QuickAddTransactionDialog(
     val accounts by appContainer.repository.accountsFlow.collectAsState(initial = emptyList())
     val categories by appContainer.repository.categoriesFlow.collectAsState(initial = emptyList())
     val transactions by appContainer.repository.transactionsFlow.collectAsState(initial = emptyList())
+    val transactionTags by appContainer.repository.transactionTagsFlow.collectAsState(initial = emptyList())
+    val counterparties by appContainer.repository.counterpartiesFlow.collectAsState(initial = emptyList())
     val eligibleAccounts = accounts.filter { it.accountType.isAsset && !it.isArchived }
     val eligibleCategories = categories.filter {
         !it.isArchived && it.type.name == if (txType == "INCOME") "INCOME" else "EXPENSE"
     }
     val eligibleFeeCategories = categories.filter { !it.isArchived && it.type.name == "EXPENSE" }
+    val eligibleTransactionTags = transactionTags.filterNot { it.isArchived }
+    val eligibleTransactionTagIds = remember(eligibleTransactionTags) { eligibleTransactionTags.map { it.id }.toSet() }
+    val eligibleCounterparties = counterparties.filterNot { it.isArchived }
     val expectedTransactionType = when (txType) {
         "INCOME" -> "INCOME"
         "EXPENSE" -> "EXPENSE"
@@ -533,6 +542,9 @@ fun QuickAddTransactionDialog(
         if (feeCategoryId !in eligibleFeeCategories.map { it.id }) {
             feeCategoryId = eligibleFeeCategories.firstOrNull()?.id.orEmpty()
         }
+    }
+    LaunchedEffect(eligibleTransactionTagIds) {
+        selectedTagIds = selectedTagIds.intersect(eligibleTransactionTagIds)
     }
 
     ModalBottomSheet(
@@ -713,6 +725,78 @@ fun QuickAddTransactionDialog(
                         }
                     }
                 }
+                if (txType != "TRANSFER") {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Tags (optional)", style = androidx.compose.material3.MaterialTheme.typography.labelMedium)
+                        if (eligibleTransactionTags.isEmpty()) {
+                            Text(
+                                "Create labels from Activity to use them here.",
+                                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            eligibleTransactionTags.chunked(2).forEach { tagRow ->
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    tagRow.forEach { tag ->
+                                        FilterChip(
+                                            modifier = Modifier.weight(1f),
+                                            selected = tag.id in selectedTagIds,
+                                            onClick = {
+                                                selectedTagIds = if (tag.id in selectedTagIds) {
+                                                    selectedTagIds - tag.id
+                                                } else {
+                                                    selectedTagIds + tag.id
+                                                }
+                                                hasUserEdited = true
+                                            },
+                                            label = { Text(tag.name, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                        )
+                                    }
+                                    if (tagRow.size == 1) Spacer(Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Counterparty (optional)", style = androidx.compose.material3.MaterialTheme.typography.labelMedium)
+                        Box(modifier = Modifier.fillMaxWidth()) {
+                            OutlinedTextField(
+                                value = counterparty,
+                                onValueChange = { counterparty = it; hasUserEdited = true },
+                                label = { Text("Name") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth(),
+                                trailingIcon = {
+                                    if (eligibleCounterparties.isNotEmpty()) {
+                                        IconButton(
+                                            onClick = { counterpartyMenuExpanded = true },
+                                            modifier = Modifier.semantics { contentDescription = "Choose saved counterparty" }
+                                        ) {
+                                            Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                                        }
+                                    }
+                                }
+                            )
+                            DropdownMenu(
+                                expanded = counterpartyMenuExpanded,
+                                onDismissRequest = { counterpartyMenuExpanded = false }
+                            ) {
+                                eligibleCounterparties
+                                    .filter { it.name.contains(counterparty, ignoreCase = true) }
+                                    .forEach { savedCounterparty ->
+                                        DropdownMenuItem(
+                                            text = { Text(savedCounterparty.name) },
+                                            onClick = {
+                                                counterparty = savedCounterparty.name
+                                                counterpartyMenuExpanded = false
+                                                hasUserEdited = true
+                                            }
+                                        )
+                                    }
+                            }
+                        }
+                    }
+                }
                 FinancialDateTimeSelector(
                     timestamp = selectedTimestamp,
                     onTimestampChange = { selectedTimestamp = it; hasUserEdited = true }
@@ -771,16 +855,20 @@ fun QuickAddTransactionDialog(
                                         categoryId,
                                         amountToSave,
                                         description,
+                                        counterparty = counterparty.trim(),
                                         notes = notes,
-                                        timestamp = selectedTimestamp
+                                        timestamp = selectedTimestamp,
+                                        tagIds = selectedTagIds
                                     )
                                     "INCOME" -> appContainer.repository.recordIncome(
                                         accountId,
                                         categoryId,
                                         amountToSave,
                                         description,
+                                        counterparty = counterparty.trim(),
                                         notes = notes,
-                                        timestamp = selectedTimestamp
+                                        timestamp = selectedTimestamp,
+                                        tagIds = selectedTagIds
                                     )
                                     else -> appContainer.repository.recordTransfer(
                                         accountId,

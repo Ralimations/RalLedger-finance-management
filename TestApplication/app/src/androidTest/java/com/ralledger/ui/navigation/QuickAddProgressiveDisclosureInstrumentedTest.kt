@@ -11,6 +11,7 @@ import com.ralledger.RalLedgerApplication
 import com.ralledger.domain.model.Account
 import com.ralledger.domain.model.AccountType
 import com.ralledger.domain.model.CategoryType
+import com.ralledger.domain.model.CounterpartyKind
 import com.ralledger.domain.model.Money
 import com.ralledger.domain.model.TransactionType
 import com.ralledger.ui.settings.AppLockPreferences
@@ -44,16 +45,14 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
 
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Add details (optional)") })
             assertTrue(waitForUi(instrumentation) {
-                val text = visibleText(instrumentation)
-                "Description (optional)" in text && "Notes (optional)" in text &&
-                    text.any { it.startsWith("Date ·") } && text.any { it.startsWith("Time ·") }
+                scrollUntilVisible(instrumentation, "Description (optional)")
             })
 
-            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Date ·") })
+            assertTrue(waitForUi(instrumentation) { performClickWithScroll(instrumentation, "Date ·") })
             assertTrue(waitForUi(instrumentation) { "Set date" in visibleText(instrumentation) })
             assertTrue(performClick(instrumentation, "Cancel"))
 
-            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Time ·") })
+            assertTrue(waitForUi(instrumentation) { performClickWithScroll(instrumentation, "Time ·") })
             assertTrue(waitForUi(instrumentation) { "Set time" in visibleText(instrumentation) })
             assertTrue(performClick(instrumentation, "Cancel"))
         } finally {
@@ -63,7 +62,7 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
     }
 
     @Test
-    fun quickAddPersistsTransferNotesFeeCategoryAndTimestamp() {
+    fun quickAddPersistsExpenseTagsAndTransferDetails() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val application = instrumentation.targetContext.applicationContext as RalLedgerApplication
         val repository = application.container.repository
@@ -72,6 +71,8 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
         val destinationId = "phase2-destination-${UUID.randomUUID()}"
         val sourceName = "A Phase II QA source ${sourceId.takeLast(6)}"
         val destinationName = "B Phase II QA destination ${destinationId.takeLast(6)}"
+        val tagName = "Phase II QA label ${sourceId.takeLast(6)}"
+        val counterpartyName = "Phase II QA merchant ${sourceId.takeLast(6)}"
         var wasLockEnabled = false
 
         val expenseCategory = runBlocking {
@@ -104,14 +105,50 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
                 categories.any { it.type == CategoryType.EXPENSE && !it.isArchived }
             }.first { it.type == CategoryType.EXPENSE && !it.isArchived }
         }
+        val tagId = runBlocking { repository.createTransactionTag(tagName, "#1565C0") }
+        runBlocking { repository.createCounterparty(counterpartyName, CounterpartyKind.BOTH) }
 
         var scenario: ActivityScenario<MainActivity>? = null
+        val expenseStartedAt = System.currentTimeMillis()
         val description = "Phase II QA transfer ${sourceId.takeLast(6)}"
         val notes = "Fee and notes save check"
         val startedAt = System.currentTimeMillis()
 
         try {
             scenario = ActivityScenario.launch(MainActivity::class.java)
+            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Quick actions") })
+            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Expense") })
+            assertTrue(waitForUi(instrumentation) {
+                setEditableFieldText(instrumentation, 0, "5.00")
+            })
+            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Add details (optional)") })
+            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Choose saved counterparty") })
+            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, counterpartyName) })
+            assertTrue(waitForUi(instrumentation) { scrollUntilVisible(instrumentation, "Tags (optional)") })
+            assertTrue(waitForUi(instrumentation) { performClick(instrumentation, tagName) })
+            assertTrue(waitForUi(instrumentation) {
+                performClickWithScroll(instrumentation, "Save transaction")
+            })
+            val savedExpense = runBlocking {
+                withTimeout(10_000L) {
+                    repository.transactionsFlow.first { rows ->
+                        rows.any { row ->
+                            row.transactionType == TransactionType.EXPENSE &&
+                                row.amount == Money.parse("5.00") &&
+                                row.tagIds == setOf(tagId) &&
+                                row.timestamp >= expenseStartedAt
+                        }
+                    }.first { row ->
+                        row.transactionType == TransactionType.EXPENSE &&
+                            row.amount == Money.parse("5.00") &&
+                            row.tagIds == setOf(tagId) &&
+                            row.timestamp >= expenseStartedAt
+                    }
+                }
+            }
+            assertEquals(listOf(tagName), savedExpense.tagNames)
+            assertEquals(counterpartyName, savedExpense.counterparty)
+
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Quick actions") })
             assertTrue(waitForUi(instrumentation) { performClick(instrumentation, "Transfer") })
             assertTrue(waitForUi(instrumentation) {
@@ -133,6 +170,9 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
             })
             assertTrue("Could not set description. Inputs: ${describeInputNodes(instrumentation)}", waitForUi(instrumentation) {
                 setEditableFieldText(instrumentation, 2, description)
+            })
+            assertTrue(waitForUi(instrumentation) {
+                scrollUntilVisible(instrumentation, "Notes (optional)")
             })
             assertTrue("Could not set notes. Inputs: ${describeInputNodes(instrumentation)}", waitForUi(instrumentation) {
                 setEditableFieldText(instrumentation, 3, notes)
@@ -173,7 +213,7 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
                 try {
                     withTimeout(10_000L) {
                         repository.accountsFlow.first { accounts ->
-                            accounts.any { it.id == sourceId && it.currentLedgerBalance == Money.parse("390.00") } &&
+                            accounts.any { it.id == sourceId && it.currentLedgerBalance == Money.parse("385.00") } &&
                                 accounts.any { it.id == destinationId && it.currentLedgerBalance == Money.parse("100.00") }
                         }
                     }
@@ -181,7 +221,7 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
                     throw AssertionError("Transfer persisted but both account balances did not update", timeout)
                 }
             }
-            assertEquals(Money.parse("390.00"), balances.first { it.id == sourceId }.currentLedgerBalance)
+            assertEquals(Money.parse("385.00"), balances.first { it.id == sourceId }.currentLedgerBalance)
             assertEquals(Money.parse("100.00"), balances.first { it.id == destinationId }.currentLedgerBalance)
         } finally {
             scenario?.close()

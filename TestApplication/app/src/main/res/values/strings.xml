@@ -1,10 +1,18 @@
 <resources>
-    <string name="app_name">RalLedger</string>
+    <string name="app_name">PesoMind</string>
+    <string name="app_tagline">Peace of mind for your money.</string>
+    <string name="app_philosophy">Select. Use. Forget.</string>
+    <string name="pesomind_mark_description">PesoMind symbol</string>
+    <string name="welcome_title">Welcome to PesoMind</string>
+    <string name="welcome_description">Track your money, plan your finances, and stay in control, all in one simple place.</string>
+    <string name="welcome_get_started">Get Started</string>
+    <string name="welcome_saving">Getting things ready…</string>
+    <string name="welcome_save_error">Couldn’t save your setup. Please try again.</string>
     <string name="widget_title">Available to spend</string>
     <string name="widget_loading">Loading…</string>
-    <string name="widget_available_caption">Tap to open RalLedger</string>
+    <string name="widget_available_caption">Tap to open PesoMind</string>
     <string name="widget_balance_hidden">Balance hidden</string>
-    <string name="widget_unlock_caption">Open RalLedger to unlock</string>
+    <string name="widget_unlock_caption">Open PesoMind to unlock</string>
     <string name="widget_data_unavailable">Data unavailable</string>
     <string name="widget_recovery_caption">Open the app to retry recovery</string>
     <string name="widget_income">+ Income</string>

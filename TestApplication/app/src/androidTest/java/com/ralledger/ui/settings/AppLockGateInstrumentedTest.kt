@@ -61,7 +61,7 @@ class AppLockGateInstrumentedTest {
             var visibleText = emptySet<String>()
             val gateVisible = waitForUi(instrumentation) {
                 visibleText = visibleAccessibilityText(instrumentation)
-                "RalLedger is locked" in visibleText
+                "PesoMind is locked" in visibleText
             }
             assertTrue(
                 "Expected the app-lock gate in the visible UI, found: $visibleText",

@@ -152,7 +152,7 @@ fun QuickActionHubSheet(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (showMoreActions) "More actions" else "Add to RalLedger",
+                        text = if (showMoreActions) "More actions" else "Add to PesoMind",
                         style = MaterialTheme.typography.titleLarge
                     )
                     Text(

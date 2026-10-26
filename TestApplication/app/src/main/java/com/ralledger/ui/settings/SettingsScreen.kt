@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -67,6 +68,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -220,7 +223,7 @@ fun SettingsScreen(
         if (selectedSection == null) {
             Text("Settings", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold))
             Text(
-                "Make RalLedger fit your workflow and keep your data in your control.",
+                "Make PesoMind fit your workflow and keep your data in your control.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -353,7 +356,7 @@ fun SettingsScreen(
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text("App lock", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
                     Text(
-                        if (appLockAvailable) "Require your device fingerprint or screen lock to reopen RalLedger."
+                        if (appLockAvailable) "Require your device fingerprint or screen lock to reopen PesoMind."
                         else "Set up a secure screen lock in Android Settings to enable this feature.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -547,7 +550,7 @@ fun SettingsScreen(
                 Button(
                     onClick = {
                         val date = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
-                        exportTransactions.launch("RalLedger_Transactions_$date.csv")
+                        exportTransactions.launch("PesoMind_Transactions_$date.csv")
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Export Transactions") }
@@ -581,7 +584,7 @@ fun SettingsScreen(
                         if (password.length < 12) {
                             validationError = "Use at least 12 characters before creating or opening a backup."
                         } else {
-                            saveBackup.launch("RalLedger_Backup_${System.currentTimeMillis()}.rlbackup")
+                            saveBackup.launch("PesoMind_Backup_${System.currentTimeMillis()}.rlbackup")
                         }
                     },
                     modifier = Modifier.fillMaxWidth()
@@ -606,7 +609,14 @@ fun SettingsScreen(
         if (selectedSection == SettingsSection.ABOUT) {
         Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                androidx.compose.foundation.Image(
+                    painter = painterResource(com.ralledger.R.drawable.pesomind_wordmark),
+                    contentDescription = "PesoMind. Peace of mind for your money.",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxWidth().height(88.dp)
+                )
                 Text("App Details", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                Text("Select. Use. Forget.", style = MaterialTheme.typography.bodyMedium)
                 Text("Version: 2.0 RC1", style = MaterialTheme.typography.bodySmall)
                 Text("Architecture: Native Android + Room + Double-Entry Accounting Engine", style = MaterialTheme.typography.bodySmall)
                 Text("Mode: Offline-first", style = MaterialTheme.typography.bodySmall)
@@ -650,7 +660,7 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        "Restoring replaces all current RalLedger records on this device.",
+                        "Restoring replaces all current PesoMind records on this device.",
                         color = MaterialTheme.colorScheme.error
                     )
                     preview.validationErrors.forEach { error ->

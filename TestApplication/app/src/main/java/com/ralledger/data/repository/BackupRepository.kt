@@ -421,7 +421,7 @@ class BackupRepository(
         val headerSize = MAGIC.size + Int.SIZE_BYTES + SALT_BYTES + NONCE_BYTES
         require(encrypted.size >= headerSize + TAG_BYTES) { "Backup file is too short" }
         require(encrypted.copyOfRange(0, MAGIC.size).contentEquals(MAGIC)) {
-            "This is not a supported RalLedger encrypted backup"
+            "This is not a supported PesoMind encrypted backup"
         }
         val iterationOffset = MAGIC.size
         val iterations = ByteBuffer.wrap(encrypted, iterationOffset, Int.SIZE_BYTES).int
@@ -496,7 +496,7 @@ class BackupRepository(
         val userPreferences: BackupUserPreferences? = null
     ) {
         fun toJson() = JSONObject().apply {
-            put("appName", "RalLedger")
+            put("appName", "PesoMind")
             put("backupVersion", BACKUP_VERSION)
             put("schemaVersion", RalLedgerDatabase.CURRENT_SCHEMA_VERSION)
             put("createdAt", createdAt)
@@ -1154,7 +1154,9 @@ class BackupRepository(
 
         companion object {
             fun fromJson(json: JSONObject): BackupSnapshot {
-                require(json.getString("appName") == "RalLedger") { "Backup belongs to another application" }
+                require(json.getString("appName") in setOf("PesoMind", "RalLedger")) {
+                    "Backup belongs to another application"
+                }
                 require(json.getInt("backupVersion") == BACKUP_VERSION) { "Unsupported backup version" }
                 val schemaVersion = json.getInt("schemaVersion")
                 require(schemaVersion in 2..RalLedgerDatabase.CURRENT_SCHEMA_VERSION) {

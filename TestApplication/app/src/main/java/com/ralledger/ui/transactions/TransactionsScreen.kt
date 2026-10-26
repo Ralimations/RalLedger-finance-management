@@ -427,7 +427,7 @@ fun TransactionsScreen(
         AlertDialog(
             onDismissRequest = { reverseCandidate = null },
             title = { Text("Void transaction?") },
-            text = { Text("The original stays in your journal. RalLedger will add an offsetting reversal so the account balance remains correct. This cannot be undone.") },
+            text = { Text("The original stays in your journal. PesoMind will add an offsetting reversal so the account balance remains correct. This cannot be undone.") },
             confirmButton = {
                 Button(onClick = {
                     viewModel.reverseTransaction(transaction.journalEntryId)

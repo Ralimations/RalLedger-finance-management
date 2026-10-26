@@ -102,7 +102,7 @@ class SubscriptionReminderReceiver : BroadcastReceiver() {
                 NotificationCompat.Builder(context, CHANNEL_ID)
                     .setSmallIcon(R.drawable.ic_subscription_reminder)
                     .setContentTitle("Upcoming subscription reminder")
-                    .setContentText("Open RalLedger to view the details.")
+                    .setContentText("Open PesoMind to view the details.")
                     .build()
             )
             .setContentIntent(launchApp)

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.io.File
 
 sealed interface StartupState {
     data object Recovering : StartupState
@@ -32,11 +33,25 @@ class RalLedgerApplication : Application() {
     private var startupJob: Job? = null
     private var reminderJob: Job? = null
     private var widgetRefreshJob: Job? = null
+    private var existingInstall = false
 
     override fun onCreate() {
         super.onCreate()
-        container = AppContainer(this)
+        existingInstall = hasExistingInstallState()
+        container = AppContainer(this, existingInstall)
         startStartupRecovery()
+    }
+
+    private fun hasExistingInstallState(): Boolean {
+        if (getDatabasePath("ralledger_db").exists()) return true
+        val dataStoreDirectory = File(filesDir, "datastore")
+        return listOf(
+            "appearance_preferences.preferences_pb",
+            "dashboard_preferences.preferences_pb",
+            "financial_preferences.preferences_pb",
+            "app_lock_preferences.preferences_pb",
+            "backup_restore_journal.preferences_pb"
+        ).any { File(dataStoreDirectory, it).exists() }
     }
 
     fun retryStartupRecovery() {
@@ -50,6 +65,7 @@ class RalLedgerApplication : Application() {
         _startupState.value = StartupState.Recovering
         startupJob = applicationScope.launch {
             try {
+                container.welcomePreferences.markCompleteForExistingInstall()
                 container.backupRepository.recoverPendingRestore()
                 _startupState.value = StartupState.Ready
                 startWidgetRefreshes()

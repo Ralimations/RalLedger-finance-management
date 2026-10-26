@@ -13,4 +13,9 @@
     <color name="widget_text_secondary">#FF625B66</color>
     <color name="widget_action_background">#FFE5DEF0</color>
     <color name="widget_action_text">#FF392A58</color>
+    <color name="pesomind_ocean_blue">#FF00C2FF</color>
+    <color name="pesomind_calm_blue">#FF3B82F6</color>
+    <color name="pesomind_deep_indigo">#FF1E3A8A</color>
+    <color name="pesomind_soft_cyan">#FF4DD0E1</color>
+    <color name="pesomind_splash_background">#FFEAF6FF</color>
 </resources>

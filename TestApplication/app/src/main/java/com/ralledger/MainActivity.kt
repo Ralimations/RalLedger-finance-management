@@ -12,8 +12,12 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -21,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,14 +37,20 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import com.ralledger.ui.navigation.RalLedgerMainScreen
 import com.ralledger.ui.theme.RalLedgerTheme
 import com.ralledger.ui.theme.ThemeSettings
@@ -51,6 +62,9 @@ class MainActivity : FragmentActivity() {
     private var pendingWidgetTransactionType by mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen().setKeepOnScreenCondition {
+            (application as RalLedgerApplication).startupState.value == StartupState.Recovering
+        }
         super.onCreate(savedInstanceState)
         pendingWidgetTransactionType = normalizeWidgetTransactionType(
             intent.getStringExtra(EXTRA_WIDGET_TRANSACTION_TYPE)
@@ -61,6 +75,7 @@ class MainActivity : FragmentActivity() {
             if (startupState == StartupState.Ready) {
             val themeSettings by app.container.themePreferences.settings.collectAsState(initial = ThemeSettings())
             val lockEnabled by app.container.appLockPreferences.enabled.collectAsState(initial = null as Boolean?)
+            val welcomeComplete by app.container.welcomePreferences.isComplete.collectAsState(initial = null as Boolean?)
             val lifecycleOwner = LocalLifecycleOwner.current
             var isForeground by remember {
                 mutableStateOf(lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
@@ -69,6 +84,8 @@ class MainActivity : FragmentActivity() {
             var promptInProgress by remember { mutableStateOf(false) }
             var unlockAttempt by remember { mutableIntStateOf(0) }
             var lockMessage by remember { mutableStateOf<String?>(null) }
+            var welcomeSaveInProgress by remember { mutableStateOf(false) }
+            var welcomeSaveError by remember { mutableStateOf(false) }
             val scope = rememberCoroutineScope()
 
             DisposableEffect(lifecycleOwner) {
@@ -92,11 +109,11 @@ class MainActivity : FragmentActivity() {
                 onDispose { window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
             }
 
-            LaunchedEffect(lockEnabled, isForeground, authenticated, unlockAttempt) {
-                if (lockEnabled == true && isForeground && !authenticated && !promptInProgress && canUseAppLock()) {
+            LaunchedEffect(lockEnabled, welcomeComplete, isForeground, authenticated, unlockAttempt) {
+                if (welcomeComplete == true && lockEnabled == true && isForeground && !authenticated && !promptInProgress && canUseAppLock()) {
                     promptInProgress = true
                     authenticate(
-                        title = "Unlock RalLedger",
+                        title = "Unlock PesoMind",
                         subtitle = "Confirm your device identity to view your finances",
                         onSuccess = { promptInProgress = false; authenticated = true; lockMessage = null },
                         onError = { promptInProgress = false; lockMessage = it }
@@ -117,11 +134,32 @@ class MainActivity : FragmentActivity() {
                     }
                 }
                 when {
-                    lockEnabled == null -> Surface(modifier = Modifier.fillMaxSize()) {
-                        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            CircularProgressIndicator()
+                    lockEnabled == null || welcomeComplete == null -> Surface(modifier = Modifier.fillMaxSize()) {
+                        RalLedgerTheme(settings = ThemeSettings(mode = ThemeMode.LIGHT)) {
+                            PesoMindOpeningScreen(isLoading = true, onRetry = {})
                         }
                     }
+                    welcomeComplete != true -> PesoMindWelcomeScreen(
+                        saveInProgress = welcomeSaveInProgress,
+                        showSaveError = welcomeSaveError,
+                        onGetStarted = {
+                            if (!welcomeSaveInProgress) {
+                                welcomeSaveInProgress = true
+                                welcomeSaveError = false
+                                scope.launch {
+                                    try {
+                                        app.container.welcomePreferences.markComplete()
+                                    } catch (cancelled: CancellationException) {
+                                        throw cancelled
+                                    } catch (_: Exception) {
+                                        welcomeSaveError = true
+                                    } finally {
+                                        welcomeSaveInProgress = false
+                                    }
+                                }
+                            }
+                        }
+                    )
                     lockEnabled == true && !authenticated -> AppLockScreen(
                         message = lockMessage,
                         deviceLockAvailable = canUseAppLock(),
@@ -140,7 +178,7 @@ class MainActivity : FragmentActivity() {
                             } else if (!promptInProgress) {
                                 promptInProgress = true
                                 authenticate(
-                                    title = "Enable RalLedger app lock",
+                                    title = "Enable PesoMind app lock",
                                     subtitle = "Confirm your device identity to protect this app",
                                     onSuccess = {
                                         promptInProgress = false
@@ -158,25 +196,11 @@ class MainActivity : FragmentActivity() {
                 }
             }
             } else {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Column(
-                        modifier = Modifier.fillMaxSize().padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        if (startupState == StartupState.Recovering) {
-                            CircularProgressIndicator()
-                            Text("Preparing your data", modifier = Modifier.padding(top = 16.dp))
-                        } else {
-                            Text("RalLedger couldn't finish recovering your backup.")
-                            Button(
-                                onClick = app::retryStartupRecovery,
-                                modifier = Modifier.padding(top = 16.dp)
-                            ) {
-                                Text("Try again")
-                            }
-                        }
-                    }
+                RalLedgerTheme(settings = ThemeSettings(mode = ThemeMode.LIGHT)) {
+                    PesoMindOpeningScreen(
+                        isLoading = startupState == StartupState.Recovering,
+                        onRetry = app::retryStartupRecovery
+                    )
                 }
             }
         }
@@ -236,6 +260,103 @@ class MainActivity : FragmentActivity() {
     }
 }
 
+@Composable
+private fun PesoMindWelcomeScreen(
+    saveInProgress: Boolean,
+    showSaveError: Boolean,
+    onGetStarted: () -> Unit
+) {
+    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 28.dp, vertical = 32.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Image(
+                painter = painterResource(R.drawable.pesomind_mark),
+                contentDescription = stringResource(R.string.pesomind_mark_description),
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.size(132.dp)
+            )
+            Text(
+                text = stringResource(R.string.welcome_title),
+                modifier = Modifier.fillMaxWidth().padding(top = 28.dp),
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Text(
+                text = stringResource(R.string.app_tagline),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.titleMedium
+            )
+            Text(
+                text = stringResource(R.string.welcome_description),
+                modifier = Modifier.fillMaxWidth().padding(top = 18.dp),
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            if (showSaveError) {
+                Text(
+                    text = stringResource(R.string.welcome_save_error),
+                    modifier = Modifier.padding(top = 12.dp),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            Button(
+                onClick = onGetStarted,
+                enabled = !saveInProgress,
+                modifier = Modifier.fillMaxWidth().padding(top = 32.dp)
+            ) {
+                Text(
+                    text = stringResource(
+                        if (saveInProgress) R.string.welcome_saving else R.string.welcome_get_started
+                    )
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PesoMindOpeningScreen(isLoading: Boolean, onRetry: () -> Unit) {
+    Surface(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Image(
+                painter = painterResource(R.drawable.pesomind_wordmark),
+                contentDescription = stringResource(R.string.app_tagline),
+                contentScale = ContentScale.Fit,
+                modifier = Modifier.fillMaxWidth(0.9f).height(100.dp)
+            )
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.padding(top = 20.dp).size(28.dp),
+                    strokeWidth = 2.dp
+                )
+                Text("Preparing your data", modifier = Modifier.padding(top = 12.dp))
+            } else {
+                Text(
+                    "PesoMind couldn't finish recovering your backup.",
+                    modifier = Modifier.padding(top = 20.dp),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Button(onClick = onRetry, modifier = Modifier.padding(top = 16.dp)) {
+                    Text("Try again")
+                }
+            }
+        }
+    }
+}
+
 @androidx.compose.runtime.Composable
 private fun AppLockScreen(
     message: String?,
@@ -250,7 +371,7 @@ private fun AppLockScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text("RalLedger is locked", style = MaterialTheme.typography.headlineSmall)
+            Text("PesoMind is locked", style = MaterialTheme.typography.headlineSmall)
             Text("Authenticate with your device to continue.", modifier = Modifier.padding(top = 8.dp, bottom = 16.dp))
             message?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(bottom = 12.dp)) }
             Button(onClick = onUnlock, enabled = deviceLockAvailable && !promptInProgress) {

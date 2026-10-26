@@ -55,7 +55,8 @@ private data class QuickActionOption(
     val title: String,
     val detail: String,
     val icon: ImageVector,
-    val action: PlanningQuickAction
+    val action: PlanningQuickAction? = null,
+    val transactionType: String? = null
 )
 
 private data class QuickActionGroup(
@@ -91,6 +92,7 @@ private val quickActionGroups = listOf(
     QuickActionGroup(
         title = "Other financial actions",
         options = listOf(
+            QuickActionOption("Refund", "Record money returned to an expense", Icons.Default.Payments, transactionType = "REFUND"),
             QuickActionOption("Add a bill", "Track an expense you owe", Icons.Default.ArrowUpward, PlanningQuickAction.ADD_BILL),
             QuickActionOption("Add a loan", "Track borrowed money and repayments", Icons.Default.SwapHoriz, PlanningQuickAction.ADD_LOAN),
             QuickActionOption("Interest & deposits", "Review profiles and credited interest", Icons.Default.Savings, PlanningQuickAction.OPEN_INTEREST_PRODUCTS),
@@ -175,7 +177,10 @@ fun QuickActionHubSheet(
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(group.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
                         group.options.forEach { option ->
-                            MoreActionRow(option) { onPlanningActionSelected(option.action) }
+                            MoreActionRow(option) {
+                                option.transactionType?.let(onTransactionSelected)
+                                option.action?.let(onPlanningActionSelected)
+                            }
                         }
                     }
                 }

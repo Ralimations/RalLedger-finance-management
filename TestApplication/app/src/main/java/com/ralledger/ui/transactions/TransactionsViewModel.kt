@@ -248,6 +248,20 @@ class TransactionsViewModel(
         }
     }
 
+    fun recordRefund(
+        accountId: String,
+        categoryId: String,
+        amount: Money,
+        description: String,
+        counterparty: String = "",
+        notes: String = "",
+        timestamp: Long = System.currentTimeMillis()
+    ) {
+        runOperation {
+            repository.recordRefund(accountId, categoryId, amount, description, counterparty, notes, timestamp)
+        }
+    }
+
     fun correctTransaction(journalEntryId: String, correction: TransactionCorrection) {
         runOperation { repository.correctTransaction(journalEntryId, correction) }
     }

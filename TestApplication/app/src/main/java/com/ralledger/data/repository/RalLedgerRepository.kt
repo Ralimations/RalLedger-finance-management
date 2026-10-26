@@ -1883,6 +1883,7 @@ class RalLedgerRepository(
         val fallbackDescription = when (transactionType) {
             TransactionType.INCOME -> "Income transaction"
             TransactionType.EXPENSE -> "Expense transaction"
+            TransactionType.REFUND -> "Refund"
             TransactionType.TRANSFER -> "Transfer between accounts"
             else -> description
         }
@@ -2085,6 +2086,58 @@ class RalLedgerRepository(
                     timestamp
                 )
             }
+        }
+    }
+
+    suspend fun recordRefund(
+        accountId: String,
+        expenseCategoryId: String,
+        amount: Money,
+        description: String,
+        counterparty: String = "",
+        notes: String = "",
+        timestamp: Long = System.currentTimeMillis(),
+        tagIds: Set<String> = emptySet(),
+        submissionId: String? = null
+    ) {
+        database.withTransaction {
+            if (quickAddSubmissionAlreadyPosted(
+                    submissionId,
+                    TransactionType.REFUND,
+                    amount,
+                    Money.ZERO,
+                    accountId,
+                    null,
+                    expenseCategoryId,
+                    description,
+                    counterparty,
+                    notes,
+                    timestamp,
+                    tagIds
+                )
+            ) return@withTransaction
+
+            validateFinancialAccount(accountId)
+            validateCategory(expenseCategoryId, CategoryType.EXPENSE)
+            val entry = AccountingEngine.createRefundEntry(
+                accountId = accountId,
+                expenseCategoryId = expenseCategoryId,
+                amount = amount,
+                description = description,
+                timestamp = timestamp,
+                journalEntryId = submissionId
+            )
+            postJournalEntry(
+                entry = entry,
+                transactionType = TransactionType.REFUND,
+                amount = amount,
+                fee = Money.ZERO,
+                primaryAccountId = accountId,
+                categoryId = expenseCategoryId,
+                counterparty = counterparty,
+                notes = notes,
+                tagIds = tagIds
+            )
         }
     }
 
@@ -2322,6 +2375,18 @@ class RalLedgerRepository(
                                     row.categoryId, row.counterparty, row.notes
                                 )
                             }
+                            TransactionType.REFUND -> {
+                                validateFinancialAccount(row.accountId)
+                                validateCategory(row.categoryId ?: "", CategoryType.EXPENSE)
+                                val entry = AccountingEngine.createRefundEntry(
+                                    row.accountId, row.categoryId ?: "", row.amount, row.description, row.timestamp
+                                )
+                                postedEntryId = entry.id
+                                postJournalEntry(
+                                    entry, TransactionType.REFUND, row.amount, Money.ZERO, row.accountId, null,
+                                    row.categoryId, row.counterparty, row.notes
+                                )
+                            }
                             TransactionType.TRANSFER -> {
                                 validateFinancialAccount(row.accountId)
                                 val destinationId = row.destinationAccountId
@@ -2338,7 +2403,7 @@ class RalLedgerRepository(
                                     destinationId, row.feeCategoryId, row.counterparty, row.notes
                                 )
                             }
-                            else -> throw IllegalArgumentException("Only income, expense and transfer rows can be imported")
+                            else -> throw IllegalArgumentException("This transaction type cannot be imported from a statement")
                         }
                         if (row.tagIds.isNotEmpty()) {
                             val assignableTags = row.tagIds.map { id ->

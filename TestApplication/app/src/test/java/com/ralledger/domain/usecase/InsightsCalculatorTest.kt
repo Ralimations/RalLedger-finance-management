@@ -69,6 +69,26 @@ class InsightsCalculatorTest {
     }
 
     @Test
+    fun refundReducesExpensesAndItsReversalRestoresExpenseOnReversalDate() {
+        val category = Category("food", "Food", CategoryType.EXPENSE)
+        val refundDate = LocalDate.of(2026, 4, 30)
+        val reversalDate = LocalDate.of(2026, 5, 2)
+        val refund = transaction("refund", refundDate, TransactionType.REFUND, 2_500, categoryId = "food")
+        val reversal = transaction(
+            id = "reversal", date = reversalDate, type = TransactionType.REVERSAL,
+            amount = 2_500, categoryId = "food", reverses = refund.journalEntryId
+        )
+
+        val april = InsightsCalculator.calculate(listOf(refund, reversal), listOf(category), period(InsightsPeriodType.MONTH, refundDate), zone)
+        val may = InsightsCalculator.calculate(listOf(refund, reversal), listOf(category), period(InsightsPeriodType.MONTH, reversalDate), zone)
+
+        assertEquals(Money(-2_500), april.expenses)
+        assertEquals(Money(-2_500), april.categoryTotals.single().amount)
+        assertEquals(Money(2_500), may.expenses)
+        assertEquals(Money(2_500), may.categoryTotals.single().amount)
+    }
+
+    @Test
     fun persistedIncomeSourcesAndTransferFeesAreIncludedInTheirBuckets() {
         val source = Category("freelance", "Freelance", CategoryType.INCOME)
         val feeCategory = Category("fees", "Transfer fees", CategoryType.EXPENSE)

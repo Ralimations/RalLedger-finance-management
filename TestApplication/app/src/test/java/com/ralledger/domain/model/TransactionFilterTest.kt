@@ -69,6 +69,15 @@ class TransactionFilterTest {
     }
 
     @Test
+    fun refundMatchesExpenseFilterButNotIncomeOrOther() {
+        val refund = transfer.copy(transactionType = TransactionType.REFUND)
+
+        assertTrue(TransactionFilter(type = TransactionTypeFilter.EXPENSE).matches(refund))
+        assertFalse(TransactionFilter(type = TransactionTypeFilter.INCOME).matches(refund))
+        assertFalse(TransactionFilter(type = TransactionTypeFilter.OTHER).matches(refund))
+    }
+
+    @Test
     fun interestCreditMatchesItsIncomeAndTaxExpenseCategories() {
         val interestCredit = Transaction(
             id = "interest",

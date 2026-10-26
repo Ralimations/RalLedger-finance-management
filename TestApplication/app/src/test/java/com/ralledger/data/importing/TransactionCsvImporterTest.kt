@@ -95,6 +95,36 @@ class TransactionCsvImporterTest {
     }
 
     @Test
+    fun mapsRefundAliasesToExpenseCategoriesAndFindsExistingRefundDuplicates() {
+        val document = TransactionCsvImporter.parse(
+            "Date,Type,Amount,Account,Category,Description\n" +
+                "2026-02-03,Purchase Return,12.50,Wallet,Food,Returned groceries\n"
+        )
+        val wallet = Account("wallet", "Wallet", accountType = AccountType.E_WALLET, currency = "PHP")
+        val food = Category("food", "Food", CategoryType.EXPENSE)
+        val existing = Transaction(
+            id = "existing-refund",
+            journalEntryId = "existing-refund",
+            timestamp = java.time.LocalDate.parse("2026-02-03").atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli(),
+            transactionType = TransactionType.REFUND,
+            amount = Money(1_250L),
+            accountId = "wallet",
+            categoryId = "food",
+            description = "Returned groceries"
+        )
+
+        val preview = TransactionCsvImporter.preview(
+            document, TransactionCsvImporter.suggestMapping(document.headers),
+            listOf(wallet), listOf(food), emptyList(), listOf(existing)
+        )
+
+        assertEquals(0, preview.importableCount)
+        assertEquals(1, preview.duplicateCount)
+        assertEquals(TransactionType.REFUND, preview.rows.single().transaction?.transactionType)
+        assertEquals("food", preview.rows.single().transaction?.categoryId)
+    }
+
+    @Test
     fun keepsIdenticalRowsFromTheSameStatementAndFlagsPossibleOverlap() {
         val document = TransactionCsvImporter.parse(
             "Date,Type,Amount,Account,Category,Description,Counterparty\n" +

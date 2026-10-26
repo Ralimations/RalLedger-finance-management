@@ -289,8 +289,13 @@ object TransactionCsvImporter {
                         activeCategories,
                         CategoryType.EXPENSE
                     )
+                    TransactionType.REFUND -> resolveCategory(
+                        value(mapping.category).ifBlank { mapping.defaultExpenseCategoryId.orEmpty() },
+                        activeCategories,
+                        CategoryType.EXPENSE
+                    )
                     TransactionType.TRANSFER -> null
-                    else -> throw IllegalArgumentException("Only income, expense and transfer rows can be imported")
+                    else -> throw IllegalArgumentException("This transaction type cannot be imported from a statement")
                 }
                 val counterparty = value(mapping.counterparty)
                 val description = value(mapping.description).ifBlank { "Imported transaction" }
@@ -434,7 +439,7 @@ object TransactionCsvImporter {
     ).joinToString("\u0000")
 
     private fun duplicateKey(transaction: Transaction): String? {
-        if (transaction.transactionType !in setOf(TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.TRANSFER)) return null
+        if (transaction.transactionType !in setOf(TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.TRANSFER, TransactionType.REFUND)) return null
         val date = Instant.ofEpochMilli(transaction.timestamp).atZone(ZoneId.systemDefault()).toLocalDate().toString()
         return listOf(
             date, transaction.transactionType.name, transaction.amount.centavos, transaction.fee.centavos,
@@ -451,6 +456,7 @@ object TransactionCsvImporter {
         return when (raw.trim().lowercase(Locale.ROOT).replace('_', ' ').replace('-', ' ')) {
             "income", "credit", "deposit", "money in", "received" -> TransactionType.INCOME
             "expense", "debit", "withdrawal", "money out", "payment", "purchase" -> TransactionType.EXPENSE
+            "refund", "refund received", "return", "purchase return" -> TransactionType.REFUND
             "transfer", "internal transfer", "account transfer" -> TransactionType.TRANSFER
             else -> throw IllegalArgumentException("Unsupported transaction type: $raw")
         }

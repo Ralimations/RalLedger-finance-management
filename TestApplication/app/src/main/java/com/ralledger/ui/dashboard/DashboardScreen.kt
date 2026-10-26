@@ -351,6 +351,7 @@ private fun RecentTransactionsCard(transactions: List<Transaction>, onSeeAll: ()
 private fun RecentTransactionRow(transaction: Transaction) {
     val isIncoming = transaction.transactionType in setOf(
         TransactionType.INCOME,
+        TransactionType.REFUND,
         TransactionType.INTEREST_CREDIT,
         TransactionType.RECEIVABLE_COLLECTION,
         TransactionType.LOAN_DISBURSEMENT

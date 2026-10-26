@@ -16,12 +16,13 @@ object BudgetSpendingCalculator {
                 TransactionType.EXPENSE, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_RECOGNITION,
                 TransactionType.SUBSCRIPTION_PAYMENT ->
                     transaction.categoryId to transaction.amount.centavos
+                TransactionType.REFUND -> transaction.categoryId to -transaction.amount.centavos
                 TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT, TransactionType.TRANSFER ->
                     transaction.categoryId to transaction.fee.centavos
                 TransactionType.INTEREST_CREDIT -> transaction.secondaryCategoryId to transaction.fee.centavos
                 else -> null to 0L
             }
-            if (categoryId == null || amount <= 0L) return@forEach
+            if (categoryId == null || amount == 0L) return@forEach
 
             val calendar = Calendar.getInstance().apply { timeInMillis = transaction.timestamp }
             val key = BudgetSpendingKey(
@@ -31,6 +32,7 @@ object BudgetSpendingCalculator {
             )
             spending[key] = Math.addExact(spending[key] ?: 0L, amount)
         }
-        return spending.mapValues { Money(it.value) }
+        // A refund can offset spending in its month, but cannot make budget usage negative.
+        return spending.mapValues { Money(it.value.coerceAtLeast(0L)) }
     }
 }

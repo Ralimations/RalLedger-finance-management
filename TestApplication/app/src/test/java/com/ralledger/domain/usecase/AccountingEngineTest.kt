@@ -49,6 +49,24 @@ class AccountingEngineTest {
     }
 
     @Test
+    fun refund_createsBalancedDebitAssetAndCreditExpense() {
+        val amount = Money(2_350L)
+        val entry = AccountingEngine.createRefundEntry(
+            accountId = "wallet_1",
+            expenseCategoryId = "cat_food",
+            amount = amount,
+            description = "Returned groceries"
+        )
+
+        assertTrue(entry.isBalanced())
+        assertEquals("wallet_1", entry.lines.single { it.lineType == LineType.DEBIT }.accountId)
+        assertEquals("cat_food", entry.lines.single { it.lineType == LineType.CREDIT }.accountId)
+        assertTrue(runCatching {
+            AccountingEngine.createRefundEntry("wallet_1", "cat_food", Money.ZERO, "Invalid")
+        }.isFailure)
+    }
+
+    @Test
     fun transferWithFee_preservesTotalBalanceAndRecordsFeeOnce() {
         val transferAmount = Money(200000L) // 2,000.00 PHP
         val feeAmount = Money(1500L) // 15.00 PHP

@@ -123,6 +123,30 @@ object AccountingEngine {
         return entry
     }
 
+    /** Records money returned to an asset account as a credit against an expense category. */
+    fun createRefundEntry(
+        accountId: String,
+        expenseCategoryId: String,
+        amount: Money,
+        description: String,
+        timestamp: Long = System.currentTimeMillis(),
+        journalEntryId: String? = null
+    ): JournalEntry {
+        require(amount.isPositive) { "Refund amount must be positive" }
+        val entryId = journalEntryId ?: UUID.randomUUID().toString()
+        val entry = JournalEntry(
+            id = entryId,
+            timestamp = timestamp,
+            description = description.ifBlank { "Refund" },
+            lines = listOf(
+                JournalLine(UUID.randomUUID().toString(), entryId, accountId, LineType.DEBIT, amount),
+                JournalLine(UUID.randomUUID().toString(), entryId, expenseCategoryId, LineType.CREDIT, amount)
+            )
+        )
+        check(entry.isBalanced()) { "Refund journal entry must be balanced" }
+        return entry
+    }
+
     fun createTransferEntry(
         sourceAccountId: String,
         destinationAccountId: String,

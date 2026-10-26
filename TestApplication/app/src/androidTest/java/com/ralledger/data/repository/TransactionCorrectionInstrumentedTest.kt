@@ -23,6 +23,46 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class TransactionCorrectionInstrumentedTest {
     @Test
+    fun refundPostsAgainstExpenseAndReversalRestoresBothBalances() = runBlocking {
+        val database = inMemoryDatabase(InstrumentationRegistry.getInstrumentation().targetContext)
+        try {
+            seedAccountsAndCategories(database)
+            val repository = RalLedgerRepository(database)
+            val submissionId = "refund-submission"
+            repeat(2) {
+                repository.recordRefund(
+                    accountId = "wallet_a",
+                    expenseCategoryId = "expense_food",
+                    amount = Money(2_500L),
+                    description = "Returned groceries",
+                    timestamp = 10_000L,
+                    submissionId = submissionId
+                )
+            }
+
+            val original = database.journalDao().getAllJournalEntries().single()
+            assertEquals(TransactionType.REFUND.name, original.transactionType)
+            assertEquals(2, database.journalDao().getLinesForJournalEntry(original.id).size)
+            assertEquals(2_500L, accountBalance(database, "wallet_a"))
+            assertEquals(-2_500L, accountBalance(database, "expense_food"))
+            assertEquals(1, database.journalDao().getAllJournalEntries().size)
+            assertTrue(runCatching {
+                repository.recordRefund("wallet_a", "income_salary", Money(500L), "Invalid category")
+            }.isFailure)
+            assertEquals(1, database.journalDao().getAllJournalEntries().size)
+
+            repository.reverseTransaction(original.id)
+
+            assertEquals(0L, accountBalance(database, "wallet_a"))
+            assertEquals(0L, accountBalance(database, "expense_food"))
+            assertEquals(TransactionType.REVERSAL.name, database.journalDao().getReversalForEntry(original.id)?.transactionType)
+            database.journalDao().getAllJournalEntries().forEach { assertBalanced(database, it.id) }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun correctionPostsReversalAndReplacementAtomicallyAndKeepsOriginal() = runBlocking {
         val database = inMemoryDatabase(InstrumentationRegistry.getInstrumentation().targetContext)
         try {

@@ -216,6 +216,7 @@ private fun CsvImportPreviewCard(row: CsvImportPreviewRow, state: CsvImportUiSta
                 val typeLabel = when (transaction.transactionType.name) {
                     "INCOME" -> "Income"
                     "EXPENSE" -> "Expense"
+                    "REFUND" -> "Refund"
                     "TRANSFER" -> "Transfer"
                     else -> transaction.transactionType.name.lowercase(Locale.getDefault())
                         .replaceFirstChar { it.uppercase(Locale.getDefault()) }

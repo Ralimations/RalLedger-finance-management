@@ -5,6 +5,7 @@ enum class TransactionType(val displayName: String) {
     INTEREST_CREDIT("Interest Credit"),
     SUBSCRIPTION_PAYMENT("Subscription Payment"),
     EXPENSE("Expense"),
+    REFUND("Refund"),
     TRANSFER("Transfer"),
     RECEIVABLE_RECOGNITION("Receivable Recognized"),
     RECEIVABLE_COLLECTION("Receivable Collection"),

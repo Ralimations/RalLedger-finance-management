@@ -234,6 +234,13 @@ object InsightsCalculator {
                 subscriptionPayments = if (transaction.transactionType == TransactionType.SUBSCRIPTION_PAYMENT) transaction.amount else Money.ZERO,
                 categoryExpenses = listOf(Triple(expenseCategory.first, expenseCategory.second, transaction.amount))
             )
+            TransactionType.REFUND -> {
+                val offset = Money.ZERO - transaction.amount
+                Event(
+                    expenses = offset,
+                    categoryExpenses = listOf(Triple(expenseCategory.first, expenseCategory.second, offset))
+                )
+            }
             TransactionType.RECEIVABLE_COLLECTION -> Event(receivablesCollected = transaction.amount)
             TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> {
                 val interestCategory = category(transaction.categoryId, transaction.categoryName, "interest-expense")

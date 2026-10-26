@@ -8,6 +8,7 @@ internal fun accountTransactionDirection(transaction: Transaction, accountId: St
     transaction.transactionType == TransactionType.TRANSFER && transaction.accountId == accountId -> "−"
     transaction.transactionType in setOf(
         TransactionType.INCOME,
+        TransactionType.REFUND,
         TransactionType.INTEREST_CREDIT,
         TransactionType.RECEIVABLE_COLLECTION,
         TransactionType.LOAN_DISBURSEMENT

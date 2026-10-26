@@ -26,6 +26,7 @@ data class TransactionFilter(
             TransactionTypeFilter.INCOME -> transaction.transactionType in setOf(TransactionType.INCOME, TransactionType.INTEREST_CREDIT)
             TransactionTypeFilter.EXPENSE -> transaction.transactionType in setOf(
                 TransactionType.EXPENSE,
+                TransactionType.REFUND,
                 TransactionType.RECEIVABLE_WRITEOFF,
                 TransactionType.PAYABLE_RECOGNITION,
                 TransactionType.SUBSCRIPTION_PAYMENT
@@ -33,6 +34,7 @@ data class TransactionFilter(
             TransactionTypeFilter.TRANSFER -> transaction.transactionType == TransactionType.TRANSFER
             TransactionTypeFilter.OTHER -> transaction.transactionType !in setOf(
                 TransactionType.INCOME, TransactionType.INTEREST_CREDIT, TransactionType.EXPENSE,
+                TransactionType.REFUND,
                 TransactionType.RECEIVABLE_WRITEOFF, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.TRANSFER
             )
         }

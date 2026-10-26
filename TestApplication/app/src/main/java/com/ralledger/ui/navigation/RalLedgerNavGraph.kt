@@ -124,6 +124,7 @@ import com.ralledger.ui.transactions.TransactionTemplatesDialog
 import com.ralledger.ui.transactions.TransactionsScreen
 import com.ralledger.ui.transactions.TransactionsViewModel
 import com.ralledger.ui.widgets.normalizeWidgetTransactionType
+import com.ralledger.ui.widgets.normalizeQuickAddTransactionType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -491,8 +492,8 @@ fun QuickAddTransactionDialog(
 ) {
     val scope = rememberCoroutineScope()
     var txType by rememberSaveable(initialTransactionType, initialRecurringTransaction?.id) {
-        mutableStateOf(initialRecurringTransaction?.transactionType?.name ?: normalizeWidgetTransactionType(initialTransactionType) ?: "EXPENSE")
-    } // EXPENSE, INCOME, TRANSFER
+        mutableStateOf(initialRecurringTransaction?.transactionType?.name ?: normalizeQuickAddTransactionType(initialTransactionType) ?: "EXPENSE")
+    } // EXPENSE, INCOME, TRANSFER, REFUND
     var draftSubmissionId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
     var amountStr by rememberSaveable(initialRecurringTransaction?.id) { mutableStateOf(initialRecurringTransaction?.amount?.let(::quickAddAmountInput).orEmpty()) }
     var description by rememberSaveable(initialRecurringTransaction?.id) { mutableStateOf(initialRecurringTransaction?.description.orEmpty()) }
@@ -537,7 +538,12 @@ fun QuickAddTransactionDialog(
     val screenWidthDp = LocalConfiguration.current.screenWidthDp
     val fontScale = LocalDensity.current.fontScale
     val useTwoColumnTypeSelector = screenWidthDp < 380 || (fontScale >= 1.2f && screenWidthDp < 460)
-    val transactionTypes = listOf("EXPENSE" to "Expense", "INCOME" to "Income", "TRANSFER" to "Transfer")
+    val transactionTypes = buildList {
+        add("EXPENSE" to "Expense")
+        add("INCOME" to "Income")
+        add("TRANSFER" to "Transfer")
+        if (initialRecurringTransaction == null) add("REFUND" to "Refund")
+    }
     val transactionTypeRows = if (useTwoColumnTypeSelector) transactionTypes.chunked(2) else listOf(transactionTypes)
     val requestDismiss = {
         when (quickAddDismissAction(hasUserEdited, isSaving)) {
@@ -577,7 +583,7 @@ fun QuickAddTransactionDialog(
     val eligibleCounterparties = counterparties.filterNot { it.isArchived }
     val expectedTransactionType = when (txType) {
         "INCOME" -> "INCOME"
-        "EXPENSE" -> "EXPENSE"
+        "EXPENSE", "REFUND" -> "EXPENSE"
         else -> null
     }
     val lastRelevantTransaction = expectedTransactionType?.let { type ->
@@ -649,6 +655,7 @@ fun QuickAddTransactionDialog(
                         when (txType) {
                             "INCOME" -> "Add income"
                             "TRANSFER" -> "Transfer money"
+                            "REFUND" -> "Record refund"
                             else -> "Add expense"
                         },
                         style = androidx.compose.material3.MaterialTheme.typography.titleLarge
@@ -684,6 +691,14 @@ fun QuickAddTransactionDialog(
                 }
             }
 
+            if (txType == "REFUND") {
+                Text(
+                    "Money returned to an expense category. It increases this account and reduces spending; it is not income.",
+                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                    color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
             AccountBalancesSummary(accounts)
 
             MoneyAmountField(
@@ -694,7 +709,10 @@ fun QuickAddTransactionDialog(
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Account", style = androidx.compose.material3.MaterialTheme.typography.labelMedium)
+                Text(
+                    if (txType == "REFUND") "Account receiving refund" else "Account",
+                    style = androidx.compose.material3.MaterialTheme.typography.labelMedium
+                )
                 Box(modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(
                         onClick = { accountMenuExpanded = true },
@@ -762,7 +780,11 @@ fun QuickAddTransactionDialog(
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        if (txType == "INCOME") "Income source" else "Category",
+                        when (txType) {
+                            "INCOME" -> "Income source"
+                            "REFUND" -> "Expense category"
+                            else -> "Category"
+                        },
                         style = androidx.compose.material3.MaterialTheme.typography.labelMedium
                     )
                     Box(modifier = Modifier.fillMaxWidth()) {
@@ -796,7 +818,7 @@ fun QuickAddTransactionDialog(
                     }
             }
 
-            if (txType != "TRANSFER" && initialRecurringTransaction == null) {
+            if (txType in setOf("INCOME", "EXPENSE") && initialRecurringTransaction == null) {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     FilterChip(
                         selected = repeatEnabled,
@@ -1025,6 +1047,17 @@ fun QuickAddTransactionDialog(
                                         recurringTransactionId = initialRecurringTransaction?.id,
                                         recurrenceOccurrenceIndex = initialRecurringTransaction?.let { recurringOccurrenceIndex ?: it.nextOccurrenceIndex }
                                     )
+                                    "REFUND" -> appContainer.repository.recordRefund(
+                                        accountId = accountId,
+                                        expenseCategoryId = categoryId,
+                                        amount = amountToSave,
+                                        description = description,
+                                        counterparty = counterparty.trim(),
+                                        notes = notes,
+                                        timestamp = selectedTimestamp,
+                                        tagIds = selectedTagIds,
+                                        submissionId = draftSubmissionId
+                                    )
                                     else -> appContainer.repository.recordTransfer(
                                         accountId,
                                         destAccountId,
@@ -1047,7 +1080,7 @@ fun QuickAddTransactionDialog(
                     },
                     enabled = !isSaving
                 ) {
-                    Text(if (isSaving) "Saving…" else "Save transaction")
+                    Text(if (isSaving) "Saving…" else if (txType == "REFUND") "Save refund" else "Save transaction")
                 }
             }
             Spacer(Modifier.height(8.dp))

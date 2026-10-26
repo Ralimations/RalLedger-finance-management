@@ -68,6 +68,7 @@ object DashboardSummaryCalculator {
                         monthlyExpenses += transaction.fee
                     }
                     TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT -> monthlyExpenses += transaction.amount
+                    TransactionType.REFUND -> monthlyExpenses -= transaction.amount
                     TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> monthlyExpenses += transaction.amount
                     TransactionType.LOAN_DISBURSEMENT -> monthlyLoanProceeds += transaction.amount
                     TransactionType.REVERSAL -> {
@@ -78,6 +79,7 @@ object DashboardSummaryCalculator {
                                 monthlyExpenses -= transaction.fee
                             }
                             TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT -> monthlyExpenses -= transaction.amount
+                            TransactionType.REFUND -> monthlyExpenses += transaction.amount
                             TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> monthlyExpenses -= transaction.amount
                             TransactionType.LOAN_DISBURSEMENT -> monthlyLoanProceeds -= transaction.amount
                             else -> Unit

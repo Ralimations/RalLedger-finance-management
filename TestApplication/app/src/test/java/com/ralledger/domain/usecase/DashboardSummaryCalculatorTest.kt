@@ -80,7 +80,10 @@ class DashboardSummaryCalculatorTest {
             transaction("subscription_payment", TransactionType.SUBSCRIPTION_PAYMENT, 9_000L),
             transaction("subscription_payment_reversal", TransactionType.REVERSAL, 3_000L, reverses = "subscription_payment"),
             transaction("receivable_writeoff", TransactionType.RECEIVABLE_WRITEOFF, 4_000L),
-            transaction("writeoff_reversal", TransactionType.REVERSAL, 1_000L, reverses = "receivable_writeoff")
+            transaction("writeoff_reversal", TransactionType.REVERSAL, 1_000L, reverses = "receivable_writeoff"),
+            transaction("refund", TransactionType.REFUND, 2_000L),
+            transaction("reversed_refund", TransactionType.REFUND, 500L),
+            transaction("refund_reversal", TransactionType.REVERSAL, 500L, reverses = "reversed_refund")
         )
 
         val summary = DashboardSummaryCalculator.calculate(
@@ -92,8 +95,8 @@ class DashboardSummaryCalculatorTest {
         )
 
         assertEquals(Money(20_000L), summary.monthlyIncomeReceived)
-        assertEquals(Money(16_000L), summary.monthlyExpensesPaid)
-        assertEquals(Money(4_000L), summary.netCashFlow)
+        assertEquals(Money(14_000L), summary.monthlyExpensesPaid)
+        assertEquals(Money(6_000L), summary.netCashFlow)
     }
 
     private fun account(

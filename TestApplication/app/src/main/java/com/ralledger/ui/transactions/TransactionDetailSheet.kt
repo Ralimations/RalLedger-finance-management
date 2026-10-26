@@ -45,13 +45,13 @@ internal fun TransactionDetailSheet(
     onAssignProject: () -> Unit
 ) {
     val tone = when (transaction.transactionType) {
-        INCOME, INTEREST_CREDIT, RECEIVABLE_COLLECTION, LOAN_DISBURSEMENT -> MaterialTheme.colorScheme.secondary
+        INCOME, REFUND, INTEREST_CREDIT, RECEIVABLE_COLLECTION, LOAN_DISBURSEMENT -> MaterialTheme.colorScheme.secondary
         EXPENSE, SUBSCRIPTION_PAYMENT, RECEIVABLE_WRITEOFF, PAYABLE_PAYMENT, LOAN_REPAYMENT -> MaterialTheme.colorScheme.error
         TRANSFER, REVERSAL -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurface
     }
     val prefix = when (transaction.transactionType) {
-        INCOME, INTEREST_CREDIT, RECEIVABLE_COLLECTION, LOAN_DISBURSEMENT -> "+"
+        INCOME, REFUND, INTEREST_CREDIT, RECEIVABLE_COLLECTION, LOAN_DISBURSEMENT -> "+"
         EXPENSE, SUBSCRIPTION_PAYMENT, RECEIVABLE_WRITEOFF, PAYABLE_PAYMENT, LOAN_REPAYMENT -> "−"
         else -> ""
     }
@@ -59,6 +59,7 @@ internal fun TransactionDetailSheet(
         transaction.amount - transaction.fee
     } else transaction.amount
     val canCorrect = transaction.transactionType in setOf(INCOME, EXPENSE, TRANSFER) && !transaction.isReversed
+    val canDuplicate = transaction.transactionType in setOf(INCOME, EXPENSE, TRANSFER, REFUND) && !transaction.isReversed
     val canReverse = transaction.transactionType != REVERSAL && !transaction.isReversed
     val relatedEntries = relatedJournalEntries(transaction, journal)
 
@@ -156,7 +157,7 @@ internal fun TransactionDetailSheet(
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Actions", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 if (canCorrect) TextButton(onClick = onCorrect, modifier = Modifier.fillMaxWidth()) { Text("Edit / Correct") }
-                if (canCorrect) TextButton(onClick = onDuplicate, modifier = Modifier.fillMaxWidth()) { Text("Duplicate") }
+                if (canDuplicate) TextButton(onClick = onDuplicate, modifier = Modifier.fillMaxWidth()) { Text("Duplicate") }
                 if (canReverse) TextButton(onClick = onReverse, modifier = Modifier.fillMaxWidth()) { Text("Reverse / Void") }
                 TextButton(onClick = onManageTags, modifier = Modifier.fillMaxWidth()) { Text("Manage labels") }
                 if (transaction.reversesEntryId == null) {

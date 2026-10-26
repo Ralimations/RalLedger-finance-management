@@ -364,6 +364,12 @@ fun TransactionsScreen(
                 duplicateCandidate = null
                 templateToUse = null
             },
+            onRefund = { accountId, catId, amount, desc, counterparty, notes, timestamp ->
+                viewModel.recordRefund(accountId, catId, amount, desc, counterparty, notes, timestamp)
+                showAddDialog = false
+                duplicateCandidate = null
+                templateToUse = null
+            },
             onCorrect = { correction ->
                 correctionSource?.let { viewModel.correctTransaction(it.journalEntryId, correction) }
                 correctCandidate = null
@@ -647,6 +653,7 @@ private fun TransactionRow(
     onAssignProject: () -> Unit
 ) {
     val isPositive = transaction.transactionType == TransactionType.INCOME ||
+        transaction.transactionType == TransactionType.REFUND ||
         transaction.transactionType == TransactionType.INTEREST_CREDIT ||
         transaction.transactionType == TransactionType.RECEIVABLE_COLLECTION ||
         transaction.transactionType == TransactionType.LOAN_DISBURSEMENT ||
@@ -662,6 +669,7 @@ private fun TransactionRow(
     val canCorrect = transaction.transactionType in setOf(
         TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.TRANSFER
     )
+    val canDuplicate = canCorrect || transaction.transactionType == TransactionType.REFUND
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onOpenDetails),
         shape = RoundedCornerShape(18.dp),
@@ -718,7 +726,7 @@ private fun TransactionRow(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = "${when (transaction.transactionType) {
-                        TransactionType.INCOME, TransactionType.INTEREST_CREDIT, TransactionType.RECEIVABLE_COLLECTION, TransactionType.LOAN_DISBURSEMENT -> "+"
+                        TransactionType.INCOME, TransactionType.REFUND, TransactionType.INTEREST_CREDIT, TransactionType.RECEIVABLE_COLLECTION, TransactionType.LOAN_DISBURSEMENT -> "+"
                         TransactionType.EXPENSE, TransactionType.SUBSCRIPTION_PAYMENT, TransactionType.RECEIVABLE_WRITEOFF, TransactionType.PAYABLE_PAYMENT, TransactionType.LOAN_REPAYMENT -> "−"
                         TransactionType.OPENING_BALANCE, TransactionType.REVERSAL, TransactionType.TRANSFER,
                         TransactionType.BALANCE_ADJUSTMENT, TransactionType.RECEIVABLE_RECOGNITION,
@@ -743,6 +751,8 @@ private fun TransactionRow(
                             }
                             if (canCorrect && !transaction.isReversed) {
                                 DropdownMenuItem(text = { Text("Correct") }, onClick = { actionsExpanded = false; onCorrect() })
+                            }
+                            if (canDuplicate && !transaction.isReversed) {
                                 DropdownMenuItem(text = { Text("Duplicate") }, onClick = { actionsExpanded = false; onDuplicate() })
                             }
                             if (transaction.transactionType != TransactionType.REVERSAL && !transaction.isReversed) {
@@ -768,6 +778,7 @@ internal fun RecordTransactionDialog(
     onIncome: (accountId: String, categoryId: String, amount: Money, desc: String, counterparty: String, notes: String, timestamp: Long) -> Unit,
     onExpense: (accountId: String, categoryId: String, amount: Money, desc: String, counterparty: String, notes: String, timestamp: Long) -> Unit,
     onTransfer: (srcId: String, destId: String, amount: Money, fee: Money, feeCatId: String?, desc: String, notes: String, timestamp: Long) -> Unit,
+    onRefund: (accountId: String, categoryId: String, amount: Money, desc: String, counterparty: String, notes: String, timestamp: Long) -> Unit,
     onCorrect: (TransactionCorrection) -> Unit
 ) {
     val transactionKey = initialTransaction?.journalEntryId ?: template?.id
@@ -775,6 +786,7 @@ internal fun RecordTransactionDialog(
         when (initialTransaction?.transactionType ?: template?.transactionType) {
             TransactionType.INCOME -> 1
             TransactionType.TRANSFER -> 2
+            TransactionType.REFUND -> 3
             else -> 0
         }
     }
@@ -897,6 +909,9 @@ internal fun RecordTransactionDialog(
                     Tab(selected = selectedTab == 0, onClick = { selectTransactionType(0) }, text = { Text("Expense") })
                     Tab(selected = selectedTab == 1, onClick = { selectTransactionType(1) }, text = { Text("Income") })
                     Tab(selected = selectedTab == 2, onClick = { selectTransactionType(2) }, text = { Text("Transfer") })
+                    if (!isCorrection) {
+                        Tab(selected = selectedTab == 3, onClick = { selectTransactionType(3) }, text = { Text("Refund") })
+                    }
                 }
                 if (isCorrection && selectedTab != initialTab) {
                     Text(
@@ -910,7 +925,11 @@ internal fun RecordTransactionDialog(
                     accounts = eligibleAccounts,
                     selectedId = selectedAccountId,
                     onSelect = { selectedAccountId = it },
-                    label = if (selectedTab == 2) "From Account" else "Account"
+                    label = when (selectedTab) {
+                        2 -> "From Account"
+                        3 -> "Account receiving refund"
+                        else -> "Account"
+                    }
                 )
 
                 if (selectedTab == 2) {
@@ -924,7 +943,8 @@ internal fun RecordTransactionDialog(
                     FinancialCategorySelector(
                         categories = visibleCategories,
                         selectedId = selectedCategoryId,
-                        onSelect = { selectedCategoryId = it }
+                        onSelect = { selectedCategoryId = it },
+                        label = if (selectedTab == 3) "Expense category" else "Category"
                     )
                 }
 
@@ -1014,6 +1034,7 @@ internal fun RecordTransactionDialog(
                         }
                         selectedTab == 0 -> onExpense(selectedAccountId, selectedCategoryId, amount, description, counterparty, notes, selectedTimestamp)
                         selectedTab == 1 -> onIncome(selectedAccountId, selectedCategoryId, amount, description, counterparty, notes, selectedTimestamp)
+                        selectedTab == 3 -> onRefund(selectedAccountId, selectedCategoryId, amount, description, counterparty, notes, selectedTimestamp)
                         else -> {
                             onTransfer(selectedAccountId, selectedDestAccountId, amount, fee ?: Money.ZERO, selectedFeeCategoryId.ifBlank { null }, description, notes, selectedTimestamp)
                         }

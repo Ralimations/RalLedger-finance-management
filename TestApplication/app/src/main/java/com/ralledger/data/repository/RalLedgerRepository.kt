@@ -2398,13 +2398,16 @@ class RalLedgerRepository(
             require(journalDao.getReversalForEntry(journalEntryId) == null) {
                 "This transaction has already been corrected or voided"
             }
-            require(correction.transactionType == originalType) { "A correction must keep the original transaction type" }
+            val correctedType = correction.transactionType
+            require(correctedType in setOf(TransactionType.INCOME, TransactionType.EXPENSE, TransactionType.TRANSFER)) {
+                "Choose income, expense, or transfer for the corrected transaction"
+            }
             require(correction.amount.isPositive) { "Enter an amount greater than zero" }
             require(!correction.fee.isNegative) { "Transfer fee cannot be negative" }
             val originalProjectId = financialProjectDao.getProjectIdForEntry(journalEntryId)
 
             validateCorrectionAccount(correction.accountId, originalEntity.primaryAccountId)
-            when (originalType) {
+            when (correctedType) {
                 TransactionType.INCOME -> {
                     require(correction.destinationAccountId == null && correction.fee.isZero) {
                         "Income corrections cannot include a destination account or transfer fee"
@@ -2432,7 +2435,7 @@ class RalLedgerRepository(
             }
 
             reverseTransactionInCurrentTransaction(journalEntryId)
-            val replacement = when (originalType) {
+            val replacement = when (correctedType) {
                 TransactionType.INCOME -> AccountingEngine.createIncomeEntry(
                     correction.accountId,
                     correction.categoryId!!,
@@ -2460,7 +2463,7 @@ class RalLedgerRepository(
             }
             postJournalEntry(
                 entry = replacement,
-                transactionType = originalType,
+                transactionType = correctedType,
                 amount = correction.amount,
                 fee = correction.fee,
                 primaryAccountId = correction.accountId,

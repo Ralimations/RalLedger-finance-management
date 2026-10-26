@@ -108,6 +108,131 @@ class TransactionCorrectionInstrumentedTest {
     }
 
     @Test
+    fun incomeCorrectionCanChangeToExpenseAndKeepsOriginalJournal() = runBlocking {
+        val database = inMemoryDatabase(InstrumentationRegistry.getInstrumentation().targetContext)
+        try {
+            seedAccountsAndCategories(database)
+            val repository = RalLedgerRepository(database)
+            repository.recordIncome("wallet_a", "income_salary", Money(1_000L), "Pay", timestamp = 10_000L)
+            val original = database.journalDao().getAllJournalEntries().single()
+            val originalLines = database.journalDao().getLinesForJournalEntry(original.id)
+
+            repository.correctTransaction(
+                original.id,
+                TransactionCorrection(
+                    transactionType = TransactionType.EXPENSE,
+                    timestamp = 20_000L,
+                    amount = Money(750L),
+                    accountId = "wallet_b",
+                    categoryId = "expense_food",
+                    description = "Corrected purchase"
+                )
+            )
+
+            val entries = database.journalDao().getAllJournalEntries()
+            val reversal = entries.single { it.reversesEntryId == original.id }
+            val replacement = entries.single { it.id != original.id && it.id != reversal.id }
+            assertEquals(original, database.journalDao().getJournalEntryById(original.id))
+            assertEquals(originalLines, database.journalDao().getLinesForJournalEntry(original.id))
+            assertEquals(TransactionType.REVERSAL.name, reversal.transactionType)
+            assertEquals(TransactionType.EXPENSE.name, replacement.transactionType)
+            assertEquals("expense_food", replacement.categoryId)
+            assertEquals(0L, accountBalance(database, "wallet_a"))
+            assertEquals(-750L, accountBalance(database, "wallet_b"))
+            entries.forEach { entry -> assertBalanced(database, entry.id) }
+
+            val unsupported = TransactionCorrection(
+                transactionType = TransactionType.INTEREST_CREDIT,
+                timestamp = 30_000L,
+                amount = Money(100L),
+                accountId = "wallet_a",
+                categoryId = "income_salary"
+            )
+            assertTrue(runCatching { repository.correctTransaction(replacement.id, unsupported) }.isFailure)
+            assertEquals(null, database.journalDao().getReversalForEntry(replacement.id))
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun expenseCorrectionCanChangeToTransferWithFee() = runBlocking {
+        val database = inMemoryDatabase(InstrumentationRegistry.getInstrumentation().targetContext)
+        try {
+            seedAccountsAndCategories(database)
+            val repository = RalLedgerRepository(database)
+            repository.recordExpense("wallet_a", "expense_food", Money(1_000L), "Purchase", timestamp = 10_000L)
+            val original = database.journalDao().getAllJournalEntries().single()
+
+            repository.correctTransaction(
+                original.id,
+                TransactionCorrection(
+                    transactionType = TransactionType.TRANSFER,
+                    timestamp = 20_000L,
+                    amount = Money(2_000L),
+                    fee = Money(100L),
+                    accountId = "wallet_a",
+                    destinationAccountId = "wallet_b",
+                    categoryId = "expense_home",
+                    description = "Corrected transfer"
+                )
+            )
+
+            val entries = database.journalDao().getAllJournalEntries()
+            val reversal = entries.single { it.reversesEntryId == original.id }
+            val replacement = entries.single { it.id != original.id && it.id != reversal.id }
+            assertEquals(TransactionType.REVERSAL.name, reversal.transactionType)
+            assertEquals(TransactionType.TRANSFER.name, replacement.transactionType)
+            assertEquals(2_000L, replacement.amountCentavos)
+            assertEquals(100L, replacement.feeCentavos)
+            assertEquals("wallet_b", replacement.destinationAccountId)
+            assertEquals("expense_home", replacement.categoryId)
+            assertEquals(-2_100L, accountBalance(database, "wallet_a"))
+            assertEquals(2_000L, accountBalance(database, "wallet_b"))
+            entries.forEach { entry -> assertBalanced(database, entry.id) }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
+    fun transferCorrectionCanChangeToIncome() = runBlocking {
+        val database = inMemoryDatabase(InstrumentationRegistry.getInstrumentation().targetContext)
+        try {
+            seedAccountsAndCategories(database)
+            val repository = RalLedgerRepository(database)
+            repository.recordTransfer(
+                "wallet_a", "wallet_b", Money(500L), description = "Move money", timestamp = 10_000L
+            )
+            val original = database.journalDao().getAllJournalEntries().single()
+
+            repository.correctTransaction(
+                original.id,
+                TransactionCorrection(
+                    transactionType = TransactionType.INCOME,
+                    timestamp = 20_000L,
+                    amount = Money(700L),
+                    accountId = "wallet_a",
+                    categoryId = "income_salary",
+                    description = "Corrected income"
+                )
+            )
+
+            val entries = database.journalDao().getAllJournalEntries()
+            val reversal = entries.single { it.reversesEntryId == original.id }
+            val replacement = entries.single { it.id != original.id && it.id != reversal.id }
+            assertEquals(TransactionType.REVERSAL.name, reversal.transactionType)
+            assertEquals(TransactionType.INCOME.name, replacement.transactionType)
+            assertEquals("income_salary", replacement.categoryId)
+            assertEquals(700L, accountBalance(database, "wallet_a"))
+            assertEquals(0L, accountBalance(database, "wallet_b"))
+            entries.forEach { entry -> assertBalanced(database, entry.id) }
+        } finally {
+            database.close()
+        }
+    }
+
+    @Test
     fun linkedReceivablePostingsCannotUseGeneralTransactionCorrection() = runBlocking {
         val database = inMemoryDatabase(InstrumentationRegistry.getInstrumentation().targetContext)
         try {
@@ -163,6 +288,26 @@ class TransactionCorrectionInstrumentedTest {
         colorHex = "#1565C0",
         isDefault = false
     )
+
+    private suspend fun seedAccountsAndCategories(database: RalLedgerDatabase) {
+        database.accountDao().insertAccounts(listOf(account("wallet_a", "Wallet A"), account("wallet_b", "Wallet B")))
+        database.categoryDao().insertCategories(
+            listOf(
+                category("expense_food", "Food", CategoryType.EXPENSE),
+                category("expense_home", "Home", CategoryType.EXPENSE),
+                category("income_salary", "Salary", CategoryType.INCOME)
+            )
+        )
+    }
+
+    private suspend fun assertBalanced(database: RalLedgerDatabase, entryId: String) {
+        val entry = database.journalDao().getJournalEntryById(entryId) ?: error("Journal entry missing")
+        val lines = database.journalDao().getLinesForJournalEntry(entryId).map { it.toDomainModel() }
+        assertTrue(
+            "Every saved journal entry must remain balanced",
+            com.ralledger.domain.model.JournalEntry(entry.id, entry.timestamp, entry.description, lines).isBalanced()
+        )
+    }
 
     private suspend fun accountBalance(database: RalLedgerDatabase, accountId: String): Long =
         database.journalDao().getBalanceAggregateForAccount(accountId).sumOf { aggregate ->

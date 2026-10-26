@@ -758,7 +758,7 @@ private fun TransactionRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RecordTransactionDialog(
+internal fun RecordTransactionDialog(
     accounts: List<Account>,
     categories: List<Category>,
     initialTransaction: Transaction?,
@@ -842,6 +842,16 @@ private fun RecordTransactionDialog(
         description != initialDescription || counterparty != initialCounterparty || notes != initialNotes ||
         selectedTimestamp != initialTimestamp
     val requestDismiss = { if (isDirty) confirmDiscard = true else onDismiss() }
+    val selectTransactionType: (Int) -> Unit = { tab ->
+        selectedTab = tab
+        inputError = null
+        if (tab == 2) {
+            selectedFeeCategoryId = categories.firstOrNull { it.type.name == "EXPENSE" && !it.isArchived }?.id.orEmpty()
+        } else {
+            val type = if (tab == 1) "INCOME" else "EXPENSE"
+            selectedCategoryId = categories.firstOrNull { it.type.name == type && !it.isArchived }?.id.orEmpty()
+        }
+    }
 
     LaunchedEffect(eligibleAccounts) {
         if (eligibleAccounts.none { it.id == selectedAccountId }) {
@@ -883,18 +893,17 @@ private fun RecordTransactionDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (!isCorrection) {
-                    TabRow(selectedTabIndex = selectedTab) {
-                        Tab(selected = selectedTab == 0, onClick = {
-                            selectedTab = 0
-                            selectedCategoryId = categories.firstOrNull { it.type.name == "EXPENSE" && !it.isArchived }?.id.orEmpty()
-                        }, text = { Text("Expense") })
-                        Tab(selected = selectedTab == 1, onClick = {
-                            selectedTab = 1
-                            selectedCategoryId = categories.firstOrNull { it.type.name == "INCOME" && !it.isArchived }?.id.orEmpty()
-                        }, text = { Text("Income") })
-                        Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("Transfer") })
-                    }
+                TabRow(selectedTabIndex = selectedTab) {
+                    Tab(selected = selectedTab == 0, onClick = { selectTransactionType(0) }, text = { Text("Expense") })
+                    Tab(selected = selectedTab == 1, onClick = { selectTransactionType(1) }, text = { Text("Income") })
+                    Tab(selected = selectedTab == 2, onClick = { selectTransactionType(2) }, text = { Text("Transfer") })
+                }
+                if (isCorrection && selectedTab != initialTab) {
+                    Text(
+                        "Saving adds a reversal and a corrected entry. The original stays in history.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
                 FinancialAccountSelector(

@@ -215,8 +215,7 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
                 }
             )
             val templateDraftVisible = waitForUi(instrumentation) {
-                scrollBackwardUntilVisible(instrumentation, "Add expense") &&
-                    "5.00" in editableFieldTexts(instrumentation)
+                scrollBackwardUntilEditableTextVisible(instrumentation, "5.00")
             }
             assertTrue(
                 "Template draft was not visible after scrolling. Visible=${visibleText(instrumentation)} " +
@@ -565,6 +564,18 @@ class QuickAddProgressiveDisclosureInstrumentedTest {
             instrumentation.waitForIdleSync()
         }
         return label in visibleText(instrumentation)
+    }
+
+    private fun scrollBackwardUntilEditableTextVisible(
+        instrumentation: android.app.Instrumentation,
+        expectedText: String
+    ): Boolean {
+        repeat(12) {
+            if (expectedText in editableFieldTexts(instrumentation)) return true
+            if (!performScrollBackward(instrumentation)) return false
+            instrumentation.waitForIdleSync()
+        }
+        return expectedText in editableFieldTexts(instrumentation)
     }
 
     private fun performScrollBackward(instrumentation: android.app.Instrumentation): Boolean {

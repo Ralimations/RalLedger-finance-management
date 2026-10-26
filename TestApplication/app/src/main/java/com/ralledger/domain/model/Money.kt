@@ -23,10 +23,12 @@ data class Money(val centavos: Long = 0L) : Comparable<Money> {
     override fun compareTo(other: Money): Int = this.centavos.compareTo(other.centavos)
 
     fun format(currencyCode: String = "PHP"): String {
-        val format = NumberFormat.getCurrencyInstance(Locale("en", "PH")).apply {
+        val format = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("en-PH")).apply {
             currency = Currency.getInstance(currencyCode)
         }
-        return format.format(centavos / 100.0)
+        // Keep the centavos exact all the way through formatting. Converting to Double
+        // loses centavo precision once values exceed Double's exact integer range.
+        return format.format(BigDecimal.valueOf(centavos, 2))
     }
 
     companion object {

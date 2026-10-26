@@ -142,6 +142,13 @@ class AccountingEngineTest {
     }
 
     @Test
+    fun moneyFormatting_preservesCentavosBeyondDoubleExactIntegerRange() {
+        val amount = Money(9_007_199_254_740_993L)
+
+        assertTrue(amount.format("PHP").endsWith("409.93"))
+    }
+
+    @Test
     fun moneyParser_preservesCentavosAndRejectsMalformedOrRoundedInput() {
         assertEquals(Money(123456L), Money.parse("1,234.56"))
         assertEquals(Money(1L), Money.parse("0.01"))

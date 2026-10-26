@@ -1055,3 +1055,11 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - The upgrade test is an opt-in instrumentation fixture (`upgradePhase=seed` / `upgradePhase=verify`) and is excluded from the standard connected suite so it cannot seed records during general tests. The Quick Add template scroll assertion now reports visible UI state on failure.
 - Final standard verification passed: 124/124 Debug unit tests; 50/50 connected API 37 tests; Debug lint with 37 warnings and 0 errors; Debug and Android-test APK assembly. Debug APK: 77,941,568 bytes, SHA-256 `B8D0FA74598B22A3A8A70861D64906A24ED36624440A950E7E5F46FEC26D9E4E`.
 - Phase II remains active. Production signing and broader device/accessibility acceptance remain open. No push, merge, or publication occurred.
+
+## Exact-centavo display and regression verification — 2026-10-26
+
+- `Money.format` now formats `BigDecimal.valueOf(centavos, 2)` instead of converting stored centavos to `Double`; this preserves exact cents for amounts above the binary floating-point integer precision limit. Added JVM and API 37 instrumentation regressions for a value ending in `.93` at that boundary.
+- Corrected the Quick Add saved-template test to scroll until its amount input is actually visible. The previous helper stopped at a pinned header and caused a false failure. The affected class passed 3/3 tests, then the full suite passed 125/125 Debug unit tests and 51/51 connected API 37 tests. After changing deprecated locale construction to `Locale.forLanguageTag`, the focused JVM and Android money-format tests passed again.
+- Debug and Release lint completed with 37 warnings and 0 errors. Debug, Android-test, and Release APK assembly succeeded. Release remains unsigned and unminified because the owner-managed signing key is not configured.
+- Refreshed `releases/RalLedger-debug.apk` from the verified Debug build: 77,941,568 bytes, SHA-256 `A4A5E3C767911A0005085854328EB512149DE524BA774C6064D713A2D0715B6B`. The unsigned Release artifact is 69,114,532 bytes, SHA-256 `506A2FD0C4BDB7E46ADF5A53BA359012F5B1FEC478C86491BCB3DBF6349F336D`.
+- No real financial data was used. The supplied root logo files remain untouched. Phase II remains in progress; release signing, release runtime validation, broader accessibility/device acceptance, and remaining CRUD gaps remain open. No push, merge, or publication occurred.

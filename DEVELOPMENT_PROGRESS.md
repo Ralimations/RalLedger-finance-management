@@ -1226,3 +1226,9 @@ Baseline: `3cdb31c1d18fe1dace524ad6431c97686ec21faf`
 - Published the authorized fast-forward to `Ralimations/RalLedger-finance-management` `main`, from `1cdd557` through `faadc38`. The remote tree confirms `releases/RalLedger-debug.apk` is present.
 - Refreshed the tracked APK from the current Debug build: 78,028,709 bytes, SHA-256 `4580B89FE1926D6A5B8D62617480AD8E5CAF574597F6E8924434F3000D7911BB`. `apksigner` verified APK Signature Scheme v2; package `com.ralledger`, version 2.0, API 37 target. It uses the Android Debug certificate. GitHub accepted the push and warned that the APK exceeds its recommended 50 MB file size.
 - The separate Release APK remains unsigned and unminified; owner-managed production signing remains open. No real financial data was used. The four untracked root logo assets were left untouched.
+
+## Transaction label manager and filter UI verification — 2026-10-27
+
+- Added accessible descriptions to transaction-filter menu options (“Filter transactions by …”). This disambiguates a label choice from the same label shown on a journal row underneath, and makes filter options clearer to assistive technology.
+- Extended the API 37 Quick Add Compose journey to create a custom label in the journal manager, search for a missing label, restore the list, apply an existing label filter, and verify the tagged transaction remains visible. The focused journey passed 1/1 on `emulator-5554`; the second configured emulator (`emulator-5562`) was offline. Debug lint succeeded with 40 warnings and 0 errors.
+- The run used synthetic QA data and built the Debug app and Android-test APK. The full connected suite, compact-width review, and full TalkBack flow were not rerun. No release artifact was refreshed; production signing remains open.

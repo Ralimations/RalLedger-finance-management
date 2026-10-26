@@ -9,6 +9,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.test.platform.app.InstrumentationRegistry
 import com.ralledger.MainActivity
 import com.ralledger.RalLedgerApplication
@@ -166,6 +169,30 @@ class QuickAddTransactionComposeTest {
         assertEquals(sourceId, savedExpense.accountId)
         assertEquals(expenseCategory.id, savedExpense.categoryId)
 
+        composeRule.onNodeWithContentDescription("Activity").performClick()
+        composeRule.onNodeWithText("Labels").performClick()
+        composeRule.onNodeWithText("Transaction labels").assertIsDisplayed()
+        composeRule.onNodeWithText("Add label").performClick()
+        composeRule.onNodeWithText("New label").assertIsDisplayed()
+        val managedLabel = "QA managed ${sourceId.takeLast(6)}"
+        composeRule.onNodeWithText("Name").performTextInput(managedLabel)
+        composeRule.onNodeWithText("Save").performClick()
+        composeRule.onNodeWithContentDescription("Actions for $managedLabel").assertIsDisplayed()
+        composeRule.onNodeWithText("Search labels").performTextInput("missing label")
+        composeRule.onNodeWithText("No matching labels.").assertIsDisplayed()
+        composeRule.onNodeWithText("Search labels").performTextClearance()
+        composeRule.onNodeWithContentDescription("Actions for $tagName").assertIsDisplayed()
+        composeRule.onNodeWithText("Done").performClick()
+
+        composeRule.onNodeWithContentDescription("Open transaction filters").performClick()
+        composeRule.onNodeWithText("Label: All labels").performClick()
+        composeRule.onNodeWithContentDescription("Filter transactions by label: $tagName").performClick()
+        composeRule.onNodeWithText("Label: $tagName").assertIsDisplayed()
+        composeRule.onNodeWithText("More filters").performTouchInput { swipeDown() }
+        composeRule.waitForIdle()
+        composeRule.onNodeWithText(expenseDescription).assertIsDisplayed()
+        composeRule.onNodeWithContentDescription("Home").performClick()
+
         val entriesBeforeExpenseRetry = runBlocking { repository.transactionsFlow.first().size }
         runBlocking {
             repository.recordExpense(
@@ -266,4 +293,5 @@ class QuickAddTransactionComposeTest {
         assertEquals(Money.parse("385.00"), balances.first { it.id == sourceId }.currentLedgerBalance)
         assertEquals(Money.parse("100.00"), balances.first { it.id == destinationId }.currentLedgerBalance)
     }
+
 }

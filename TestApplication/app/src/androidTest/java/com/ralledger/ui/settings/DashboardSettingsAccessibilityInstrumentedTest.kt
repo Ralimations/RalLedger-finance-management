@@ -44,11 +44,17 @@ class DashboardSettingsAccessibilityInstrumentedTest {
             assertTrue("The dashboard widget controls must appear", waitForUi(instrumentation) {
                 "Dashboard widgets" in visibleAccessibilityText(instrumentation)
             })
-            assertTrue(
-                "Recent transactions must be announced as a labeled switch; controls: ${accessibilityControls(instrumentation)}",
-                waitForUi(instrumentation) {
-                    hasLabeledCheckableNode(instrumentation, "Recent transactions")
+            val recentTransactionsSwitchReachable = waitForUi(instrumentation) {
+                if (hasLabeledCheckableNode(instrumentation, "Recent transactions")) {
+                    true
+                } else {
+                    scrollForward(instrumentation)
+                    false
                 }
+            }
+            assertTrue(
+                "Recent transactions must be reachable as a labeled switch while scrolling; controls: ${accessibilityControls(instrumentation)}",
+                recentTransactionsSwitchReachable
             )
         } finally {
             scenario?.close()
@@ -217,6 +223,28 @@ class DashboardSettingsAccessibilityInstrumentedTest {
         } finally {
             root.recycle()
         }
+    }
+
+    private fun scrollForward(instrumentation: android.app.Instrumentation): Boolean {
+        val root = instrumentation.uiAutomation.rootInActiveWindow ?: return false
+        return try {
+            performScrollForward(root)
+        } finally {
+            root.recycle()
+        }
+    }
+
+    private fun performScrollForward(node: AccessibilityNodeInfo): Boolean {
+        if (node.isScrollable && node.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) return true
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            try {
+                if (performScrollForward(child)) return true
+            } finally {
+                child.recycle()
+            }
+        }
+        return false
     }
 
     private fun dashboardWidgetOrder(instrumentation: android.app.Instrumentation): List<DashboardWidget> {

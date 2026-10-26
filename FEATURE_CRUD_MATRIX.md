@@ -165,3 +165,7 @@ Still requiring explicit manual review: secure-device app-lock setup/unlock/relo
 - Rechecked the refreshed build through Android's file picker using a synthetic selectable-text PDF. The preview showed one ready ₱12.50 income row with date, description, chosen account and category; confirmation reported one added.
 - Verified QAWallet at ₱12.50, the Activity row at +₱12.50, and Home's available-money/net-worth totals after force-stop and relaunch. Cleared the synthetic app profile afterward and confirmed zero totals.
 - The previous unsuccessful recheck note is superseded for this path: the format-neutral success message now works on the current APK. Manual OCR, other statement layouts, and multi-amount mapping remain open.
+
+## Dashboard Settings accessibility — 2026-10-26
+
+- Accessibility verification now scrolls the widget list to reach the Recent transactions switch at compact width and 1.3× text. The focused test passed 2/2; the full connected API 37 suite passed 42/42. No production behavior changed.

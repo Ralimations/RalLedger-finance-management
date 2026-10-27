@@ -162,7 +162,10 @@ fun RalLedgerMainScreen(
     appLockAvailable: Boolean,
     onEnableAppLock: () -> Unit,
     onDisableAppLock: () -> Unit,
-    onOpenSecuritySettings: () -> Unit
+    onOpenSecuritySettings: () -> Unit,
+    recurringReminderScheduleId: String? = null,
+    recurringReminderOccurrenceIndex: Long? = null,
+    onRecurringReminderHandled: () -> Unit = {}
 ) {
     val applicationContext = LocalContext.current.applicationContext
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -177,6 +180,8 @@ fun RalLedgerMainScreen(
     var dialogInitialAccountId by rememberSaveable { mutableStateOf<String?>(null) }
     var dialogInitialRecurringId by rememberSaveable { mutableStateOf<String?>(null) }
     var dialogRecurringOccurrenceIndex by rememberSaveable { mutableStateOf<Long?>(null) }
+    var pendingRecurringReminderScheduleId by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingRecurringReminderOccurrenceIndex by rememberSaveable { mutableStateOf<Long?>(null) }
     val recurringTransactions by appContainer.repository.recurringTransactionsFlow.collectAsState(initial = emptyList())
     var pendingPlanningAction by remember { mutableStateOf<PlanningQuickAction?>(null) }
     val themeSettings by appContainer.themePreferences.settings.collectAsState(initial = ThemeSettings())
@@ -194,6 +199,16 @@ fun RalLedgerMainScreen(
             dialogRecurringOccurrenceIndex = null
             showAddDialog = true
             onWidgetQuickAddHandled()
+        }
+    }
+
+    LaunchedEffect(recurringReminderScheduleId, recurringReminderOccurrenceIndex) {
+        if (recurringReminderScheduleId != null && recurringReminderOccurrenceIndex != null) {
+            pendingRecurringReminderScheduleId = recurringReminderScheduleId
+            pendingRecurringReminderOccurrenceIndex = recurringReminderOccurrenceIndex
+            pendingPlanningAction = PlanningQuickAction.OPEN_RECURRING_TRANSACTIONS
+            navController.navigate(Screen.Planning.route) { launchSingleTop = true }
+            onRecurringReminderHandled()
         }
     }
 
@@ -376,6 +391,12 @@ fun RalLedgerMainScreen(
                         dialogInitialRecurringId = schedule.id
                         dialogRecurringOccurrenceIndex = schedule.nextOccurrenceIndex
                         showAddDialog = true
+                    },
+                    pendingRecurringReminderScheduleId = pendingRecurringReminderScheduleId,
+                    pendingRecurringReminderOccurrenceIndex = pendingRecurringReminderOccurrenceIndex,
+                    onRecurringReminderHandled = {
+                        pendingRecurringReminderScheduleId = null
+                        pendingRecurringReminderOccurrenceIndex = null
                     },
                     quickActionRequest = pendingPlanningAction,
                     onQuickActionHandled = { pendingPlanningAction = null }

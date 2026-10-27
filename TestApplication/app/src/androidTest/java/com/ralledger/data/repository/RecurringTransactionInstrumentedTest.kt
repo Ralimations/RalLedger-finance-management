@@ -39,6 +39,7 @@ class RecurringTransactionInstrumentedTest {
             )
 
             val original = database.recurringTransactionDao().getAll().single()
+            assertEquals(false, original.remindersEnabled)
             val originalOccurrence = database.recurringTransactionDao().getOccurrences(original.id).single()
             repository.updateRecurringTransactionDetails(
                 id = original.id,
@@ -47,7 +48,8 @@ class RecurringTransactionInstrumentedTest {
                 categoryId = "groceries",
                 counterparty = "Market",
                 description = "Weekly groceries",
-                notes = "Use the household card"
+                notes = "Use the household card",
+                remindersEnabled = true
             )
 
             val updated = database.recurringTransactionDao().getById(original.id)!!
@@ -63,6 +65,7 @@ class RecurringTransactionInstrumentedTest {
             assertEquals("Market", updated.counterparty)
             assertEquals("Weekly groceries", updated.description)
             assertEquals("Use the household card", updated.notes)
+            assertEquals(true, updated.remindersEnabled)
             assertEquals(originalOccurrence, database.recurringTransactionDao().getOccurrences(original.id).single())
 
             val historicalEntry = database.journalDao().getJournalEntryById("recurring-edit-original")!!
@@ -139,6 +142,18 @@ class RecurringTransactionInstrumentedTest {
             assertEquals(RecurringTransactionStatus.PAUSED.name, source.recurringTransactionDao().getById(schedule.id)?.status)
             repository.setRecurringTransactionStatus(schedule.id, RecurringTransactionStatus.ACTIVE)
 
+            val current = source.recurringTransactionDao().getById(schedule.id)!!
+            repository.updateRecurringTransactionDetails(
+                id = current.id,
+                expectedUpdatedAt = current.updatedAt,
+                amount = Money(current.amountCentavos),
+                categoryId = current.categoryId,
+                counterparty = current.counterparty,
+                description = current.description,
+                notes = current.notes,
+                remindersEnabled = true
+            )
+
             val password = "recurring-backup-test-password"
             val encrypted = BackupRepository(source).createEncryptedBackup(password)
             val backupRestore = BackupRepository(destination)
@@ -151,6 +166,7 @@ class RecurringTransactionInstrumentedTest {
             val restored = destination.recurringTransactionDao().getAll().single()
             assertEquals(advanced.id, restored.id)
             assertEquals(2L, restored.nextOccurrenceIndex)
+            assertTrue(restored.remindersEnabled)
             assertEquals(2L, destination.recurringTransactionDao().countOccurrences(restored.id))
             val secondPreview = BackupRepository(destination).prepareRestore(
                 BackupRepository(destination).createEncryptedBackup(password), password
@@ -159,6 +175,40 @@ class RecurringTransactionInstrumentedTest {
         } finally {
             source.close()
             destination.close()
+        }
+    }
+
+    @Test
+    fun schema23MigrationDefaultsExistingRecurringRemindersOff() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val databaseName = "recurring-reminder-migration-${System.nanoTime()}.db"
+        val helper = androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory().create(
+            androidx.sqlite.db.SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(databaseName)
+                .callback(object : androidx.sqlite.db.SupportSQLiteOpenHelper.Callback(23) {
+                    override fun onCreate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                        db.execSQL("CREATE TABLE recurring_transactions (id TEXT NOT NULL PRIMARY KEY)")
+                    }
+
+                    override fun onUpgrade(
+                        db: androidx.sqlite.db.SupportSQLiteDatabase,
+                        oldVersion: Int,
+                        newVersion: Int
+                    ) = Unit
+                })
+                .build()
+        )
+        try {
+            val db = helper.writableDatabase
+            db.execSQL("INSERT INTO recurring_transactions (id) VALUES ('existing-schedule')")
+            RalLedgerDatabase.MIGRATION_23_24.migrate(db)
+            db.query("SELECT remindersEnabled FROM recurring_transactions WHERE id = 'existing-schedule'").use { cursor ->
+                assertTrue(cursor.moveToFirst())
+                assertEquals(0, cursor.getInt(0))
+            }
+        } finally {
+            helper.close()
+            context.deleteDatabase(databaseName)
         }
     }
 

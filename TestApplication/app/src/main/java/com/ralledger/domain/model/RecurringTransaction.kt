@@ -31,6 +31,7 @@ data class RecurringTransaction(
     val anchorTimestamp: Long,
     val nextOccurrenceIndex: Long,
     val nextOccurrenceTimestamp: Long,
+    val remindersEnabled: Boolean = false,
     val endTimestamp: Long?,
     val status: RecurringTransactionStatus,
     val createdAt: Long,

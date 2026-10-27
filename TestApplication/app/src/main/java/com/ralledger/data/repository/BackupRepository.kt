@@ -1564,7 +1564,8 @@ private fun RecurringTransactionEntity.toJson() = JSONObject().apply {
     put("accountId", accountId); put("categoryId", categoryId); put("counterparty", counterparty)
     put("description", description); put("notes", notes); put("frequency", frequency); put("timeZoneId", timeZoneId)
     put("anchorTimestamp", anchorTimestamp); put("nextOccurrenceIndex", nextOccurrenceIndex)
-    put("nextOccurrenceTimestamp", nextOccurrenceTimestamp); putNullable("endTimestamp", endTimestamp)
+    put("nextOccurrenceTimestamp", nextOccurrenceTimestamp); put("remindersEnabled", remindersEnabled)
+    putNullable("endTimestamp", endTimestamp)
     put("status", status); put("createdAt", createdAt); put("updatedAt", updatedAt)
 }
 private fun JSONObject.toRecurringTransaction() = RecurringTransactionEntity(
@@ -1573,7 +1574,8 @@ private fun JSONObject.toRecurringTransaction() = RecurringTransactionEntity(
     description = getString("description"), notes = getString("notes"), frequency = getString("frequency"),
     timeZoneId = getString("timeZoneId"), anchorTimestamp = getLong("anchorTimestamp"),
     nextOccurrenceIndex = getLong("nextOccurrenceIndex"), nextOccurrenceTimestamp = getLong("nextOccurrenceTimestamp"),
-    endTimestamp = longOrNull("endTimestamp"), status = getString("status"), createdAt = getLong("createdAt"),
+    remindersEnabled = optBoolean("remindersEnabled", false), endTimestamp = longOrNull("endTimestamp"),
+    status = getString("status"), createdAt = getLong("createdAt"),
     updatedAt = getLong("updatedAt")
 )
 private fun RecurringTransactionTagEntity.toJson() = JSONObject().apply {

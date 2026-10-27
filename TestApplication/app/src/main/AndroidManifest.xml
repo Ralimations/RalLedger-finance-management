@@ -22,6 +22,9 @@
             android:name="com.ralledger.notifications.SubscriptionReminderReceiver"
             android:exported="false" />
         <receiver
+            android:name="com.ralledger.notifications.RecurringTransactionReminderReceiver"
+            android:exported="false" />
+        <receiver
             android:name="com.ralledger.ui.widgets.AvailableMoneyWidgetProvider"
             android:exported="true"
             android:label="@string/widget_title"

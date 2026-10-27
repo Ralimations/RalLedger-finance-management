@@ -30,7 +30,8 @@ class RecurringTransactionsViewModel(
         categoryId: String,
         counterparty: String,
         description: String,
-        notes: String
+        notes: String,
+        remindersEnabled: Boolean
     ) = repository.updateRecurringTransactionDetails(
         id = id,
         expectedUpdatedAt = expectedUpdatedAt,
@@ -38,7 +39,8 @@ class RecurringTransactionsViewModel(
         categoryId = categoryId,
         counterparty = counterparty,
         description = description,
-        notes = notes
+        notes = notes,
+        remindersEnabled = remindersEnabled
     )
 
     class Factory(private val repository: RalLedgerRepository) : ViewModelProvider.Factory {

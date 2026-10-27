@@ -61,9 +61,12 @@ import com.ralledger.ui.theme.ThemeSettings
 import com.ralledger.ui.theme.ThemeMode
 import com.ralledger.ui.widgets.EXTRA_WIDGET_TRANSACTION_TYPE
 import com.ralledger.ui.widgets.normalizeWidgetTransactionType
+import com.ralledger.notifications.RecurringTransactionReminderScheduler
 
 class MainActivity : FragmentActivity() {
     private var pendingWidgetTransactionType by mutableStateOf<String?>(null)
+    private var pendingRecurringReminderScheduleId by mutableStateOf<String?>(null)
+    private var pendingRecurringReminderOccurrenceIndex by mutableStateOf<Long?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen().setKeepOnScreenCondition {
@@ -73,6 +76,7 @@ class MainActivity : FragmentActivity() {
         pendingWidgetTransactionType = normalizeWidgetTransactionType(
             intent.getStringExtra(EXTRA_WIDGET_TRANSACTION_TYPE)
         )
+        readRecurringReminderIntent(intent)
         val app = application as RalLedgerApplication
         setContent {
             val startupState by app.startupState.collectAsState()
@@ -173,6 +177,14 @@ class MainActivity : FragmentActivity() {
                         appContainer = app.container,
                         widgetQuickAddType = pendingWidgetTransactionType,
                         onWidgetQuickAddHandled = { pendingWidgetTransactionType = null },
+                        recurringReminderScheduleId = pendingRecurringReminderScheduleId,
+                        recurringReminderOccurrenceIndex = pendingRecurringReminderOccurrenceIndex,
+                        onRecurringReminderHandled = {
+                            pendingRecurringReminderScheduleId = null
+                            pendingRecurringReminderOccurrenceIndex = null
+                            intent.removeExtra(RecurringTransactionReminderScheduler.EXTRA_SCHEDULE_ID)
+                            intent.removeExtra(RecurringTransactionReminderScheduler.EXTRA_OCCURRENCE_INDEX)
+                        },
                         appLockAvailable = canUseAppLock(),
                         onEnableAppLock = {
                             if (!canUseAppLock()) {
@@ -214,6 +226,21 @@ class MainActivity : FragmentActivity() {
         pendingWidgetTransactionType = normalizeWidgetTransactionType(
             intent.getStringExtra(EXTRA_WIDGET_TRANSACTION_TYPE)
         )
+        readRecurringReminderIntent(intent)
+    }
+
+    private fun readRecurringReminderIntent(source: Intent) {
+        val id = source.getStringExtra(RecurringTransactionReminderScheduler.EXTRA_SCHEDULE_ID)
+        val occurrenceIndex = source.getLongExtra(
+            RecurringTransactionReminderScheduler.EXTRA_OCCURRENCE_INDEX,
+            -1L
+        )
+        pendingRecurringReminderScheduleId = id?.takeIf { it.isNotBlank() }
+        pendingRecurringReminderOccurrenceIndex = occurrenceIndex.takeIf { it > 0L }
+        if (pendingRecurringReminderScheduleId == null || pendingRecurringReminderOccurrenceIndex == null) {
+            pendingRecurringReminderScheduleId = null
+            pendingRecurringReminderOccurrenceIndex = null
+        }
     }
 
     private fun canUseAppLock(): Boolean {

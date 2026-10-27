@@ -100,6 +100,9 @@ fun PlanningScreen(
     financialProjectsViewModel: FinancialProjectsViewModel,
     recurringTransactionsViewModel: RecurringTransactionsViewModel,
     onRecordRecurringTransaction: (com.ralledger.domain.model.RecurringTransaction) -> Unit,
+    pendingRecurringReminderScheduleId: String? = null,
+    pendingRecurringReminderOccurrenceIndex: Long? = null,
+    onRecurringReminderHandled: () -> Unit = {},
     quickActionRequest: PlanningQuickAction? = null,
     onQuickActionHandled: () -> Unit = {}
 ) {
@@ -209,7 +212,10 @@ fun PlanningScreen(
                         10 -> FinancialProjectsScreen(viewModel = financialProjectsViewModel)
                         11 -> RecurringTransactionsScreen(
                             viewModel = recurringTransactionsViewModel,
-                            onRecordNext = onRecordRecurringTransaction
+                            onRecordNext = onRecordRecurringTransaction,
+                            pendingReminderScheduleId = pendingRecurringReminderScheduleId,
+                            pendingReminderOccurrenceIndex = pendingRecurringReminderOccurrenceIndex,
+                            onReminderHandled = onRecurringReminderHandled
                         )
                     }
                 }

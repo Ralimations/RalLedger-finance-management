@@ -813,7 +813,8 @@ class RalLedgerRepository(
         categoryId: String,
         counterparty: String,
         description: String,
-        notes: String
+        notes: String,
+        remindersEnabled: Boolean? = null
     ) {
         require(amount.isPositive) { "Enter an amount greater than zero" }
         database.withTransaction {
@@ -843,6 +844,7 @@ class RalLedgerRepository(
                     counterparty = counterparty.trim(),
                     description = description.trim().ifBlank { fallbackDescription },
                     notes = notes.trim(),
+                    remindersEnabled = remindersEnabled ?: current.remindersEnabled,
                     updatedAt = now
                 )
             )

@@ -4,6 +4,7 @@ import android.app.Application
 import android.appwidget.AppWidgetManager
 import com.ralledger.di.AppContainer
 import com.ralledger.notifications.SubscriptionReminderScheduler
+import com.ralledger.notifications.RecurringTransactionReminderScheduler
 import com.ralledger.ui.widgets.AvailableMoneyWidgetProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +33,7 @@ class RalLedgerApplication : Application() {
     val startupState: StateFlow<StartupState> = _startupState.asStateFlow()
     private var startupJob: Job? = null
     private var reminderJob: Job? = null
+    private var recurringReminderJob: Job? = null
     private var widgetRefreshJob: Job? = null
     private var existingInstall = false
 
@@ -78,6 +80,13 @@ class RalLedgerApplication : Application() {
                             .collect { (subscriptions, settings) ->
                                 SubscriptionReminderScheduler.sync(this@RalLedgerApplication, subscriptions, settings)
                             }
+                    }
+                }
+                if (recurringReminderJob == null) {
+                    recurringReminderJob = applicationScope.launch {
+                        container.repository.recurringTransactionsFlow.collect { schedules ->
+                            RecurringTransactionReminderScheduler.sync(this@RalLedgerApplication, schedules)
+                        }
                     }
                 }
             } catch (error: Exception) {

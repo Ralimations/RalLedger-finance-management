@@ -1,10 +1,12 @@
 package com.ralledger.ui.planning
 
+import android.os.Build
 import androidx.activity.compose.setContent
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
@@ -45,6 +47,12 @@ class RecurringScheduleEditComposeTest {
             runBlocking { application.container.appLockPreferences.setEnabled(false) }
 
             val context = InstrumentationRegistry.getInstrumentation().targetContext
+            if (Build.VERSION.SDK_INT >= 33) {
+                InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(
+                    context.packageName,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                )
+            }
             database = Room.inMemoryDatabaseBuilder(context, RalLedgerDatabase::class.java).build()
             val testDatabase = requireNotNull(database)
             repository = RalLedgerRepository(testDatabase)
@@ -110,6 +118,31 @@ class RecurringScheduleEditComposeTest {
         assertEquals("Use the household card", updated.notes)
         assertEquals(15_000L, posted.amountCentavos)
         assertEquals("Coffee", posted.description)
+    }
+
+    @Test
+    fun recurringReminderSwitchIsOptInAndPersistsWhenSaved() {
+        composeRule.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                RalLedgerTheme {
+                    RecurringTransactionsScreen(
+                        viewModel = RecurringTransactionsViewModel(repository),
+                        onRecordNext = {}
+                    )
+                }
+            }
+        }
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithText("reminders off", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithText("Edit").performClick()
+        composeRule.onNodeWithContentDescription("Remind me to review each scheduled transaction").performClick()
+        composeRule.onNodeWithText("Save changes").performClick()
+        composeRule.waitUntil(10_000) {
+            composeRule.onAllNodesWithText("reminders on", substring = true).fetchSemanticsNodes().isNotEmpty()
+        }
+        val saved = runBlocking { requireNotNull(database).recurringTransactionDao().getById(scheduleId)!! }
+        assertEquals(true, saved.remindersEnabled)
     }
 
     private suspend fun seed(database: RalLedgerDatabase) {

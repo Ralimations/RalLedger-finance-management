@@ -1,5 +1,8 @@
 package com.ralledger.ui.planning
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -17,18 +20,27 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.core.app.NotificationManagerCompat
 import com.ralledger.domain.model.Category
 import com.ralledger.domain.model.CategoryType
 import com.ralledger.domain.model.Money
@@ -48,7 +60,10 @@ import kotlinx.coroutines.launch
 @Composable
 fun RecurringTransactionsScreen(
     viewModel: RecurringTransactionsViewModel,
-    onRecordNext: (RecurringTransaction) -> Unit
+    onRecordNext: (RecurringTransaction) -> Unit,
+    pendingReminderScheduleId: String? = null,
+    pendingReminderOccurrenceIndex: Long? = null,
+    onReminderHandled: () -> Unit = {}
 ) {
     val schedules by viewModel.schedules.collectAsState()
     val accounts by viewModel.accounts.collectAsState()
@@ -58,6 +73,18 @@ fun RecurringTransactionsScreen(
     var editCandidate by remember { mutableStateOf<RecurringTransaction?>(null) }
     var actionError by remember { mutableStateOf<String?>(null) }
     var isSavingEdit by remember { mutableStateOf(false) }
+
+    LaunchedEffect(pendingReminderScheduleId, pendingReminderOccurrenceIndex, schedules) {
+        val schedule = schedules.firstOrNull { it.id == pendingReminderScheduleId }
+        if (schedule != null && pendingReminderOccurrenceIndex != null) {
+            if (schedule.status == RecurringTransactionStatus.ACTIVE &&
+                schedule.nextOccurrenceIndex == pendingReminderOccurrenceIndex
+            ) {
+                onRecordNext(schedule)
+            }
+            onReminderHandled()
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -103,7 +130,7 @@ fun RecurringTransactionsScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        "${schedule.status.name.lowercase().replace('_', ' ')} · next ${formatScheduleDate(schedule.nextOccurrenceTimestamp, schedule.timeZoneId)}",
+                        "${schedule.status.name.lowercase().replace('_', ' ')} · next ${formatScheduleDate(schedule.nextOccurrenceTimestamp, schedule.timeZoneId)} · reminders ${if (schedule.remindersEnabled) "on" else "off"}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -161,7 +188,7 @@ fun RecurringTransactionsScreen(
             categories = categories.filter { it.type == categoryType && !it.isArchived },
             saving = isSavingEdit,
             onDismiss = { if (!isSavingEdit) editCandidate = null },
-            onSave = { amount, categoryId, counterparty, description, notes ->
+            onSave = { amount, categoryId, counterparty, description, notes, remindersEnabled ->
                 scope.launch {
                     isSavingEdit = true
                     runCatching {
@@ -172,7 +199,8 @@ fun RecurringTransactionsScreen(
                             categoryId = categoryId,
                             counterparty = counterparty,
                             description = description,
-                            notes = notes
+                            notes = notes,
+                            remindersEnabled = remindersEnabled
                         )
                     }.onSuccess {
                         editCandidate = null
@@ -194,7 +222,7 @@ private fun RecurringScheduleEditDialog(
     categories: List<Category>,
     saving: Boolean,
     onDismiss: () -> Unit,
-    onSave: (Money, String, String, String, String) -> Unit
+    onSave: (Money, String, String, String, String, Boolean) -> Unit
 ) {
     var amountText by remember(schedule.id) {
         mutableStateOf(BigDecimal.valueOf(schedule.amount.centavos, 2).toPlainString())
@@ -203,7 +231,16 @@ private fun RecurringScheduleEditDialog(
     var counterparty by remember(schedule.id) { mutableStateOf(schedule.counterparty) }
     var description by remember(schedule.id) { mutableStateOf(schedule.description) }
     var notes by remember(schedule.id) { mutableStateOf(schedule.notes) }
+    var remindersEnabled by remember(schedule.id) { mutableStateOf(schedule.remindersEnabled) }
+    var reminderPermissionMessage by remember(schedule.id) { mutableStateOf<String?>(null) }
     var error by remember(schedule.id) { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val requestNotificationPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        remindersEnabled = granted
+        reminderPermissionMessage = if (granted) null else "Allow notifications to turn on recurring reminders."
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -218,6 +255,41 @@ private fun RecurringScheduleEditDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Remind me to review", style = MaterialTheme.typography.titleSmall)
+                        Text(
+                            "On each scheduled date. Nothing is recorded until you confirm it.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = remindersEnabled,
+                        onCheckedChange = { enabled ->
+                            reminderPermissionMessage = null
+                            if (!enabled) {
+                                remindersEnabled = false
+                            } else if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) {
+                                reminderPermissionMessage = "Enable PesoMind notifications in Android settings first."
+                            } else if (
+                                Build.VERSION.SDK_INT >= 33 &&
+                                ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+                                    PackageManager.PERMISSION_GRANTED
+                            ) {
+                                requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                remindersEnabled = true
+                            }
+                        },
+                        modifier = Modifier.semantics {
+                            contentDescription = "Remind me to review each scheduled transaction"
+                        }
+                    )
+                }
+                reminderPermissionMessage?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
                 MoneyAmountField(amountText, { amountText = it; error = null }, "Amount ($currency)")
                 if (categories.isNotEmpty()) {
                     FinancialCategorySelector(
@@ -250,7 +322,7 @@ private fun RecurringScheduleEditDialog(
                     } else if (categories.none { it.id == categoryId }) {
                         error = "Choose an active category."
                     } else {
-                        onSave(amount, categoryId, counterparty, description, notes)
+                        onSave(amount, categoryId, counterparty, description, notes, remindersEnabled)
                     }
                 }
             ) { Text(if (saving) "Saving…" else "Save changes") }

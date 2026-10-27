@@ -111,3 +111,10 @@ Current verification snapshot (2026-10-27): Debug unit tests pass 134/134; the A
 - A synthetic ₱123.45 expected-income forecast was converted through the UI to a linked confirmed receivable after explicit confirmation. The Activity journal showed one Income entry; the Receivables list showed ₱123.45 outstanding.
 - After force-stop/relaunch, Home showed Net Worth ₱123.45 and Available Money ₱0.00. The synthetic app profile was cleared afterward.
 - This manually verifies conversion, classification, and restart persistence on API 37. It does not replace the automated migration/backup suite or complete the remaining Expected Income lifecycle and manual acceptance journeys. No application source changed.
+
+## PesoMind 2.0 beta 1 — recurring reminders — 2026-10-27
+
+- Recurring income and expense schedules now offer opt-in notifications, off by default. Tapping a reminder opens the current occurrence for user review; no automatic posting was added. The choice survives schema-23 migration and encrypted backup/restore.
+- Version code advanced from 2 to 3 for in-place installation of the beta APK. The public repository artifact and beta notes are `releases/RalLedger-debug.apk` and `releases/PesoMind-2.0-beta1.md`.
+- Automated verification passed: 134 unit tests; 64 connected API 37 tests; Debug lint (43 warnings, 0 errors); Release lint (40 warnings, 0 errors); Debug and Release assembly.
+- The downloadable beta is signed with the established Android Debug certificate, not an owner-managed production key. The separate Release APK is unsigned. Timed reminder delivery after reboot on a physical device, complete TalkBack review, and remaining manual journeys remain open.

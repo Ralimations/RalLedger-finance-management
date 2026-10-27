@@ -25,6 +25,8 @@ class SubscriptionReminderRescheduleReceiver : BroadcastReceiver() {
                 val subscriptions = app.container.repository.subscriptionsFlow.first()
                 val settings = app.container.financialPreferences.settings.first()
                 SubscriptionReminderScheduler.sync(context, subscriptions, settings)
+                val recurringTransactions = app.container.repository.recurringTransactionsFlow.first()
+                RecurringTransactionReminderScheduler.sync(context, recurringTransactions)
             } finally {
                 pendingResult.finish()
             }

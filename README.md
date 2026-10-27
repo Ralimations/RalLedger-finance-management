@@ -15,7 +15,7 @@ Set-Location TestApplication
 
 The debug APK is written to `TestApplication/app/build/outputs/apk/debug/app-debug.apk`. Debug builds are for development and are not production-signed.
 
-The current local debug APK is also copied to `releases/RalLedger-debug.apk`.
+The public open-beta APK is `releases/RalLedger-debug.apk` (PesoMind 2.0-beta1, version code 3). It is signed with the Android debug certificate so it can update the earlier APK distributed from this repository. It is not a production-signed release; see [release signing](RELEASE_SIGNING.md) before using it as a production channel.
 
 The public app name is PesoMind. The existing Android application ID and Kotlin namespace remain `com.ralledger`, and the Room database remains `ralledger_db`, so the rebrand does not change the install identity or local ledger.
 
@@ -23,4 +23,4 @@ The app uses a native AndroidX splash screen while startup recovery runs. New in
 
 See [Brand guidelines](BRAND_GUIDELINES.md), [Phase II progress](DEVELOPMENT_PROGRESS.md), and [release signing](RELEASE_SIGNING.md).
 
-No marketing website or public download is part of this repository milestone.
+This repository does not include a marketing website; the native Android app and public beta APK are the project deliverables.
